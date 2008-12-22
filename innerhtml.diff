@@ -1,0 +1,229 @@
+diff --git a/content/base/src/nsContentUtils.cpp b/content/base/src/nsContentUtils.cpp
+--- a/content/base/src/nsContentUtils.cpp
++++ b/content/base/src/nsContentUtils.cpp
+@@ -3439,38 +3439,39 @@ nsContentUtils::IsValidNodeName(nsIAtom 
+          (aNamespaceID == kNameSpaceID_XML || aPrefix != nsGkAtoms::xml);
+ }
+ 
+ /* static */
+ nsresult
+ nsContentUtils::CreateContextualFragment(nsIDOMNode* aContextNode,
+                                          const nsAString& aFragment,
+                                          PRBool aWillOwnFragment,
+-                                         nsIDOMDocumentFragment** aReturn)
++                                         nsIDOMDocumentFragment ** aReturn)
+ {
+   NS_ENSURE_ARG(aContextNode);
+   *aReturn = nsnull;
+ 
+   nsresult rv;
+   nsCOMPtr<nsINode> node = do_QueryInterface(aContextNode);
+   NS_ENSURE_TRUE(node, NS_ERROR_NOT_AVAILABLE);
+ 
+   // If we don't have a document here, we can't get the right security context
+   // for compiling event handlers... so just bail out.
+   nsCOMPtr<nsIDocument> document = node->GetOwnerDoc();
+   NS_ENSURE_TRUE(document, NS_ERROR_NOT_AVAILABLE);
+ 
+   nsAutoTArray<nsString, 32> tagStack;
+-  nsAutoString uriStr, nameStr;
++
+   nsCOMPtr<nsIContent> content = do_QueryInterface(aContextNode);
+   // just in case we have a text node
+   if (content && !content->IsNodeOfType(nsINode::eELEMENT))
+     content = content->GetParent();
+ 
+   while (content && content->IsNodeOfType(nsINode::eELEMENT)) {
++    nsAutoString uriStr, nameStr;
+     nsString& tagName = *tagStack.AppendElement();
+     NS_ENSURE_TRUE(&tagName, NS_ERROR_OUT_OF_MEMORY);
+ 
+     content->NodeInfo()->GetQualifiedName(tagName);
+ 
+     // see if we need to add xmlns declarations
+     PRUint32 count = content->GetAttrCount();
+     PRBool setDefaultNamespace = PR_FALSE;
+@@ -3581,17 +3582,19 @@ nsContentUtils::CreateContextualFragment
+       mode = eDTDMode_full_standards;
+       break;
+     default:
+       NS_NOTREACHED("unknown mode");
+       break;
+   }
+ 
+   // XXX Shouldn't we be returning rv if it's a failure code?
+-  rv = parser->ParseFragment(aFragment, nsnull, tagStack,
++  nsAutoTArray<nsString, 1> emptyStack;
++  nsTArray<nsString> &stack = tagStack;
++  rv = parser->ParseFragment(aFragment, nsnull, stack,
+                              !bHTML, contentType, mode);
+   if (NS_SUCCEEDED(rv)) {
+     rv = sink->GetFragment(aWillOwnFragment, aReturn);
+   }
+ 
+   document->SetFragmentParser(parser);
+ 
+   return NS_OK;
+diff --git a/content/html/content/src/nsGenericHTMLElement.cpp b/content/html/content/src/nsGenericHTMLElement.cpp
+--- a/content/html/content/src/nsGenericHTMLElement.cpp
++++ b/content/html/content/src/nsGenericHTMLElement.cpp
+@@ -713,17 +713,17 @@ nsGenericHTMLElement::SetInnerHTML(const
+   // This BeginUpdate/EndUpdate pair is important to make us reenable the
+   // scriptloader before the last EndUpdate call.
+   mozAutoDocUpdate updateBatch(GetCurrentDoc(), UPDATE_CONTENT_MODEL, PR_TRUE);
+ 
+   // Batch possible DOMSubtreeModified events.
+   mozAutoSubtreeModified subtree(GetOwnerDoc(), nsnull);
+ 
+   // Remove childnodes
+-  nsContentUtils::SetNodeTextContent(this, EmptyString(), PR_FALSE);
++  // nsContentUtils::SetNodeTextContent(this, EmptyString(), PR_FALSE);
+ 
+   nsCOMPtr<nsIDOMDocumentFragment> df;
+ 
+   nsCOMPtr<nsIDocument> doc = GetOwnerDoc();
+ 
+   // Strong ref since appendChild can fire events
+   nsRefPtr<nsScriptLoader> loader;
+   PRBool scripts_enabled = PR_FALSE;
+@@ -736,17 +736,17 @@ nsGenericHTMLElement::SetInnerHTML(const
+ 
+   nsCOMPtr<nsIDOMNode> thisNode(do_QueryInterface(static_cast<nsIContent *>
+                                                              (this)));
+   nsresult rv = nsContentUtils::CreateContextualFragment(thisNode, aInnerHTML,
+                                                          PR_FALSE,
+                                                          getter_AddRefs(df));
+   if (NS_SUCCEEDED(rv)) {
+     nsCOMPtr<nsIDOMNode> tmpNode;
+-    rv = thisNode->AppendChild(df, getter_AddRefs(tmpNode));
++    // rv = thisNode->AppendChild(df, getter_AddRefs(tmpNode));
+   }
+ 
+   if (scripts_enabled) {
+     // If we disabled scripts, re-enable them now that we're
+     // done. Don't fire JS timeouts when enabling the context here.
+ 
+     loader->SetEnabled(PR_TRUE);
+   }
+diff --git a/content/html/content/test/Makefile.in b/content/html/content/test/Makefile.in
+--- a/content/html/content/test/Makefile.in
++++ b/content/html/content/test/Makefile.in
+@@ -119,12 +119,13 @@ _TEST_FILES = 	test_bug589.html \
+ 		test_bug428135.xhtml \
+ 		test_bug430351.html \
+ 		test_bug430392.html \
+ 		bug441930_iframe.html \
+ 		test_bug441930.html \
+ 		test_bug442801.html \
+ 		test_bug448166.html \
+ 		test_bug460568.html \
++		innerhtml_perf.html \
+ 		$(NULL)
+ 
+ libs:: $(_TEST_FILES)
+ 	$(INSTALL) $(foreach f,$^,"$f") $(DEPTH)/_tests/testing/mochitest/tests/$(relativesrcdir)
+diff --git a/content/html/content/test/innerhtml_perf.html b/content/html/content/test/innerhtml_perf.html
+new file mode 100644
+--- /dev/null
++++ b/content/html/content/test/innerhtml_perf.html
+@@ -0,0 +1,100 @@
++<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN">
++<html>
++  <head>
++    <style type="text/css">
++      div.hbar {
++        background: #99f;
++        margin: 2px;
++        padding: 10px 0;
++        overflow: show;
++        font-size: 10px;
++        font-family: verdana;
++      }
++      div.errbar {
++        height: 2px;
++        background: black;
++        position: relative;
++        float: right;
++        top: .55em;
++      }
++    </style>
++
++    <script type="text/javascript">
++
++      Function.prototype.method = function(name, fn) {
++        this.prototype[name] = function() { return fn.apply(this, arguments) };
++        // this.prototype.__defineGetter__(name, function() {
++        //   return this[name] = fn.apply(this, arguments);
++        // });
++      };
++
++      Array.method("mean", function() {
++        const len = this.length;
++        var sum = 0;
++        for (var i = 0; i < len; ++i)
++          sum += this[i];
++        return sum / len;
++      });
++
++      Array.method("stdev", function() {
++        var mean = this.mean(),
++            variance = 0;
++        for (var i = 0; i < this.length; ++i)
++          variance += Math.pow(this[i] - mean, 2);
++        return Math.sqrt(variance);
++      });
++      
++      Array.method("min", function() { return this.slice(0).sort()[0] });
++      Array.method("max", function() { return this.slice(0).sort().pop() });
++
++      function test(id, n, t) {
++        const parent = document.getElementById(id),
++              results = [];
++        while (t --> 0) {
++          const start = +new Date;
++          for (var i = 0; i < n; ++i)
++            parent.innerHTML = "<span>" + id + ":" + i + "</span>";
++          const end = +new Date;
++          results.push(end - start);
++        }
++        return results;
++      }
++
++      function runTests(n, t) {
++        setTimeout(function() { hbar(test("pre",   n, t)) }, 10);
++        setTimeout(function() { hbar(test("inner", n, t)) }, 10);
++        setTimeout(function() { hbar(test("post",  n, t)) }, 10);
++      }
++
++      function hbar(results) {
++        var mean = results.mean();
++        results.sort();
++        while (results[results.length - 1] > mean * 2)
++          console.log(results.pop());
++
++        var stdev = results.stdev();
++        mean = results.mean();
++
++        var div = document.createElement("div"),
++            errbar = document.createElement("div"),
++            factor = 15,
++            adjlen = mean * factor,
++            adjstd = Math.round(stdev * factor * 2) / 2;
++        errbar.className = "errbar";
++        errbar.style.width = adjstd + "px";
++        errbar.style.left = (adjstd/2) + "px";
++        div.className = "hbar";
++        div.style.width = adjlen + "px";
++        document.body.appendChild(div).appendChild(errbar);
++        div.appendChild(document.createTextNode(results));
++      }
++    </script>
++  </head>
++  <body onload="runTests(150, 10)">
++    <span id="pre"></span>
++     <b> <b> <b> <b> <b> <b> <b> <b> <b> <b> <b> <b> <b> <b> <b> <b> <b> <b> <b> <b>
++      <span id="inner"></span>
++    </b></b></b></b></b></b></b></b></b></b></b></b></b></b></b></b></b></b></b></b>
++    <span id="post"></span>
++  </body>
++</html>
