@@ -1,1 +1,4 @@
 kill-jsd_assert.diff
+parser-copy-data
+parser-msg-queue
+bug-468562
