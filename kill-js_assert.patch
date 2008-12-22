@@ -1,0 +1,21 @@
+diff --git a/js/jsd/jsd_scpt.c b/js/jsd/jsd_scpt.c
+--- a/js/jsd/jsd_scpt.c
++++ b/js/jsd/jsd_scpt.c
+@@ -798,17 +798,16 @@ jsd_ClearExecutionHook(JSDContext*      
+ {
+     JSDExecHook* jsdhook;
+ 
+     JSD_LOCK();
+ 
+     jsdhook = _findHook(jsdc, jsdscript, pc);
+     if( ! jsdhook )
+     {
+-        JS_ASSERT(0);
+         JSD_UNLOCK();
+         return JS_FALSE;
+     }
+ 
+     JS_ClearTrap(jsdc->dumbContext, jsdscript->script, 
+                  (jsbytecode*)pc, NULL, NULL );
+ 
+     JS_REMOVE_LINK(&jsdhook->links);
