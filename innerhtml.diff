@@ -1,22 +1,7 @@
 diff --git a/content/base/src/nsContentUtils.cpp b/content/base/src/nsContentUtils.cpp
 --- a/content/base/src/nsContentUtils.cpp
 +++ b/content/base/src/nsContentUtils.cpp
-@@ -3439,38 +3439,39 @@ nsContentUtils::IsValidNodeName(nsIAtom 
-          (aNamespaceID == kNameSpaceID_XML || aPrefix != nsGkAtoms::xml);
- }
- 
- /* static */
- nsresult
- nsContentUtils::CreateContextualFragment(nsIDOMNode* aContextNode,
-                                          const nsAString& aFragment,
-                                          PRBool aWillOwnFragment,
--                                         nsIDOMDocumentFragment** aReturn)
-+                                         nsIDOMDocumentFragment ** aReturn)
- {
-   NS_ENSURE_ARG(aContextNode);
-   *aReturn = nsnull;
- 
-   nsresult rv;
+@@ -3454,71 +3454,16 @@ nsContentUtils::CreateContextualFragment
    nsCOMPtr<nsINode> node = do_QueryInterface(aContextNode);
    NS_ENSURE_TRUE(node, NS_ERROR_NOT_AVAILABLE);
  
@@ -25,25 +10,70 @@ diff --git a/content/base/src/nsContentUtils.cpp b/content/base/src/nsContentUti
    nsCOMPtr<nsIDocument> document = node->GetOwnerDoc();
    NS_ENSURE_TRUE(document, NS_ERROR_NOT_AVAILABLE);
  
-   nsAutoTArray<nsString, 32> tagStack;
+-  nsAutoTArray<nsString, 32> tagStack;
 -  nsAutoString uriStr, nameStr;
-+
-   nsCOMPtr<nsIContent> content = do_QueryInterface(aContextNode);
-   // just in case we have a text node
-   if (content && !content->IsNodeOfType(nsINode::eELEMENT))
-     content = content->GetParent();
+-  nsCOMPtr<nsIContent> content = do_QueryInterface(aContextNode);
+-  // just in case we have a text node
+-  if (content && !content->IsNodeOfType(nsINode::eELEMENT))
+-    content = content->GetParent();
+-
+-  while (content && content->IsNodeOfType(nsINode::eELEMENT)) {
+-    nsString& tagName = *tagStack.AppendElement();
+-    NS_ENSURE_TRUE(&tagName, NS_ERROR_OUT_OF_MEMORY);
+-
+-    content->NodeInfo()->GetQualifiedName(tagName);
+-
+-    // see if we need to add xmlns declarations
+-    PRUint32 count = content->GetAttrCount();
+-    PRBool setDefaultNamespace = PR_FALSE;
+-    if (count > 0) {
+-      PRUint32 index;
+-
+-      for (index = 0; index < count; index++) {
+-        const nsAttrName* name = content->GetAttrNameAt(index);
+-        if (name->NamespaceEquals(kNameSpaceID_XMLNS)) {
+-          content->GetAttr(kNameSpaceID_XMLNS, name->LocalName(), uriStr);
+-
+-          // really want something like nsXMLContentSerializer::SerializeAttr
+-          tagName.Append(NS_LITERAL_STRING(" xmlns")); // space important
+-          if (name->GetPrefix()) {
+-            tagName.Append(PRUnichar(':'));
+-            name->LocalName()->ToString(nameStr);
+-            tagName.Append(nameStr);
+-          } else {
+-            setDefaultNamespace = PR_TRUE;
+-          }
+-          tagName.Append(NS_LITERAL_STRING("=\"") + uriStr +
+-            NS_LITERAL_STRING("\""));
+-        }
+-      }
+-    }
+-
+-    if (!setDefaultNamespace) {
+-      nsINodeInfo* info = content->NodeInfo();
+-      if (!info->GetPrefixAtom() &&
+-          info->NamespaceID() != kNameSpaceID_None) {
+-        // We have no namespace prefix, but have a namespace ID.  Push
+-        // default namespace attr in, so that our kids will be in our
+-        // namespace.
+-        info->GetNamespaceURI(uriStr);
+-        tagName.Append(NS_LITERAL_STRING(" xmlns=\"") + uriStr +
+-                       NS_LITERAL_STRING("\""));
+-      }
+-    }
+-
+-    content = content->GetParent();
+-  }
+-
+   nsCAutoString contentType;
+   PRBool bCaseSensitive = PR_TRUE;
+   nsAutoString buf;
+   document->GetContentType(buf);
+   LossyCopyUTF16toASCII(buf, contentType);
+   bCaseSensitive = document->IsCaseSensitive();
  
-   while (content && content->IsNodeOfType(nsINode::eELEMENT)) {
-+    nsAutoString uriStr, nameStr;
-     nsString& tagName = *tagStack.AppendElement();
-     NS_ENSURE_TRUE(&tagName, NS_ERROR_OUT_OF_MEMORY);
- 
-     content->NodeInfo()->GetQualifiedName(tagName);
- 
-     // see if we need to add xmlns declarations
-     PRUint32 count = content->GetAttrCount();
-     PRBool setDefaultNamespace = PR_FALSE;
-@@ -3581,17 +3582,19 @@ nsContentUtils::CreateContextualFragment
+   nsCOMPtr<nsIHTMLDocument> htmlDoc(do_QueryInterface(document));
+@@ -3582,17 +3527,18 @@ nsContentUtils::CreateContextualFragment
        mode = eDTDMode_full_standards;
        break;
      default:
@@ -53,9 +83,8 @@ diff --git a/content/base/src/nsContentUtils.cpp b/content/base/src/nsContentUti
  
    // XXX Shouldn't we be returning rv if it's a failure code?
 -  rv = parser->ParseFragment(aFragment, nsnull, tagStack,
-+  nsAutoTArray<nsString, 1> emptyStack;
-+  nsTArray<nsString> &stack = tagStack;
-+  rv = parser->ParseFragment(aFragment, nsnull, stack,
++  nsCOMPtr<nsIContent> content = do_QueryInterface(aContextNode);
++  rv = parser->ParseFragment(aFragment, nsnull, content,
                               !bHTML, contentType, mode);
    if (NS_SUCCEEDED(rv)) {
      rv = sink->GetFragment(aWillOwnFragment, aReturn);
@@ -64,47 +93,6 @@ diff --git a/content/base/src/nsContentUtils.cpp b/content/base/src/nsContentUti
    document->SetFragmentParser(parser);
  
    return NS_OK;
-diff --git a/content/html/content/src/nsGenericHTMLElement.cpp b/content/html/content/src/nsGenericHTMLElement.cpp
---- a/content/html/content/src/nsGenericHTMLElement.cpp
-+++ b/content/html/content/src/nsGenericHTMLElement.cpp
-@@ -713,17 +713,17 @@ nsGenericHTMLElement::SetInnerHTML(const
-   // This BeginUpdate/EndUpdate pair is important to make us reenable the
-   // scriptloader before the last EndUpdate call.
-   mozAutoDocUpdate updateBatch(GetCurrentDoc(), UPDATE_CONTENT_MODEL, PR_TRUE);
- 
-   // Batch possible DOMSubtreeModified events.
-   mozAutoSubtreeModified subtree(GetOwnerDoc(), nsnull);
- 
-   // Remove childnodes
--  nsContentUtils::SetNodeTextContent(this, EmptyString(), PR_FALSE);
-+  // nsContentUtils::SetNodeTextContent(this, EmptyString(), PR_FALSE);
- 
-   nsCOMPtr<nsIDOMDocumentFragment> df;
- 
-   nsCOMPtr<nsIDocument> doc = GetOwnerDoc();
- 
-   // Strong ref since appendChild can fire events
-   nsRefPtr<nsScriptLoader> loader;
-   PRBool scripts_enabled = PR_FALSE;
-@@ -736,17 +736,17 @@ nsGenericHTMLElement::SetInnerHTML(const
- 
-   nsCOMPtr<nsIDOMNode> thisNode(do_QueryInterface(static_cast<nsIContent *>
-                                                              (this)));
-   nsresult rv = nsContentUtils::CreateContextualFragment(thisNode, aInnerHTML,
-                                                          PR_FALSE,
-                                                          getter_AddRefs(df));
-   if (NS_SUCCEEDED(rv)) {
-     nsCOMPtr<nsIDOMNode> tmpNode;
--    rv = thisNode->AppendChild(df, getter_AddRefs(tmpNode));
-+    // rv = thisNode->AppendChild(df, getter_AddRefs(tmpNode));
-   }
- 
-   if (scripts_enabled) {
-     // If we disabled scripts, re-enable them now that we're
-     // done. Don't fire JS timeouts when enabling the context here.
- 
-     loader->SetEnabled(PR_TRUE);
-   }
 diff --git a/content/html/content/test/Makefile.in b/content/html/content/test/Makefile.in
 --- a/content/html/content/test/Makefile.in
 +++ b/content/html/content/test/Makefile.in
@@ -126,7 +114,7 @@ diff --git a/content/html/content/test/innerhtml_perf.html b/content/html/conten
 new file mode 100644
 --- /dev/null
 +++ b/content/html/content/test/innerhtml_perf.html
-@@ -0,0 +1,100 @@
+@@ -0,0 +1,92 @@
 +<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN">
 +<html>
 +  <head>
@@ -144,37 +132,26 @@ new file mode 100644
 +        background: black;
 +        position: relative;
 +        float: right;
-+        top: .55em;
 +      }
 +    </style>
 +
 +    <script type="text/javascript">
 +
-+      Function.prototype.method = function(name, fn) {
-+        this.prototype[name] = function() { return fn.apply(this, arguments) };
-+        // this.prototype.__defineGetter__(name, function() {
-+        //   return this[name] = fn.apply(this, arguments);
-+        // });
-+      };
-+
-+      Array.method("mean", function() {
++      Array.prototype.mean = function() {
 +        const len = this.length;
 +        var sum = 0;
 +        for (var i = 0; i < len; ++i)
 +          sum += this[i];
 +        return sum / len;
-+      });
++      };
 +
-+      Array.method("stdev", function() {
++      Array.prototype.stdev = function() {
 +        var mean = this.mean(),
 +            variance = 0;
 +        for (var i = 0; i < this.length; ++i)
 +          variance += Math.pow(this[i] - mean, 2);
 +        return Math.sqrt(variance);
-+      });
-+      
-+      Array.method("min", function() { return this.slice(0).sort()[0] });
-+      Array.method("max", function() { return this.slice(0).sort().pop() });
++      };
 +
 +      function test(id, n, t) {
 +        const parent = document.getElementById(id),
@@ -190,36 +167,39 @@ new file mode 100644
 +      }
 +
 +      function runTests(n, t) {
-+        setTimeout(function() { hbar(test("pre",   n, t)) }, 10);
-+        setTimeout(function() { hbar(test("inner", n, t)) }, 10);
-+        setTimeout(function() { hbar(test("post",  n, t)) }, 10);
++        hbar(test("pre",   n, t));
++        hbar(test("inner", n, t));
++        hbar(test("post",  n, t));
 +      }
 +
 +      function hbar(results) {
 +        var mean = results.mean();
 +        results.sort();
-+        while (results[results.length - 1] > mean * 2)
-+          console.log(results.pop());
-+
++        // while (results[results.length - 1] > mean * 2)
++        //   console.log(results.pop());
 +        var stdev = results.stdev();
 +        mean = results.mean();
 +
 +        var div = document.createElement("div"),
 +            errbar = document.createElement("div"),
 +            factor = 15,
-+            adjlen = mean * factor,
-+            adjstd = Math.round(stdev * factor * 2) / 2;
++            adjstd = stdev * factor;
++
 +        errbar.className = "errbar";
 +        errbar.style.width = adjstd + "px";
 +        errbar.style.left = (adjstd/2) + "px";
 +        div.className = "hbar";
-+        div.style.width = adjlen + "px";
++        div.style.width = (mean * factor) + "px";
++
 +        document.body.appendChild(div).appendChild(errbar);
 +        div.appendChild(document.createTextNode(results));
++        div.appendChild(document.createElement("br"));
++        div.appendChild(document.createTextNode(mean));
 +      }
++
 +    </script>
 +  </head>
-+  <body onload="runTests(150, 10)">
++  <body onload="runTests(500, 20)">
 +    <span id="pre"></span>
 +     <b> <b> <b> <b> <b> <b> <b> <b> <b> <b> <b> <b> <b> <b> <b> <b> <b> <b> <b> <b>
 +      <span id="inner"></span>
@@ -227,3 +207,231 @@ new file mode 100644
 +    <span id="post"></span>
 +  </body>
 +</html>
+diff --git a/parser/htmlparser/public/nsIParser.h b/parser/htmlparser/public/nsIParser.h
+--- a/parser/htmlparser/public/nsIParser.h
++++ b/parser/htmlparser/public/nsIParser.h
+@@ -64,16 +64,17 @@
+ { 0x81, 0x6f, 0x0, 0x0, 0x64, 0x65, 0x73, 0x74 } }
+ 
+ class nsIContentSink;
+ class nsIRequestObserver;
+ class nsIParserFilter;
+ class nsString;
+ class nsIURI;
+ class nsIChannel;
++class nsIContent;
+ 
+ enum eParserCommands {
+   eViewNormal,
+   eViewSource,
+   eViewFragment,
+   eViewErrors
+ };
+ 
+@@ -247,17 +248,23 @@ class nsIParser : public nsISupports {
+      * @param aTagStack The context of the source buffer.
+      * @param aXMLMode Whether this is XML or HTML
+      * @param aContentType The content-type of this document.
+      * @param aMode The DTDMode that the parser should parse this fragment in.
+      * @return Success or failure.
+      */
+     NS_IMETHOD ParseFragment(const nsAString& aSourceBuffer,
+                              void* aKey,
+-                             nsTArray<nsString>& aTagStack,
++                             nsTArray<nsString> &aTagStack,
++                             PRBool aXMLMode,
++                             const nsACString& aContentType,
++                             nsDTDMode aMode = eDTDMode_autodetect) = 0;
++    NS_IMETHOD ParseFragment(const nsAString& aSourceBuffer,
++                             void* aKey,
++                             nsIContent *aContextNode,
+                              PRBool aXMLMode,
+                              const nsACString& aContentType,
+                              nsDTDMode aMode = eDTDMode_autodetect) = 0;
+ 
+     /**
+      * This method gets called when the tokens have been consumed, and it's time
+      * to build the model via the content sink.
+      * @update	gess5/11/98
+diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
+--- a/parser/htmlparser/src/nsParser.cpp
++++ b/parser/htmlparser/src/nsParser.cpp
+@@ -2042,24 +2042,149 @@ nsParser::Parse(const nsAString& aSource
+         }
+       }
+     }
+   }
+ 
+   return result;
+ }
+ 
++#include "nsGkAtoms.h"
++#include "nsIContent.h"
++#include "nsAttrName.h"
++
++static inline PRBool
++LikelyToAffectParsing(const nsIAtom *aTag)
++{
++  return PR_TRUE;
++  // return aTag == nsGkAtoms::body
++  //     || aTag == nsGkAtoms::head
++  //     || aTag == nsGkAtoms::html
++  //     || aTag == nsGkAtoms::table
++  //     || aTag == nsGkAtoms::tr
++  //     || aTag == nsGkAtoms::td
++  //     || aTag == nsGkAtoms::form;
++    //|| ...
++}
++
++static inline PRBool
++AncestorsMayBeIgnored(const nsIAtom *aTag)
++{
++  return PR_TRUE;
++  // return aTag == nsGkAtoms::div
++  //     || aTag == nsGkAtoms::textarea;
++    //|| ...
++}
++
++static inline nsIContent *
++GetSignificantParent(const nsIContent *aChild)
++{
++  nsIContent *parent;
++  nsIAtom *parentTag, *childTag = aChild->Tag();
++
++  if (AncestorsMayBeIgnored(childTag))
++    return nsnull;
++
++  while ((parent = aChild->GetParent())) {
++    parentTag = parent->Tag();
++    if (parentTag != childTag && // coalesce duplicates
++        LikelyToAffectParsing(parentTag))
++    {
++      break;
++    }
++    aChild = parent;
++    childTag = parentTag;
++  }
++
++  return parent;
++}
++
++static PRUint32 // returns the depth of the stack
++CreateTagStack(nsTArray<nsString> &tagStack,
++               const nsIContent *content)
++{
++  nsAutoString uriStr, nameStr;
++
++  // just in case we have a text node
++  if (content && !content->IsNodeOfType(nsINode::eELEMENT))
++    content = content->GetParent();
++
++  while (content && content->IsNodeOfType(nsINode::eELEMENT)) {
++    nsString& tagName = *tagStack.AppendElement();
++    NS_ENSURE_TRUE(&tagName, NS_ERROR_OUT_OF_MEMORY);
++
++    content->NodeInfo()->GetQualifiedName(tagName);
++
++    // see if we need to add xmlns declarations
++    PRUint32 count = content->GetAttrCount();
++    PRBool setDefaultNamespace = PR_FALSE;
++    if (count > 0) {
++      PRUint32 index;
++
++      for (index = 0; index < count; index++) {
++        const nsAttrName* name = content->GetAttrNameAt(index);
++        if (name->NamespaceEquals(kNameSpaceID_XMLNS)) {
++          content->GetAttr(kNameSpaceID_XMLNS, name->LocalName(), uriStr);
++
++          // really want something like nsXMLContentSerializer::SerializeAttr
++          tagName.Append(NS_LITERAL_STRING(" xmlns")); // space important
++          if (name->GetPrefix()) {
++            tagName.Append(PRUnichar(':'));
++            name->LocalName()->ToString(nameStr);
++            tagName.Append(nameStr);
++          } else {
++            setDefaultNamespace = PR_TRUE;
++          }
++          tagName.Append(NS_LITERAL_STRING("=\"") + uriStr +
++            NS_LITERAL_STRING("\""));
++        }
++      }
++    }
++
++    if (!setDefaultNamespace) {
++      nsINodeInfo* info = content->NodeInfo();
++      if (!info->GetPrefixAtom() &&
++          info->NamespaceID() != kNameSpaceID_None) {
++        // We have no namespace prefix, but have a namespace ID.  Push
++        // default namespace attr in, so that our kids will be in our
++        // namespace.
++        info->GetNamespaceURI(uriStr);
++        tagName.Append(NS_LITERAL_STRING(" xmlns=\"") + uriStr +
++                       NS_LITERAL_STRING("\""));
++      }
++    }
++    // Note that we always include aContextNode, but not necessarily
++    // its parent('s parent)*.
++    content = GetSignificantParent(content);
++  }
++  return tagStack.Length();
++}
++
+ NS_IMETHODIMP
+ nsParser::ParseFragment(const nsAString& aSourceBuffer,
+                         void* aKey,
+-                        nsTArray<nsString>& aTagStack,
++                        nsIContent *aContextNode,
+                         PRBool aXMLMode,
+                         const nsACString& aMimeType,
+                         nsDTDMode aMode)
+ {
++  nsTArray<nsString> tagStack;
++  CreateTagStack(tagStack, aContextNode);
++  return ParseFragment(aSourceBuffer, aKey, tagStack,
++                       aXMLMode, aMimeType, aMode);
++}
++
++NS_IMETHODIMP
++nsParser::ParseFragment(const nsAString& aSourceBuffer,
++                        void* aKey,
++                        nsTArray<nsString> &aTagStack,
++                        PRBool aXMLMode,
++                        const nsACString& aMimeType,
++                        nsDTDMode aMode)
++{ 
+   nsresult result = NS_OK;
+   nsAutoString  theContext;
+   PRUint32 theCount = aTagStack.Length();
+   PRUint32 theIndex = 0;
+ 
+   // Disable observers for fragments
+   mFlags &= ~NS_PARSER_FLAG_OBSERVERS_ENABLED;
+ 
+diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
+--- a/parser/htmlparser/src/nsParser.h
++++ b/parser/htmlparser/src/nsParser.h
+@@ -214,17 +214,23 @@ class nsParser : public nsIParser,
+ 
+     NS_IMETHOD_(void *) GetRootContextKey();
+ 
+     /**
+      * This method needs documentation
+      */
+     NS_IMETHOD ParseFragment(const nsAString& aSourceBuffer,
+                              void* aKey,
+-                             nsTArray<nsString>& aTagStack,
++                             nsTArray<nsString> &aTagStack,
++                             PRBool aXMLMode,
++                             const nsACString& aContentType,
++                             nsDTDMode aMode = eDTDMode_autodetect);
++    NS_IMETHOD ParseFragment(const nsAString& aSourceBuffer,
++                             void* aKey,
++                             nsIContent *aContextNode,
+                              PRBool aXMLMode,
+                              const nsACString& aContentType,
+                              nsDTDMode aMode = eDTDMode_autodetect);
+ 
+ 
+     /**
+      * This method gets called when the tokens have been consumed, and it's time
+      * to build the model via the content sink.
