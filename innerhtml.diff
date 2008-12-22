@@ -256,7 +256,28 @@ diff --git a/parser/htmlparser/public/nsIParser.h b/parser/htmlparser/public/nsI
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -2042,24 +2042,149 @@ nsParser::Parse(const nsAString& aSource
+@@ -66,16 +66,20 @@
+ #include "nsStreamUtils.h"
+ #include "nsHTMLTokenizer.h"
+ #include "nsIDocument.h"
+ #include "nsNetUtil.h"
+ #include "nsScriptLoader.h"
+ #include "nsDataHashtable.h"
+ #include "nsIThreadPool.h"
+ #include "nsXPCOMCIDInternal.h"
++
++#include "nsGkAtoms.h"
++#include "nsIContent.h"
++#include "nsAttrName.h"
+ 
+ #ifdef MOZ_VIEW_SOURCE
+ #include "nsViewSourceHTML.h"
+ #endif
+ 
+ #define NS_PARSER_FLAG_PARSER_ENABLED         0x00000002
+ #define NS_PARSER_FLAG_OBSERVERS_ENABLED      0x00000004
+ #define NS_PARSER_FLAG_PENDING_CONTINUE_EVENT 0x00000008
+@@ -2042,24 +2046,150 @@ nsParser::Parse(const nsAString& aSource
          }
        }
      }
@@ -265,31 +286,32 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    return result;
  }
  
-+#include "nsGkAtoms.h"
-+#include "nsIContent.h"
-+#include "nsAttrName.h"
-+
 +static inline PRBool
 +LikelyToAffectParsing(const nsIAtom *aTag)
 +{
-+  return PR_TRUE;
-+  // return aTag == nsGkAtoms::body
-+  //     || aTag == nsGkAtoms::head
-+  //     || aTag == nsGkAtoms::html
-+  //     || aTag == nsGkAtoms::table
-+  //     || aTag == nsGkAtoms::tr
-+  //     || aTag == nsGkAtoms::td
-+  //     || aTag == nsGkAtoms::form;
-+    //|| ...
++  // informed by http://dev.w3.org/html5/spec/Overview.html#insertion-mode
++  return aTag == nsGkAtoms::select
++      || aTag == nsGkAtoms::td
++      || aTag == nsGkAtoms::th
++      || aTag == nsGkAtoms::tr
++      || aTag == nsGkAtoms::tbody
++      || aTag == nsGkAtoms::thead
++      || aTag == nsGkAtoms::tfoot
++      || aTag == nsGkAtoms::caption
++      || aTag == nsGkAtoms::colgroup
++      || aTag == nsGkAtoms::table
++      || aTag == nsGkAtoms::head
++      || aTag == nsGkAtoms::body
++      || aTag == nsGkAtoms::frameset
++      || aTag == nsGkAtoms::html
++      // seems prudent too?
++      || aTag == nsGkAtoms::form;
 +}
 +
 +static inline PRBool
 +AncestorsMayBeIgnored(const nsIAtom *aTag)
 +{
-+  return PR_TRUE;
-+  // return aTag == nsGkAtoms::div
-+  //     || aTag == nsGkAtoms::textarea;
-+    //|| ...
++  return PR_FALSE;
 +}
 +
 +static inline nsIContent *
