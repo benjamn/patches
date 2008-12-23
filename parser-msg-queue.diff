@@ -79,7 +79,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
  template <class Type>
  class Holder {
-@@ -803,25 +807,33 @@ nsParser::Initialize(PRBool aConstructor
+@@ -803,25 +807,30 @@ nsParser::Initialize(PRBool aConstructor
    mInternalState = NS_OK;
    mStreamStatus = 0;
    mCommand = eViewNormal;
@@ -99,10 +99,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  void
  nsParser::Cleanup()
  {
-+  PR_Lock(*mQueue);
-+  while (mQueue->GetSize())
-+    delete static_cast<nsParserQueue::Msg*>(mQueue->Pop());
-+  PR_Unlock(*mQueue);
++  mQueue->Flush(PR_FALSE);
 +  delete mQueue;
 +
  #ifdef NS_DEBUG
@@ -113,7 +110,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
        nsresult result = NS_OK;
        nsCOMPtr<nsIDebugDumpContent> trigger = do_QueryInterface(mSink, &result);
        if (NS_SUCCEEDED(result)) {
-@@ -880,26 +892,28 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(
+@@ -880,26 +889,28 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(
    NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIParser)
  NS_INTERFACE_MAP_END
  
@@ -143,7 +140,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      }
    }
    return NS_OK;
-@@ -1458,16 +1472,22 @@ FindSuitableDTD(CParserContext& aParserC
+@@ -1458,16 +1469,22 @@ FindSuitableDTD(CParserContext& aParserC
    NS_ASSERTION(aParserContext.mDocType == eXML, "What are you trying to send me, here?");
    aParserContext.mDTD = new nsExpatDriver();
    return aParserContext.mDTD ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
@@ -166,7 +163,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
    return NS_OK;
  }
-@@ -1632,17 +1652,24 @@ nsParser::GetRootContextKey()
+@@ -1632,17 +1649,24 @@ nsParser::GetRootContextKey()
  }
  
  /**
@@ -192,7 +189,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    nsresult result = NS_OK;
-@@ -1651,17 +1678,17 @@ nsParser::Terminate(void)
+@@ -1651,17 +1675,17 @@ nsParser::Terminate(void)
    nsCOMPtr<nsIParser> kungFuDeathGrip(this);
    mInternalState = result = NS_ERROR_HTMLPARSER_STOPPARSING;
  
@@ -211,7 +208,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    // If we got interrupted in the middle of a document.write, then we might
    // have more than one parser context on our parsercontext stack. This has
    // the effect of making DidBuildModel a no-op, meaning that we never call
-@@ -1686,28 +1713,40 @@ nsParser::Terminate(void)
+@@ -1686,28 +1710,40 @@ nsParser::Terminate(void)
    }
  
    return NS_OK;
@@ -253,7 +250,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    nsresult result=NS_OK;
    nsCOMPtr<nsIParser> kungFuDeathGrip(this);
  
-@@ -1738,37 +1777,51 @@ nsParser::ContinueInterruptedParsing()
+@@ -1738,37 +1774,51 @@ nsParser::ContinueInterruptedParsing()
  
  /**
   *  Stops parsing temporarily. That's it will prevent the
@@ -305,7 +302,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  NS_IMETHODIMP_(PRBool)
  nsParser::IsParserEnabled()
  {
-@@ -1779,28 +1832,36 @@ nsParser::IsParserEnabled()
+@@ -1779,28 +1829,36 @@ nsParser::IsParserEnabled()
   * Call this to query whether the parser thinks it's done with parsing.
   */
  NS_IMETHODIMP_(PRBool)
@@ -345,7 +342,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    ++mScriptsExecuting;
  }
  
-@@ -1858,58 +1919,65 @@ nsParser::SetCanInterrupt(PRBool aCanInt
+@@ -1858,58 +1916,65 @@ nsParser::SetCanInterrupt(PRBool aCanInt
  
  /**
   *  This is the main controlling routine in the parsing process.
@@ -438,7 +435,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
   * In particular, this method should be called by the DOM when it has an HTML
   * string to feed to the parser in real-time.
   *
-@@ -1917,16 +1985,27 @@ nsParser::Parse(nsIURI* aURL,
+@@ -1917,16 +1982,27 @@ nsParser::Parse(nsIURI* aURL,
   * @param   aMimeType tells us what type of content to expect in the given string
   */
  NS_IMETHODIMP
@@ -466,7 +463,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      return result;
    }
  
-@@ -2050,16 +2129,28 @@ NS_IMETHODIMP
+@@ -2050,16 +2126,28 @@ NS_IMETHODIMP
  NS_IMETHODIMP
  nsParser::ParseFragment(const nsAString& aSourceBuffer,
                          void* aKey,
@@ -495,7 +492,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    // Disable observers for fragments
    mFlags &= ~NS_PARSER_FLAG_OBSERVERS_ENABLED;
  
-@@ -2074,17 +2165,20 @@ nsParser::ParseFragment(const nsAString&
+@@ -2074,17 +2162,20 @@ nsParser::ParseFragment(const nsAString&
    if (theCount == 0) {
      // Ensure that the buffer is not empty. Because none of the DTDs care
      // about leading whitespace, this doesn't change the result.
@@ -517,7 +514,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    nsCOMPtr<nsIFragmentContentSink> fragSink = do_QueryInterface(mSink);
    NS_ASSERTION(fragSink, "ParseFragment requires a fragment content sink");
  
-@@ -2127,48 +2221,50 @@ nsParser::ParseFragment(const nsAString&
+@@ -2127,48 +2218,50 @@ nsParser::ParseFragment(const nsAString&
    }
  
    fragSink->WillBuildContent();
@@ -577,7 +574,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    return result;
  }
  
-@@ -2253,17 +2349,17 @@ nsParser::ResumeParse(PRBool allowIterat
+@@ -2253,17 +2346,17 @@ nsParser::ResumeParse(PRBool allowIterat
          // (and cache any data coming in) until the parser is re-enabled.
          if (NS_ERROR_HTMLPARSER_BLOCK == result) {
            if (mParserContext->mDTD) {
@@ -596,7 +593,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
            // Note: Parser Terminate() calls DidBuildModel.
            if (mInternalState != NS_ERROR_HTMLPARSER_STOPPARSING) {
              DidBuildModel(mStreamStatus);
-@@ -2372,16 +2468,22 @@ nsParser::BuildModel()
+@@ -2372,16 +2465,22 @@ nsParser::BuildModel()
  
  /*******************************************************************
    These methods are used to talk to the netlib system...
@@ -619,7 +616,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
    mParserContext->mStreamListenerState = eOnStart;
    mParserContext->mAutoDetectStatus = eUnknownDetect;
-@@ -2407,17 +2509,16 @@ nsParser::OnStartRequest(nsIRequest *req
+@@ -2407,17 +2506,16 @@ nsParser::OnStartRequest(nsIRequest *req
      while (count--) {
        rv |= sParserDataListeners->ObjectAt(count)->
                OnStartRequest(request, ctx);
@@ -637,7 +634,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  #define UCS4_BE "UTF-32BE"
  #define UCS4_LE "UTF-32LE"
  #define UCS4_2143 "X-ISO-10646-UCS-4-2143"
-@@ -2790,40 +2891,41 @@ CheckCharset(const char* aBytes,
+@@ -2790,40 +2888,41 @@ CheckCharset(const char* aBytes,
            }
          }
        }
@@ -692,7 +689,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
      if ((mFlags & NS_PARSER_FLAG_PARSER_ENABLED) &&
          mSpeculativeScriptThread) {
-@@ -2833,48 +2935,54 @@ nsParser::OnDataAvailable(nsIRequest *re
+@@ -2833,48 +2932,54 @@ nsParser::OnDataAvailable(nsIRequest *re
      if (eInvalidDetect == theContext->mAutoDetectStatus) {
        if (theContext->mScanner) {
          nsScannerIterator iter;
@@ -754,7 +751,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    CParserContext *pc = mParserContext;
-@@ -2995,17 +3103,17 @@ nsresult nsParser::Tokenize(PRBool aIsFi
+@@ -2995,17 +3100,17 @@ nsresult nsParser::Tokenize(PRBool aIsFi
                                            flushTokens);
        if (NS_FAILED(result)) {
          mParserContext->mScanner->RewindToMark();
@@ -1167,7 +1164,7 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
 new file mode 100644
 --- /dev/null
 +++ b/parser/htmlparser/src/nsParserQueue.h
-@@ -0,0 +1,286 @@
+@@ -0,0 +1,294 @@
 +#ifndef __ns_parser_queue__
 +#define __ns_parser_queue__
 +
@@ -1283,9 +1280,17 @@ new file mode 100644
 +  */
 +
 +  nsParserQueue() : mLock(PR_NewLock()) {}
-+  virtual ~nsParserQueue() { PR_DestroyLock(mLock); }
++
++  virtual ~nsParserQueue() {
++    NS_ASSERTION(!GetSize(), "Expect leaks because you did "
++      "not Flush(PR_FALSE) before deleting nsParserQueue!");
++    PR_DestroyLock(mLock);
++  }
++
 +  operator PRLock*() { return mLock; }
-+  nsresult Flush(nsParser* aParser, PRBool breakOnFailure=PR_FALSE);
++
++  nsresult Flush(nsParser* aParser,
++                 PRBool breakOnFailure=PR_TRUE);
 +
 +  // Type-safe interface to private nsDeque base:
 +  
