@@ -342,7 +342,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    ++mScriptsExecuting;
  }
  
-@@ -1858,58 +1916,65 @@ nsParser::SetCanInterrupt(PRBool aCanInt
+@@ -1858,58 +1916,66 @@ nsParser::SetCanInterrupt(PRBool aCanInt
  
  /**
   *  This is the main controlling routine in the parsing process.
@@ -368,6 +368,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +// TODO move as much fallible code as possible into the ::Init methods!?
 +// XXXX handlers must be atomic from the first actual parser operation (read, write) to the last
 +// XXXX but it may be possible to reorder things...
++// TODO nsURI not threadsafe?
 +nsresult
 +nsParser::HandleParseUrl(const nsACString &spec,
 +                         nsIRequestObserver* aListener,
@@ -435,7 +436,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
   * In particular, this method should be called by the DOM when it has an HTML
   * string to feed to the parser in real-time.
   *
-@@ -1917,16 +1982,27 @@ nsParser::Parse(nsIURI* aURL,
+@@ -1917,16 +1983,27 @@ nsParser::Parse(nsIURI* aURL,
   * @param   aMimeType tells us what type of content to expect in the given string
   */
  NS_IMETHODIMP
@@ -463,7 +464,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      return result;
    }
  
-@@ -2050,16 +2126,28 @@ NS_IMETHODIMP
+@@ -2050,16 +2127,28 @@ NS_IMETHODIMP
  NS_IMETHODIMP
  nsParser::ParseFragment(const nsAString& aSourceBuffer,
                          void* aKey,
@@ -492,7 +493,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    // Disable observers for fragments
    mFlags &= ~NS_PARSER_FLAG_OBSERVERS_ENABLED;
  
-@@ -2074,17 +2162,20 @@ nsParser::ParseFragment(const nsAString&
+@@ -2074,17 +2163,20 @@ nsParser::ParseFragment(const nsAString&
    if (theCount == 0) {
      // Ensure that the buffer is not empty. Because none of the DTDs care
      // about leading whitespace, this doesn't change the result.
@@ -514,7 +515,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    nsCOMPtr<nsIFragmentContentSink> fragSink = do_QueryInterface(mSink);
    NS_ASSERTION(fragSink, "ParseFragment requires a fragment content sink");
  
-@@ -2127,48 +2218,50 @@ nsParser::ParseFragment(const nsAString&
+@@ -2127,48 +2219,50 @@ nsParser::ParseFragment(const nsAString&
    }
  
    fragSink->WillBuildContent();
@@ -574,7 +575,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    return result;
  }
  
-@@ -2253,17 +2346,17 @@ nsParser::ResumeParse(PRBool allowIterat
+@@ -2253,17 +2347,17 @@ nsParser::ResumeParse(PRBool allowIterat
          // (and cache any data coming in) until the parser is re-enabled.
          if (NS_ERROR_HTMLPARSER_BLOCK == result) {
            if (mParserContext->mDTD) {
@@ -593,7 +594,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
            // Note: Parser Terminate() calls DidBuildModel.
            if (mInternalState != NS_ERROR_HTMLPARSER_STOPPARSING) {
              DidBuildModel(mStreamStatus);
-@@ -2372,16 +2465,22 @@ nsParser::BuildModel()
+@@ -2372,16 +2466,22 @@ nsParser::BuildModel()
  
  /*******************************************************************
    These methods are used to talk to the netlib system...
@@ -616,7 +617,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
    mParserContext->mStreamListenerState = eOnStart;
    mParserContext->mAutoDetectStatus = eUnknownDetect;
-@@ -2407,17 +2506,16 @@ nsParser::OnStartRequest(nsIRequest *req
+@@ -2407,17 +2507,16 @@ nsParser::OnStartRequest(nsIRequest *req
      while (count--) {
        rv |= sParserDataListeners->ObjectAt(count)->
                OnStartRequest(request, ctx);
@@ -634,7 +635,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  #define UCS4_BE "UTF-32BE"
  #define UCS4_LE "UTF-32LE"
  #define UCS4_2143 "X-ISO-10646-UCS-4-2143"
-@@ -2790,40 +2888,41 @@ CheckCharset(const char* aBytes,
+@@ -2790,40 +2889,41 @@ CheckCharset(const char* aBytes,
            }
          }
        }
@@ -689,7 +690,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
      if ((mFlags & NS_PARSER_FLAG_PARSER_ENABLED) &&
          mSpeculativeScriptThread) {
-@@ -2833,48 +2932,54 @@ nsParser::OnDataAvailable(nsIRequest *re
+@@ -2833,48 +2933,54 @@ nsParser::OnDataAvailable(nsIRequest *re
      if (eInvalidDetect == theContext->mAutoDetectStatus) {
        if (theContext->mScanner) {
          nsScannerIterator iter;
@@ -751,7 +752,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    CParserContext *pc = mParserContext;
-@@ -2995,17 +3100,17 @@ nsresult nsParser::Tokenize(PRBool aIsFi
+@@ -2995,17 +3101,17 @@ nsresult nsParser::Tokenize(PRBool aIsFi
                                            flushTokens);
        if (NS_FAILED(result)) {
          mParserContext->mScanner->RewindToMark();
@@ -989,10 +990,9 @@ diff --git a/parser/htmlparser/src/nsParserQueue.cpp b/parser/htmlparser/src/nsP
 new file mode 100644
 --- /dev/null
 +++ b/parser/htmlparser/src/nsParserQueue.cpp
-@@ -0,0 +1,170 @@
+@@ -0,0 +1,144 @@
 +
 +#include "nsParserQueue.h"
-+#include "nsAutoLock.h"
 +#include "nsThreadUtils.h"
 +
 +NS_IMPL_ISUPPORTS0(nsParserQueue::Msg)
@@ -1025,6 +1025,7 @@ new file mode 100644
 +    }
 +  }
 +
++  // XXX what about document.write?
 +  if (q.GetSize()) {
 +    nsAutoLock synchronized(mLock);
 +    while (q.GetSize())
@@ -1033,19 +1034,6 @@ new file mode 100644
 +  }
 +
 +  return rv;
-+}
-+
-+#define LET_GO_OF(OBJ) \
-+  PR_BEGIN_MACRO       \
-+    if (OBJ) {         \
-+      NS_RELEASE(OBJ); \
-+      OBJ = nsnull;    \
-+    }                  \
-+  PR_END_MACRO
-+
-+nsParserQueue::ParseUrlMsg::~ParseUrlMsg()
-+{
-+  LET_GO_OF(mListener);
 +}
 +
 +nsresult
@@ -1059,7 +1047,7 @@ new file mode 100644
 +  nsresult rv = aURL->GetSpec(mSpec);
 +  NS_ENSURE_SUCCESS(rv, rv);
 +
-+  NS_IF_ADDREF(mListener = aListener);
++  mListener = aListener;
 +  mKey = aKey;
 +  mMode = aMode;
 +  return NS_OK;
@@ -1081,25 +1069,18 @@ new file mode 100644
 +  return NS_OK;
 +}
 +
-+nsParserQueue::StartRequestMsg::~StartRequestMsg()
-+{
-+  LET_GO_OF(mRequest);
-+  LET_GO_OF(mContext);
-+}
-+
 +nsresult
 +nsParserQueue::StartRequestMsg
 +             ::Init(nsIRequest* aRequest,
 +                    nsISupports* aContext)
 +{
-+  NS_IF_ADDREF(mRequest = aRequest);
-+  NS_IF_ADDREF(mContext = aContext);
++  mRequest = aRequest;
++  mContext = aContext;
 +  return NS_OK;
 +}
 +
 +nsParserQueue::DataAvailableMsg::~DataAvailableMsg()
 +{
-+  LET_GO_OF(mRequest);
 +  if (mBytes) {
 +    delete[] mBytes;
 +    mBytes = nsnull;
@@ -1113,7 +1094,7 @@ new file mode 100644
 +                    PRUint32 aSourceOffset,
 +                    PRUint32 aLength)
 +{
-+  NS_IF_ADDREF(mRequest = aRequest);
++  mRequest = aRequest;
 +  mSourceOffset = aSourceOffset;
 +  mBytes = new char[aLength + 1];
 +  nsresult rv = pIStream->Read(mBytes, aLength, &mNumBytes);
@@ -1125,20 +1106,14 @@ new file mode 100644
 +  return NS_OK;
 +}
 +
-+nsParserQueue::StopRequestMsg::~StopRequestMsg()
-+{
-+  LET_GO_OF(mRequest);
-+  LET_GO_OF(mContext);
-+}
-+
 +nsresult
 +nsParserQueue::StopRequestMsg
 +             ::Init(nsIRequest* aRequest,
 +                    nsISupports* aContext,
 +                    nsresult aStatus)
 +{
-+  NS_IF_ADDREF(mRequest = aRequest);
-+  NS_IF_ADDREF(mContext = aContext);
++  mRequest = aRequest;
++  mContext = aContext;
 +  mStatus = aStatus;
 +  return NS_OK;
 +}
@@ -1164,7 +1139,7 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
 new file mode 100644
 --- /dev/null
 +++ b/parser/htmlparser/src/nsParserQueue.h
-@@ -0,0 +1,294 @@
+@@ -0,0 +1,292 @@
 +#ifndef __ns_parser_queue__
 +#define __ns_parser_queue__
 +
@@ -1172,19 +1147,20 @@ new file mode 100644
 +#include "nsParser.h"
 +#include "nsIInputStream.h"
 +#include "nsDeque.h"
++#include "nsAutoLock.h"
 +
 +/**
 +** "Private" #defines
 +** All private #defines SHOULD be undefined when possible
 +*/
 +
-+#define SCHEDULE_FLUSH                                \
-+  PR_BEGIN_MACRO                                      \
-+    if (NS_FAILED(NS_DispatchToCurrentThread(         \
-+                    new nsParserContinueEvent(        \
-+                      this, &nsParser::FlushQueue)))) \
-+      NS_ASSERTION(PR_FALSE,                          \
-+        "Failed to schedule FlushQueue event!");      \
++#define SCHEDULE_FLUSH                                                        \
++  PR_BEGIN_MACRO                                                              \
++    if (NS_FAILED(NS_DispatchToCurrentThread(                                 \
++                    new nsParserContinueEvent(                                \
++                      this, &nsParser::FlushQueue))))                         \
++      NS_ASSERTION(PR_FALSE,                                                  \
++        "Failed to schedule FlushQueue event!");                              \
 +  PR_END_MACRO
 +
 +// toggle to control flush method
@@ -1192,80 +1168,80 @@ new file mode 100644
 +
 +// stupid, uninteresting, reliable flush method
 +#ifndef SCHEDULE_FLUSH
-+#  define SCHEDULE_FLUSH \
-+    PR_BEGIN_MACRO       \
-+      FlushQueue(0);     \
++#  define SCHEDULE_FLUSH                                                      \
++    PR_BEGIN_MACRO                                                            \
++      FlushQueue(0);                                                          \
 +    PR_END_MACRO
 +#endif
 +
-+#define __ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)            \
-+  NS_ASSERTION(NS_IsMainThread(),                            \
-+    "Enqueueing off main thread");                           \
-+  nsParserQueue::EVENT##Msg* msg =                           \
-+    new nsParserQueue::EVENT##Msg(&nsParser::Handle##EVENT); \
-+  nsresult rv = msg                                          \
-+    ? msg->Init INIT_ARGS                                    \
-+    : NS_ERROR_OUT_OF_MEMORY;                                \
-+  if (NS_SUCCEEDED(rv)) {                                    \
-+    nsAutoLock synchronized(Q);                              \
-+    (Q).Push(msg);                                           \
-+  } else delete msg;                                         \
++#define PRIVATE_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                       \
++  NS_ASSERTION(NS_IsMainThread(),                                             \
++    "Enqueueing off main thread");                                            \
++  nsParserQueue::EVENT##Msg* msg =                                            \
++    new nsParserQueue::EVENT##Msg(&nsParser::Handle##EVENT);                  \
++  nsresult rv = msg                                                           \
++    ? msg->Init INIT_ARGS                                                     \
++    : NS_ERROR_OUT_OF_MEMORY;                                                 \
++  if (NS_SUCCEEDED(rv)) {                                                     \
++    nsAutoLock synchronized(Q);                                               \
++    (Q).Push(msg);                                                            \
++  } else delete msg;                                                          \
 +  SCHEDULE_FLUSH;
 +
 +// Can't undefine unless used exclusively by inline functions:
 +// #undef SCHEDULE_FLUSH
 +
-+#define HANDLER_TYPEDEF(...)                              \
-+  typedef nsresult (nsParser::*HandlerType)(__VA_ARGS__); \
++#define HANDLER_TYPEDEF(PARAMS)                                               \
++  typedef nsresult (nsParser::*HandlerType)PARAMS;                            \
 +  HandlerType mHandler;
-+  
-+#define DECL_INIT_AND_TYPEDEF_HANDLER(...) \
-+public:                                    \
-+  nsresult Init(__VA_ARGS__);              \
-+private:                                   \
-+  HANDLER_TYPEDEF(__VA_ARGS__)
 +
-+#define INLINE_MSG_CTOR(TYPE)     \
-+public:                           \
-+  TYPE##Msg(HandlerType aHandler) \
++#define DECL_INIT_AND_TYPEDEF_HANDLER(PARAMS)                                 \
++public:                                                                       \
++  nsresult Init PARAMS;                                                       \
++private:                                                                      \
++  HANDLER_TYPEDEF(PARAMS)
++
++#define INLINE_MSG_CTOR(TYPE)                                                 \
++public:                                                                       \
++  TYPE##Msg(HandlerType aHandler)                                             \
 +    : mHandler(aHandler) {}
 +
-+#define INLINE_MSG_DELIVER(...)               \
-+public:                                       \
-+  nsresult Deliver(nsParser* aParser) {       \
-+    return (aParser->*mHandler)(__VA_ARGS__); \
++#define INLINE_MSG_DELIVER(PARAMS)                                            \
++public:                                                                       \
++  nsresult Deliver(nsParser* aParser) {                                       \
++    return (aParser->*mHandler)PARAMS;                                        \
 +  }
 +
-+#define TRIVIAL_MSG(TYPE)             \
-+  class TYPE##Msg : public Msg {      \
-+    HANDLER_TYPEDEF()                 \
-+  public:                             \
-+    INLINE_MSG_CTOR(TYPE)             \
-+    INLINE_MSG_DELIVER()              \
-+    nsresult Init() { return NS_OK; } \
++#define TRIVIAL_MSG(TYPE)                                                     \
++  class TYPE##Msg : public Msg {                                              \
++    HANDLER_TYPEDEF(())                                                       \
++  public:                                                                     \
++    INLINE_MSG_CTOR(TYPE)                                                     \
++    INLINE_MSG_DELIVER(())                                                    \
++    nsresult Init() { return NS_OK; }                                         \
 +  };
 +
 +/**
 +** "Public" #defines
 +*/
 +
-+#define IMMEDIATELY_INVOKE_PARSER_MSG(OBJ, EVENT, RV, INIT_ARGS) \
-+  PR_BEGIN_MACRO                                                 \
-+    nsParserQueue::EVENT##Msg msg(&nsParser::Handle##EVENT);     \
-+    RV = msg.Init INIT_ARGS;                                     \
-+    if (NS_SUCCEEDED(RV))                                        \
-+      RV = msg.Deliver(OBJ);                                     \
++#define IMMEDIATELY_INVOKE_PARSER_MSG(OBJ, EVENT, RV, INIT_ARGS)              \
++  PR_BEGIN_MACRO                                                              \
++    nsParserQueue::EVENT##Msg msg(&nsParser::Handle##EVENT);                  \
++    RV = msg.Init INIT_ARGS;                                                  \
++    if (NS_SUCCEEDED(RV))                                                     \
++      RV = msg.Deliver(OBJ);                                                  \
 +  PR_END_MACRO
 +
-+#define ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS) \
-+  PR_BEGIN_MACRO                                \
-+    __ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)   \
-+    return rv;                                  \
++#define ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                               \
++  PR_BEGIN_MACRO                                                              \
++    PRIVATE_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                           \
++    return rv;                                                                \
 +  PR_END_MACRO
 +
-+#define VOID_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS) \
-+  PR_BEGIN_MACRO                                     \
-+    __ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)        \
++#define VOID_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                          \
++  PR_BEGIN_MACRO                                                              \
++    PRIVATE_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                           \
 +  PR_END_MACRO
 +
 +// Can't undefine unless used exclusively by inline functions:
@@ -1279,12 +1255,12 @@ new file mode 100644
 +  ** Queue-specific operations
 +  */
 +
-+  nsParserQueue() : mLock(PR_NewLock()) {}
++  nsParserQueue() : mLock(nsAutoLock::NewLock("nsParserQueue::mLock")) {}
 +
 +  virtual ~nsParserQueue() {
 +    NS_ASSERTION(!GetSize(), "Expect leaks because you did "
 +      "not Flush(PR_FALSE) before deleting nsParserQueue!");
-+    PR_DestroyLock(mLock);
++    nsAutoLock::DestroyLock(mLock);
 +  }
 +
 +  operator PRLock*() { return mLock; }
@@ -1293,7 +1269,7 @@ new file mode 100644
 +                 PRBool breakOnFailure=PR_TRUE);
 +
 +  // Type-safe interface to private nsDeque base:
-+  
++
 +  class Msg;
 +
 +  void Push(Msg* msg) {
@@ -1334,20 +1310,19 @@ new file mode 100644
 +
 +  class ParseUrlMsg : public Msg
 +  {
-+    HANDLER_TYPEDEF(const nsACString &spec,
-+                    nsIRequestObserver* aListener,
-+                    void* aKey,
-+                    nsDTDMode aMode)
++    HANDLER_TYPEDEF((const nsACString &spec,
++                     nsIRequestObserver* aListener,
++                     void* aKey,
++                     nsDTDMode aMode))
 +
 +    nsCString mSpec;
-+    nsIRequestObserver* mListener;
++    nsCOMPtr<nsIRequestObserver> mListener;
 +    void* mKey;
 +    nsDTDMode mMode;
 +
 +  public:
 +    INLINE_MSG_CTOR(ParseUrl)
-+    ~ParseUrlMsg();
-+    INLINE_MSG_DELIVER(mSpec, mListener, mKey, mMode)
++    INLINE_MSG_DELIVER((mSpec, mListener, mKey, mMode))
 +
 +    nsresult Init(nsIURI* aURL,
 +                  nsIRequestObserver* aListener,
@@ -1357,11 +1332,11 @@ new file mode 100644
 +  
 +  class ParseBufferMsg : public Msg
 +  {
-+    DECL_INIT_AND_TYPEDEF_HANDLER(const nsAString& aSourceBuffer,
-+                                  void* aKey,
-+                                  const nsACString& aMimeType,
-+                                  PRBool aLastCall,
-+                                  nsDTDMode aMode)
++    DECL_INIT_AND_TYPEDEF_HANDLER((const nsAString& aSourceBuffer,
++                                   void* aKey,
++                                   const nsACString& aMimeType,
++                                   PRBool aLastCall,
++                                   nsDTDMode aMode))
 +    nsString mSourceBuffer;
 +    void* mKey;
 +    nsCString mMimeType;
@@ -1370,34 +1345,33 @@ new file mode 100644
 +
 +  public:
 +    INLINE_MSG_CTOR(ParseBuffer)
-+    INLINE_MSG_DELIVER(mSourceBuffer, mKey, mMimeType, mLastCall, mMode)
++    INLINE_MSG_DELIVER((mSourceBuffer, mKey, mMimeType, mLastCall, mMode))
 +  };
 +
 +  class StartRequestMsg : public Msg
 +  {
-+    DECL_INIT_AND_TYPEDEF_HANDLER(nsIRequest* aRequest,
-+                                  nsISupports* aContext)
-+    nsIRequest* mRequest;
-+    nsISupports* mContext;
++    DECL_INIT_AND_TYPEDEF_HANDLER((nsIRequest* aRequest,
++                                   nsISupports* aContext))
++    nsCOMPtr<nsIRequest> mRequest;
++    nsCOMPtr<nsISupports> mContext;
 +
 +  public:
 +    INLINE_MSG_CTOR(StartRequest)
-+    ~StartRequestMsg();
-+    INLINE_MSG_DELIVER(mRequest, mContext)
++    INLINE_MSG_DELIVER((mRequest, mContext))
 +  };
 +
 +  class DataAvailableMsg : public Msg
 +  {
-+    HANDLER_TYPEDEF(nsIRequest*, char*, PRUint32, PRUint32)
++    HANDLER_TYPEDEF((nsIRequest*, char*, PRUint32, PRUint32))
 +
-+    nsIRequest* mRequest;
++    nsCOMPtr<nsIRequest> mRequest;
 +    char* mBytes;
 +    PRUint32 mNumBytes, mSourceOffset;
 +
 +  public:
 +    INLINE_MSG_CTOR(DataAvailable)
 +    ~DataAvailableMsg();
-+    INLINE_MSG_DELIVER(mRequest, mBytes, mNumBytes, mSourceOffset)
++    INLINE_MSG_DELIVER((mRequest, mBytes, mNumBytes, mSourceOffset))
 +
 +    nsresult Init(nsIRequest* aRequest,
 +                  nsIInputStream* pIStream,
@@ -1407,28 +1381,27 @@ new file mode 100644
 +
 +  class StopRequestMsg : public Msg
 +  {
-+    DECL_INIT_AND_TYPEDEF_HANDLER(nsIRequest* aRequest,
-+                                  nsISupports* aContext,
-+                                  nsresult aStatus)
-+    nsIRequest* mRequest;
-+    nsISupports* mContext;
++    DECL_INIT_AND_TYPEDEF_HANDLER((nsIRequest* aRequest,
++                                   nsISupports* aContext,
++                                   nsresult aStatus))
++    nsCOMPtr<nsIRequest> mRequest;
++    nsCOMPtr<nsISupports> mContext;
 +    nsresult mStatus;
 +
 +  public:
 +    INLINE_MSG_CTOR(StopRequest)
-+    ~StopRequestMsg();
-+    INLINE_MSG_DELIVER(mRequest, mContext, mStatus)
++    INLINE_MSG_DELIVER((mRequest, mContext, mStatus))
 +  };
 +
 +  class ParseFragmentMsg : public Msg
 +  {
-+    DECL_INIT_AND_TYPEDEF_HANDLER(
++    DECL_INIT_AND_TYPEDEF_HANDLER((
 +      const nsAString& aSourceBuffer,
 +      void* aKey,
 +      const nsTArray<nsString>& aTagStack,
 +      PRBool aXMLMode,
 +      const nsACString& aMimeType,
-+      nsDTDMode aMode)
++      nsDTDMode aMode))
 +
 +    nsString mSourceBuffer;
 +    void* mKey;
@@ -1439,7 +1412,7 @@ new file mode 100644
 +
 +  public:
 +    INLINE_MSG_CTOR(ParseFragment)
-+    INLINE_MSG_DELIVER(mSourceBuffer, mKey, mTagStack, mXMLMode, mMimeType, mMode)
++    INLINE_MSG_DELIVER((mSourceBuffer, mKey, mTagStack, mXMLMode, mMimeType, mMode))
 +  };
 +
 +  TRIVIAL_MSG(Terminate)
