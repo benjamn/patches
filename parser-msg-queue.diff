@@ -992,7 +992,7 @@ diff --git a/parser/htmlparser/src/nsParserQueue.cpp b/parser/htmlparser/src/nsP
 new file mode 100644
 --- /dev/null
 +++ b/parser/htmlparser/src/nsParserQueue.cpp
-@@ -0,0 +1,167 @@
+@@ -0,0 +1,170 @@
 +
 +#include "nsParserQueue.h"
 +#include "nsAutoLock.h"
@@ -1001,7 +1001,8 @@ new file mode 100644
 +NS_IMPL_ISUPPORTS0(nsParserQueue::Msg)
 +
 +nsresult
-+nsParserQueue::Flush(nsParser* aParser)
++nsParserQueue::Flush(nsParser* aParser,
++                     PRBool breakOnFailure)
 +{
 +  nsresult rv = NS_OK;
 +
@@ -1013,7 +1014,9 @@ new file mode 100644
 +  }
 +
 +  PRBool safeToRelease = NS_IsMainThread();
-+  while (NS_SUCCEEDED(rv) && q.GetSize()) {
++  while ((!breakOnFailure || NS_SUCCEEDED(rv)) &&
++         q.GetSize())
++  {
 +    Msg* msg = static_cast<Msg*>(q.Pop());
 +    rv = msg->Deliver(aParser);
 +    // Msgs are not cycle-collected, but their members may be.
@@ -1282,7 +1285,7 @@ new file mode 100644
 +  nsParserQueue() : mLock(PR_NewLock()) {}
 +  virtual ~nsParserQueue() { PR_DestroyLock(mLock); }
 +  operator PRLock*() { return mLock; }
-+  nsresult Flush(nsParser* aParser);
++  nsresult Flush(nsParser* aParser, PRBool breakOnFailure=PR_FALSE);
 +
 +  // Type-safe interface to private nsDeque base:
 +  
