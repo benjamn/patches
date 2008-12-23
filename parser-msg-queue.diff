@@ -506,7 +506,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    // pass PR_FALSE for the aLastCall parameter.
 -  result = Parse(theContext, (void*)&theContext, aMimeType, PR_FALSE, aMode);
 +
-+  INVOKE_PARSER_MSG(this, ParseBuffer, result,
++  IMMEDIATELY_INVOKE_PARSER_MSG(this, ParseBuffer, result,
 +    (theContext, (void*)&theContext, aMimeType, PR_FALSE, aMode));
 +
    if (NS_FAILED(result)) {
@@ -528,7 +528,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    if (!aXMLMode || (theCount == 0)) {
 -    result = Parse(aSourceBuffer, &theContext, aMimeType,
 -                   PR_TRUE, aMode);
-+    INVOKE_PARSER_MSG(this, ParseBuffer, result,
++    IMMEDIATELY_INVOKE_PARSER_MSG(this, ParseBuffer, result,
 +      (aSourceBuffer, &theContext, aMimeType, PR_TRUE, aMode));
      fragSink->DidBuildContent();
    } else {
@@ -536,7 +536,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      // and not worry about ']]' etc.
 -    result = Parse(aSourceBuffer + NS_LITERAL_STRING("</"),
 -                   &theContext, aMimeType, PR_FALSE, aMode);
-+    INVOKE_PARSER_MSG(this, ParseBuffer, result,
++    IMMEDIATELY_INVOKE_PARSER_MSG(this, ParseBuffer, result,
 +      (aSourceBuffer + NS_LITERAL_STRING("</"),
 +       &theContext, aMimeType, PR_FALSE, aMode));
 +
@@ -567,7 +567,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 -      result = Parse(endContext, &theContext, aMimeType,
 -                     PR_TRUE, aMode);
 +
-+      INVOKE_PARSER_MSG(this, ParseBuffer, result,
++      IMMEDIATELY_INVOKE_PARSER_MSG(this, ParseBuffer, result,
 +        (endContext, &theContext, aMimeType, PR_TRUE, aMode));
      }
    }
@@ -776,7 +776,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
 --- a/parser/htmlparser/src/nsParser.h
 +++ b/parser/htmlparser/src/nsParser.h
-@@ -91,21 +91,26 @@
+@@ -91,21 +91,27 @@
  #include "nsCycleCollectionParticipant.h"
  
  class nsICharsetConverterManager;
@@ -791,9 +791,10 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
  #pragma warning( disable : 4275 )
  #endif
  
++// avoiding repetition of protected:, nsresult, and public:
 +#define DECL_PARSER_MSG_HANDLER(TYPE, PARAMS) \
-+  protected:                                 \
-+    nsresult Handle##TYPE PARAMS;            \
++  protected:                                  \
++    nsresult Handle##TYPE PARAMS;             \
 +  public:
  
  class nsParser : public nsIParser,
@@ -803,7 +804,7 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
      /**
       * Called on module init
       */
-@@ -195,40 +200,60 @@ class nsParser : public nsIParser,
+@@ -195,40 +201,60 @@ class nsParser : public nsIParser,
       * @param   aListener is a listener to forward notifications to
       * @return  TRUE if all went well -- FALSE otherwise
       */
@@ -864,7 +865,7 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
       * @return  YES if model building went well -- NO otherwise.
       */
      NS_IMETHOD BuildModel(void);
-@@ -237,21 +262,30 @@ class nsParser : public nsIParser,
+@@ -237,21 +263,30 @@ class nsParser : public nsIParser,
       *  Call this when you want control whether or not the parser will parse
       *  and tokenize input (TRUE), or whether it just caches input to be 
       *  parsed later (FALSE).
@@ -898,7 +899,7 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
       *  @return  current state
       */
      NS_IMETHOD_(PRBool) IsParserEnabled();
-@@ -270,25 +304,16 @@ class nsParser : public nsIParser,
+@@ -270,25 +305,16 @@ class nsParser : public nsIParser,
       *  that comes through (parser::parser(string)) but not consumed should
       *  propagate into the next string based parse call.
       *  
@@ -924,7 +925,7 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
      // nsIRequestObserver methods:
      NS_DECL_NSIREQUESTOBSERVER
  
-@@ -354,22 +379,16 @@ class nsParser : public nsIParser,
+@@ -354,22 +380,16 @@ class nsParser : public nsIParser,
       * interrupted token processing. It schedules
       * a ParserContinue PL_Event which will ask the parser
       * to HandleParserContinueEvent when it is handled.
@@ -947,7 +948,7 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
      static nsCOMArray<nsIUnicharStreamListener> *sParserDataListeners;
  
      static nsICharsetAlias* GetCharsetAliasService() {
-@@ -419,16 +438,39 @@ class nsParser : public nsIParser,
+@@ -419,16 +439,39 @@ class nsParser : public nsIParser,
       * 
       * @update	gess5/18/98
       * @param 
@@ -991,10 +992,13 @@ diff --git a/parser/htmlparser/src/nsParserQueue.cpp b/parser/htmlparser/src/nsP
 new file mode 100644
 --- /dev/null
 +++ b/parser/htmlparser/src/nsParserQueue.cpp
-@@ -0,0 +1,162 @@
+@@ -0,0 +1,167 @@
 +
 +#include "nsParserQueue.h"
 +#include "nsAutoLock.h"
++#include "nsThreadUtils.h"
++
++NS_IMPL_ISUPPORTS0(nsParserQueue::Msg)
 +
 +nsresult
 +nsParserQueue::Flush(nsParser* aParser)
@@ -1008,13 +1012,23 @@ new file mode 100644
 +      q.Push(Pop());
 +  }
 +
-+  // TODO memory management!
-+  while (NS_SUCCEEDED(rv) && q.GetSize())
-+    rv = static_cast<Msg*>(q.Pop())->Deliver(aParser);
++  PRBool safeToRelease = NS_IsMainThread();
++  while (NS_SUCCEEDED(rv) && q.GetSize()) {
++    Msg* msg = static_cast<Msg*>(q.Pop());
++    rv = msg->Deliver(aParser);
++    // Msgs are not cycle-collected, but their members may be.
++    if (safeToRelease) {
++      msg->Release();
++    } else {
++      NS_DispatchToMainThread(
++        new nsRunnableMethod<Msg>(msg, &Msg::VoidRelease));
++    }
++  }
 +
 +  if (q.GetSize()) {
 +    nsAutoLock synchronized(mLock);
 +    while (q.GetSize())
++      // note: PushFront does not AddRef
 +      nsDeque::PushFront(q.PopFront());
 +  }
 +
@@ -1029,9 +1043,7 @@ new file mode 100644
 +    }                  \
 +  PR_END_MACRO
 +
-+void
-+nsParserQueue::ParseUrlMsg
-+             ::Release()
++nsParserQueue::ParseUrlMsg::~ParseUrlMsg()
 +{
 +  LET_GO_OF(mListener);
 +}
@@ -1069,9 +1081,7 @@ new file mode 100644
 +  return NS_OK;
 +}
 +
-+void
-+nsParserQueue::StartRequestMsg
-+             ::Release()
++nsParserQueue::StartRequestMsg::~StartRequestMsg()
 +{
 +  LET_GO_OF(mRequest);
 +  LET_GO_OF(mContext);
@@ -1087,9 +1097,7 @@ new file mode 100644
 +  return NS_OK;
 +}
 +
-+void
-+nsParserQueue::DataAvailableMsg
-+             ::Release()
++nsParserQueue::DataAvailableMsg::~DataAvailableMsg()
 +{
 +  LET_GO_OF(mRequest);
 +  if (mBytes) {
@@ -1117,9 +1125,7 @@ new file mode 100644
 +  return NS_OK;
 +}
 +
-+void
-+nsParserQueue::StopRequestMsg
-+             ::Release()
++nsParserQueue::StopRequestMsg::~StopRequestMsg()
 +{
 +  LET_GO_OF(mRequest);
 +  LET_GO_OF(mContext);
@@ -1158,17 +1164,40 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
 new file mode 100644
 --- /dev/null
 +++ b/parser/htmlparser/src/nsParserQueue.h
-@@ -0,0 +1,239 @@
+@@ -0,0 +1,286 @@
 +#ifndef __ns_parser_queue__
 +#define __ns_parser_queue__
 +
++#include "nsISupports.h"
 +#include "nsParser.h"
 +#include "nsIInputStream.h"
 +#include "nsDeque.h"
 +
-+// "Private" #defines
++/**
++** "Private" #defines
++** All private #defines SHOULD be undefined when possible
++*/
 +
-+// TODO think harder about memory management!
++#define SCHEDULE_FLUSH                                \
++  PR_BEGIN_MACRO                                      \
++    if (NS_FAILED(NS_DispatchToCurrentThread(         \
++                    new nsParserContinueEvent(        \
++                      this, &nsParser::FlushQueue)))) \
++      NS_ASSERTION(PR_FALSE,                          \
++        "Failed to schedule FlushQueue event!");      \
++  PR_END_MACRO
++
++// toggle to control flush method
++#undef SCHEDULE_FLUSH
++
++// stupid, uninteresting, reliable flush method
++#ifndef SCHEDULE_FLUSH
++#  define SCHEDULE_FLUSH \
++    PR_BEGIN_MACRO       \
++      FlushQueue(0);     \
++    PR_END_MACRO
++#endif
++
 +#define __ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)            \
 +  NS_ASSERTION(NS_IsMainThread(),                            \
 +    "Enqueueing off main thread");                           \
@@ -1180,7 +1209,11 @@ new file mode 100644
 +  if (NS_SUCCEEDED(rv)) {                                    \
 +    nsAutoLock synchronized(Q);                              \
 +    (Q).Push(msg);                                           \
-+  } else delete msg;
++  } else delete msg;                                         \
++  SCHEDULE_FLUSH;
++
++// Can't undefine unless used exclusively by inline functions:
++// #undef SCHEDULE_FLUSH
 +
 +#define HANDLER_TYPEDEF(...)                              \
 +  typedef nsresult (nsParser::*HandlerType)(__VA_ARGS__); \
@@ -1203,10 +1236,6 @@ new file mode 100644
 +    return (aParser->*mHandler)(__VA_ARGS__); \
 +  }
 +
-+#define DECL_RELEASE \
-+  protected:         \
-+    void Release();
-+
 +#define TRIVIAL_MSG(TYPE)             \
 +  class TYPE##Msg : public Msg {      \
 +    HANDLER_TYPEDEF()                 \
@@ -1216,14 +1245,16 @@ new file mode 100644
 +    nsresult Init() { return NS_OK; } \
 +  };
 +
-+// "Public" #defines
++/**
++** "Public" #defines
++*/
 +
-+#define INVOKE_PARSER_MSG(OBJ, EVENT, RV, INIT_ARGS)         \
-+  PR_BEGIN_MACRO                                             \
-+    nsParserQueue::EVENT##Msg msg(&nsParser::Handle##EVENT); \
-+    RV = msg.Init INIT_ARGS;                                 \
-+    if (NS_SUCCEEDED(RV))                                    \
-+      RV = msg.Deliver(OBJ);                                 \
++#define IMMEDIATELY_INVOKE_PARSER_MSG(OBJ, EVENT, RV, INIT_ARGS) \
++  PR_BEGIN_MACRO                                                 \
++    nsParserQueue::EVENT##Msg msg(&nsParser::Handle##EVENT);     \
++    RV = msg.Init INIT_ARGS;                                     \
++    if (NS_SUCCEEDED(RV))                                        \
++      RV = msg.Deliver(OBJ);                                     \
 +  PR_END_MACRO
 +
 +#define ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS) \
@@ -1237,28 +1268,61 @@ new file mode 100644
 +    __ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)        \
 +  PR_END_MACRO
 +
-+#define ENQUEUE_PARSER_MSG_FLUSH(Q, EVENT, INIT_ARGS) \
-+  PR_BEGIN_MACRO                                      \
-+    __ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)         \
-+    NS_DispatchToCurrentThread(                       \
-+      new nsParserContinueEvent(this,                 \
-+        &nsParser::FlushQueue));                      \
-+  PR_END_MACRO
++// Can't undefine unless used exclusively by inline functions:
++// #undef __ENQUEUE_PARSER_MSG
 +
 +class nsParserQueue : private nsDeque {
 +  PRLock* mLock;
 +public:
++
++  /**
++  ** Queue-specific operations
++  */
++
 +  nsParserQueue() : mLock(PR_NewLock()) {}
 +  virtual ~nsParserQueue() { PR_DestroyLock(mLock); }
 +  operator PRLock*() { return mLock; }
 +  nsresult Flush(nsParser* aParser);
 +
-+  class Msg {
-+    virtual void Release() {}
++  // Type-safe interface to private nsDeque base:
++  
++  class Msg;
++
++  void Push(Msg* msg) {
++    if (msg) {
++      nsDeque::Push(msg);
++      // Released by nsParserQueue::Flush
++      NS_ADDREF(msg);
++    }
++  }
++
++  Msg* Pop() {
++    return (Msg*)nsDeque::Pop();
++  }
++
++  PRUint32 GetSize() const {
++    return nsDeque::GetSize();
++  }
++
++  /**
++  ** Common interface from which all the *Msg classes inherit
++  */
++
++  class Msg : public nsISupports {
++    NS_DECL_ISUPPORTS
 +  public:
-+    virtual ~Msg() { Release(); }
++    void VoidRelease() {
++      if (NS_FAILED(Release())) {
++        NS_WARNING("Ignoring nsParserQueue::Msg::Release failure");
++      }
++    }
++    virtual ~Msg() {}
 +    virtual nsresult Deliver(nsParser*) = 0;
 +  };
++  
++  /**
++  ** nsIParser interface method-specific message classes
++  */
 +
 +  class ParseUrlMsg : public Msg
 +  {
@@ -1272,10 +1336,9 @@ new file mode 100644
 +    void* mKey;
 +    nsDTDMode mMode;
 +
-+    DECL_RELEASE
-+
 +  public:
 +    INLINE_MSG_CTOR(ParseUrl)
++    ~ParseUrlMsg();
 +    INLINE_MSG_DELIVER(mSpec, mListener, mKey, mMode)
 +
 +    nsresult Init(nsIURI* aURL,
@@ -1309,10 +1372,9 @@ new file mode 100644
 +    nsIRequest* mRequest;
 +    nsISupports* mContext;
 +
-+    DECL_RELEASE
-+
 +  public:
 +    INLINE_MSG_CTOR(StartRequest)
++    ~StartRequestMsg();
 +    INLINE_MSG_DELIVER(mRequest, mContext)
 +  };
 +
@@ -1324,10 +1386,9 @@ new file mode 100644
 +    char* mBytes;
 +    PRUint32 mNumBytes, mSourceOffset;
 +
-+    DECL_RELEASE
-+
 +  public:
 +    INLINE_MSG_CTOR(DataAvailable)
++    ~DataAvailableMsg();
 +    INLINE_MSG_DELIVER(mRequest, mBytes, mNumBytes, mSourceOffset)
 +
 +    nsresult Init(nsIRequest* aRequest,
@@ -1345,10 +1406,9 @@ new file mode 100644
 +    nsISupports* mContext;
 +    nsresult mStatus;
 +
-+    DECL_RELEASE
-+
 +  public:
 +    INLINE_MSG_CTOR(StopRequest)
++    ~StopRequestMsg();
 +    INLINE_MSG_DELIVER(mRequest, mContext, mStatus)
 +  };
 +
@@ -1381,21 +1441,14 @@ new file mode 100644
 +  TRIVIAL_MSG(ContinueParsing)
 +  TRIVIAL_MSG(CancelParsingEvents)
 +
-+  // Type-safe interface to nsDeque
-+
-+  void Push(Msg* msg) {
-+    if (msg)
-+      nsDeque::Push(msg);
-+  }
-+
-+  Msg* Pop() {
-+    return (Msg*)nsDeque::Pop();
-+  }
-+
-+  PRUint32 GetSize() const {
-+    return nsDeque::GetSize();
-+  }
 +};
++
++// Sayonara, macro scum!
++#undef HANDLER_TYPEDEF
++#undef DECL_INIT_AND_TYPEDEF_HANDLER
++#undef INLINE_MSG_CTOR
++#undef INLINE_MSG_DELIVER
++#undef TRIVIAL_MSG
 +
 +#endif
 \ No newline at end of file
