@@ -243,14 +243,14 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +nsresult
 +nsParser::HandleContinueInterruptedParsing()
  {
-   // If the stream has already finished, there's a good chance
-   // that we might start closing things down when the parser
-   // is reenabled. To make sure that we're not deleted across
-   // the reenabling process, hold a reference to ourselves.
-   nsresult result=NS_OK;
-   nsCOMPtr<nsIParser> kungFuDeathGrip(this);
+   // If there are scripts executing, then the content sink is jumping the gun
+   // (probably due to a synchronous XMLHttpRequest) and will re-enable us
+   // later, see bug 460706.
+   if (mScriptsExecuting) {
+     return NS_OK;
+   }
  
-@@ -1738,37 +1774,51 @@ nsParser::ContinueInterruptedParsing()
+@@ -1745,37 +1781,51 @@ nsParser::ContinueInterruptedParsing()
  
  /**
   *  Stops parsing temporarily. That's it will prevent the
@@ -302,7 +302,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  NS_IMETHODIMP_(PRBool)
  nsParser::IsParserEnabled()
  {
-@@ -1779,28 +1829,36 @@ nsParser::IsParserEnabled()
+@@ -1786,28 +1836,36 @@ nsParser::IsParserEnabled()
   * Call this to query whether the parser thinks it's done with parsing.
   */
  NS_IMETHODIMP_(PRBool)
@@ -342,7 +342,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    ++mScriptsExecuting;
  }
  
-@@ -1858,58 +1916,66 @@ nsParser::SetCanInterrupt(PRBool aCanInt
+@@ -1865,58 +1923,66 @@ nsParser::SetCanInterrupt(PRBool aCanInt
  
  /**
   *  This is the main controlling routine in the parsing process.
@@ -436,7 +436,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
   * In particular, this method should be called by the DOM when it has an HTML
   * string to feed to the parser in real-time.
   *
-@@ -1917,16 +1983,27 @@ nsParser::Parse(nsIURI* aURL,
+@@ -1924,16 +1990,27 @@ nsParser::Parse(nsIURI* aURL,
   * @param   aMimeType tells us what type of content to expect in the given string
   */
  NS_IMETHODIMP
@@ -464,7 +464,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      return result;
    }
  
-@@ -2050,16 +2127,28 @@ NS_IMETHODIMP
+@@ -2057,16 +2134,28 @@ NS_IMETHODIMP
  NS_IMETHODIMP
  nsParser::ParseFragment(const nsAString& aSourceBuffer,
                          void* aKey,
@@ -493,7 +493,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    // Disable observers for fragments
    mFlags &= ~NS_PARSER_FLAG_OBSERVERS_ENABLED;
  
-@@ -2074,17 +2163,20 @@ nsParser::ParseFragment(const nsAString&
+@@ -2081,17 +2170,20 @@ nsParser::ParseFragment(const nsAString&
    if (theCount == 0) {
      // Ensure that the buffer is not empty. Because none of the DTDs care
      // about leading whitespace, this doesn't change the result.
@@ -512,10 +512,10 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      return result;
    }
  
-   nsCOMPtr<nsIFragmentContentSink> fragSink = do_QueryInterface(mSink);
-   NS_ASSERTION(fragSink, "ParseFragment requires a fragment content sink");
- 
-@@ -2127,48 +2219,50 @@ nsParser::ParseFragment(const nsAString&
+   if (!mSink) {
+     // Parse must have failed in the XML case and so the sink was killed.
+     NS_ASSERTION(aXMLMode, "Unexpected!");
+@@ -2140,48 +2232,50 @@ nsParser::ParseFragment(const nsAString&
    }
  
    fragSink->WillBuildContent();
@@ -575,7 +575,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    return result;
  }
  
-@@ -2253,17 +2347,17 @@ nsParser::ResumeParse(PRBool allowIterat
+@@ -2266,17 +2360,17 @@ nsParser::ResumeParse(PRBool allowIterat
          // (and cache any data coming in) until the parser is re-enabled.
          if (NS_ERROR_HTMLPARSER_BLOCK == result) {
            if (mParserContext->mDTD) {
@@ -594,7 +594,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
            // Note: Parser Terminate() calls DidBuildModel.
            if (mInternalState != NS_ERROR_HTMLPARSER_STOPPARSING) {
              DidBuildModel(mStreamStatus);
-@@ -2372,16 +2466,22 @@ nsParser::BuildModel()
+@@ -2385,16 +2479,22 @@ nsParser::BuildModel()
  
  /*******************************************************************
    These methods are used to talk to the netlib system...
@@ -617,7 +617,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
    mParserContext->mStreamListenerState = eOnStart;
    mParserContext->mAutoDetectStatus = eUnknownDetect;
-@@ -2407,17 +2507,16 @@ nsParser::OnStartRequest(nsIRequest *req
+@@ -2420,17 +2520,16 @@ nsParser::OnStartRequest(nsIRequest *req
      while (count--) {
        rv |= sParserDataListeners->ObjectAt(count)->
                OnStartRequest(request, ctx);
@@ -635,7 +635,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  #define UCS4_BE "UTF-32BE"
  #define UCS4_LE "UTF-32LE"
  #define UCS4_2143 "X-ISO-10646-UCS-4-2143"
-@@ -2790,40 +2889,41 @@ CheckCharset(const char* aBytes,
+@@ -2803,40 +2902,41 @@ CheckCharset(const char* aBytes,
            }
          }
        }
@@ -690,7 +690,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
      if ((mFlags & NS_PARSER_FLAG_PARSER_ENABLED) &&
          mSpeculativeScriptThread) {
-@@ -2833,48 +2933,54 @@ nsParser::OnDataAvailable(nsIRequest *re
+@@ -2846,48 +2946,54 @@ nsParser::OnDataAvailable(nsIRequest *re
      if (eInvalidDetect == theContext->mAutoDetectStatus) {
        if (theContext->mScanner) {
          nsScannerIterator iter;
@@ -752,7 +752,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    CParserContext *pc = mParserContext;
-@@ -2995,17 +3101,17 @@ nsresult nsParser::Tokenize(PRBool aIsFi
+@@ -3008,17 +3114,17 @@ nsresult nsParser::Tokenize(PRBool aIsFi
                                            flushTokens);
        if (NS_FAILED(result)) {
          mParserContext->mScanner->RewindToMark();
