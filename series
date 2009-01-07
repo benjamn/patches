@@ -1,4 +1,5 @@
 kill-jsd_assert.diff
+hdst-index-bound.diff
 parser-copy-data.diff
 parser-msg-queue.diff
 innerhtml.diff

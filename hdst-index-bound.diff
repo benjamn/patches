@@ -1,0 +1,24 @@
+diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.cpp
+--- a/parser/htmlparser/src/CNavDTD.cpp
++++ b/parser/htmlparser/src/CNavDTD.cpp
+@@ -916,17 +916,19 @@ CNavDTD::HandleDefaultStartToken(CToken*
+ {
+   NS_PRECONDITION(nsnull != aToken, kNullToken);
+ 
+   nsresult  result = NS_OK;
+   PRBool  theChildIsContainer = nsHTMLElement::IsContainer(aChildTag);
+ 
+   // Client of parser is spefically trying to parse a fragment that
+   // may lack required context.  Suspend containment rules if so.
+-  if (mParserCommand != eViewFragment) {
++  if (mParserCommand != eViewFragment &&
++      mBodyContext->GetCount() > 0)
++  {
+     PRBool  theChildAgrees = PR_TRUE;
+     PRInt32 theIndex = mBodyContext->GetCount();
+     PRBool  theParentContains = PR_FALSE;
+ 
+     do {
+       eHTMLTags theParentTag = mBodyContext->TagAt(--theIndex);
+       if (theParentTag == eHTMLTag_userdefined) {
+         continue;
