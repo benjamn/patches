@@ -1,0 +1,50 @@
+diff --git a/xpcom/base/nsCycleCollector.cpp b/xpcom/base/nsCycleCollector.cpp
+--- a/xpcom/base/nsCycleCollector.cpp
++++ b/xpcom/base/nsCycleCollector.cpp
+@@ -2119,17 +2119,21 @@ nsCycleCollector::Suspect(nsISupports *n
+     // we are canonicalizing nsISupports pointers using QI, so we will
+     // see some spurious refcount traffic here. 
+ 
+     if (mScanInProgress)
+         return PR_FALSE;
+ 
+     NS_ASSERTION(nsCycleCollector_isScanSafe(n),
+                  "suspected a non-scansafe pointer");
+-    NS_ASSERTION(NS_IsMainThread(), "trying to suspect from non-main thread");
++
++    if (!NS_IsMainThread()) {
++      NS_ASSERTION(PR_FALSE, "trying to suspect from non-main thread");
++      return PR_FALSE;
++    }
+ 
+     if (mParams.mDoNothing)
+         return PR_FALSE;
+ 
+ #ifdef DEBUG_CC
+     mStats.mSuspectNode++;
+ 
+     if (nsCycleCollector_shouldSuppress(n))
+@@ -2158,18 +2162,21 @@ nsCycleCollector::Forget(nsISupports *n)
+ {
+     // Re-entering ::Forget during collection used to be a fault, but
+     // we are canonicalizing nsISupports pointers using QI, so we will
+     // see some spurious refcount traffic here. 
+ 
+     if (mScanInProgress)
+         return PR_FALSE;
+ 
+-    NS_ASSERTION(NS_IsMainThread(), "trying to forget from non-main thread");
+-    
++    if (!NS_IsMainThread()) {
++      NS_ASSERTION(PR_FALSE, "trying to forget from non-main thread");
++      return PR_FALSE;
++    }
++
+     if (mParams.mDoNothing)
+         return PR_TRUE; // it's as good as forgotten
+ 
+ #ifdef DEBUG_CC
+     mStats.mForgetNode++;
+ 
+ #ifndef __MINGW32__
+     if (mParams.mHookMalloc)

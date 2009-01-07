@@ -447,7 +447,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
                  PRBool aLastCall,
                  nsDTDMode aMode)
 +{
-+  ENQUEUE_PARSER_MSG(*mQueue, ParseBuffer,
++  ENQUEUE_PARSER_MSG_AND_WAIT(*mQueue, ParseBuffer,
 +    (aSourceBuffer, aKey, aMimeType, aLastCall, aMode));
 +}
 +
