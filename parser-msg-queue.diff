@@ -1342,7 +1342,7 @@ new file mode 100644
 +    nsRefPtr<nsParser> mParser;
 +    PRMonitor* const mMon;
 +  };
-+  
++
 +  /**
 +  ** nsIParser interface method-specific message classes
 +  */
@@ -1368,7 +1368,7 @@ new file mode 100644
 +                  void* aKey,
 +                  nsDTDMode aMode);
 +  };
-+  
++
 +  class ParseBufferMsg : public Msg
 +  {
 +    DECL_INIT_AND_TYPEDEF_HANDLER((const nsAString& aSourceBuffer,
