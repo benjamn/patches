@@ -1,0 +1,858 @@
+diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
+--- a/parser/htmlparser/src/nsParser.cpp
++++ b/parser/htmlparser/src/nsParser.cpp
+@@ -1469,17 +1469,17 @@ FindSuitableDTD(CParserContext& aParserC
+   NS_ASSERTION(aParserContext.mDocType == eXML, "What are you trying to send me, here?");
+   aParserContext.mDTD = new nsExpatDriver();
+   return aParserContext.mDTD ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
+ }
+ 
+ NS_IMETHODIMP
+ nsParser::CancelParsingEvents()
+ {
+-  ENQUEUE_PARSER_MSG(*mQueue, CancelParsingEvents, ());
++  ENQUEUE_PARSER_MSG(mQueue, CancelParsingEvents, ());
+ }
+ 
+ nsresult
+ nsParser::HandleCancelParsingEvents()
+ {
+   if (mFlags & NS_PARSER_FLAG_PENDING_CONTINUE_EVENT) {
+     NS_ASSERTION(mContinueEvent, "mContinueEvent is null");
+     // Revoke the pending continue parsing event
+@@ -1652,17 +1652,17 @@ nsParser::GetRootContextKey()
+  *  Call this when you want to *force* the parser to terminate the
+  *  parsing process altogether. This is binary -- so once you terminate
+  *  you can't resume without restarting altogether.
+  */
+ NS_IMETHODIMP
+ nsParser::Terminate()
+ {
+   // TODO somehow force the parser thread to activate?
+-  ENQUEUE_PARSER_MSG(*mQueue, Terminate, ());
++  ENQUEUE_PARSER_MSG(mQueue, Terminate, ());
+ }
+ 
+ nsresult
+ nsParser::HandleTerminate()
+ {
+   // We should only call DidBuildModel once, so don't do anything if this is
+   // the second time that Terminate has been called.
+   if (mInternalState == NS_ERROR_HTMLPARSER_STOPPARSING) {
+@@ -1710,17 +1710,17 @@ nsParser::HandleTerminate()
+   }
+ 
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ nsParser::ContinueParsing()
+ {
+-  ENQUEUE_PARSER_MSG(*mQueue, ContinueParsing, ());
++  ENQUEUE_PARSER_MSG(mQueue, ContinueParsing, ());
+ }
+ 
+ nsresult
+ nsParser::HandleContinueParsing()
+ {
+   if (mFlags & NS_PARSER_FLAG_PARSER_ENABLED) {
+     NS_WARNING("Trying to continue parsing on a unblocked parser.");
+     return NS_OK;
+@@ -1729,17 +1729,17 @@ nsParser::HandleContinueParsing()
+   mFlags |= NS_PARSER_FLAG_PARSER_ENABLED;
+ 
+   return HandleContinueInterruptedParsing();
+ }
+ 
+ NS_IMETHODIMP
+ nsParser::ContinueInterruptedParsing()
+ {
+-  ENQUEUE_PARSER_MSG(*mQueue, ContinueInterruptedParsing, ());
++  ENQUEUE_PARSER_MSG(mQueue, ContinueInterruptedParsing, ());
+ }
+ 
+ nsresult
+ nsParser::HandleContinueInterruptedParsing()
+ {
+   // If there are scripts executing, then the content sink is jumping the gun
+   // (probably due to a synchronous XMLHttpRequest) and will re-enable us
+   // later, see bug 460706.
+@@ -1781,17 +1781,17 @@ nsParser::HandleContinueInterruptedParsi
+ 
+ /**
+  *  Stops parsing temporarily. That's it will prevent the
+  *  parser from building up content model.
+  */
+ NS_IMETHODIMP_(void)
+ nsParser::BlockParser()
+ {
+-  VOID_ENQUEUE_PARSER_MSG(*mQueue, BlockParser, ());
++  VOID_ENQUEUE_PARSER_MSG(mQueue, BlockParser, ());
+ }
+ 
+ nsresult
+ nsParser::HandleBlockParser()
+ {
+   mFlags &= ~NS_PARSER_FLAG_PARSER_ENABLED;
+   MOZ_TIMER_DEBUGLOG(("Stop: Parse Time: nsParser::BlockParser(), this=%p\n", this));
+   MOZ_TIMER_STOP(mParseTime);
+@@ -1802,17 +1802,17 @@ nsParser::HandleBlockParser()
+  *  Open up the parser for tokenization, building up content
+  *  model..etc. However, this method does not resume parsing
+  *  automatically. It's the callers' responsibility to restart
+  *  the parsing engine.
+  */
+ NS_IMETHODIMP_(void)
+ nsParser::UnblockParser()
+ {
+-  VOID_ENQUEUE_PARSER_MSG(*mQueue, UnblockParser, ());
++  VOID_ENQUEUE_PARSER_MSG(mQueue, UnblockParser, ());
+   PostContinueEvent();
+ }
+ 
+ nsresult
+ nsParser::HandleUnblockParser()
+ {
+   if (!(mFlags & NS_PARSER_FLAG_PARSER_ENABLED)) {
+     mFlags |= NS_PARSER_FLAG_PARSER_ENABLED;
+@@ -1931,17 +1931,17 @@ nsParser::SetCanInterrupt(PRBool aCanInt
+  */
+ NS_IMETHODIMP // result never checked as far as I can tell
+ nsParser::Parse(nsIURI* aURL,
+                 nsIRequestObserver* aListener,
+                 void* aKey,
+                 nsDTDMode aMode)
+ {
+   NS_PRECONDITION(aURL, "Error: Null URL given");
+-  ENQUEUE_PARSER_MSG(*mQueue, ParseUrl,
++  ENQUEUE_PARSER_MSG(mQueue, ParseUrl,
+     (aURL, aListener, aKey, aMode));
+ }
+ 
+ // TODO audit all the handlers!!
+ // TODO move as much fallible code as possible into the ::Init methods!?
+ // XXXX handlers must be atomic from the first actual parser operation (read, write) to the last
+ // XXXX but it may be possible to reorder things...
+ // TODO nsURI not threadsafe?
+@@ -1992,17 +1992,17 @@ nsParser::HandleParseUrl(const nsACStrin
+  */
+ NS_IMETHODIMP
+ nsParser::Parse(const nsAString& aSourceBuffer,
+                 void* aKey,
+                 const nsACString& aMimeType,
+                 PRBool aLastCall,
+                 nsDTDMode aMode)
+ {
+-  ENQUEUE_PARSER_MSG_AND_WAIT(*mQueue, ParseBuffer,
++  ENQUEUE_PARSER_MSG_AND_WAIT(mQueue, ParseBuffer,
+     (aSourceBuffer, aKey, aMimeType, aLastCall, aMode));
+ }
+ 
+ nsresult
+ nsParser::HandleParseBuffer(const nsAString& aSourceBuffer,
+                             void* aKey,
+                             const nsACString& aMimeType,
+                             PRBool aLastCall,
+@@ -2135,17 +2135,17 @@ NS_IMETHODIMP
+ NS_IMETHODIMP
+ nsParser::ParseFragment(const nsAString& aSourceBuffer,
+                         void* aKey,
+                         nsTArray<nsString>& aTagStack,
+                         PRBool aXMLMode,
+                         const nsACString& aMimeType,
+                         nsDTDMode aMode)
+ {
+-  ENQUEUE_PARSER_MSG(*mQueue, ParseFragment,
++  ENQUEUE_PARSER_MSG(mQueue, ParseFragment,
+     (aSourceBuffer, aKey, aTagStack, aXMLMode, aMimeType, aMode));
+ }
+ 
+ NS_IMETHODIMP
+ nsParser::HandleParseFragment(const nsAString& aSourceBuffer,
+                               void* aKey,
+                               const nsTArray<nsString>& aTagStack,
+                               PRBool aXMLMode,
+@@ -2480,17 +2480,17 @@ nsParser::BuildModel()
+ 
+ /*******************************************************************
+   These methods are used to talk to the netlib system...
+  *******************************************************************/
+ 
+ nsresult
+ nsParser::OnStartRequest(nsIRequest *request, nsISupports* aContext)
+ {
+-  ENQUEUE_PARSER_MSG(*mQueue, StartRequest, (request, aContext));
++  ENQUEUE_PARSER_MSG(mQueue, StartRequest, (request, aContext));
+ }
+ 
+ nsresult
+ nsParser::HandleStartRequest(nsIRequest* request, nsISupports* aContext)
+ {
+   NS_PRECONDITION(eNone == mParserContext->mStreamListenerState,
+                   "Parser's nsIStreamListener API was not setup "
+                   "correctly in constructor.");
+@@ -2909,17 +2909,17 @@ CheckCharset(const char* aBytes,
+ 
+ nsresult
+ nsParser::OnDataAvailable(nsIRequest *request, nsISupports*,
+                           nsIInputStream *pIStream, PRUint32 sourceOffset,
+                           PRUint32 aLength)
+ {
+   NS_PRECONDITION(NS_InputStreamIsBuffered(pIStream),
+                   "Must have a buffered input stream");
+-  ENQUEUE_PARSER_MSG(*mQueue, DataAvailable,
++  ENQUEUE_PARSER_MSG(mQueue, DataAvailable,
+     (request, pIStream, sourceOffset, aLength));
+ }
+ 
+ nsresult
+ nsParser::HandleDataAvailable(nsIRequest* aRequest,
+                               char* aBytes,
+                               PRUint32 aNumBytes,
+                               PRUint32 aSourceOffset)
+@@ -2978,17 +2978,17 @@ nsParser::HandleDataAvailable(nsIRequest
+ /**
+  *  This is called by the networking library once the last block of data
+  *  has been collected from the net.
+  */
+ NS_IMETHODIMP
+ nsParser::OnStopRequest(nsIRequest *request, nsISupports* aContext,
+                         nsresult status)
+ {
+-  ENQUEUE_PARSER_MSG_AND_WAIT(*mQueue, StopRequest, (request, aContext, status));
++  ENQUEUE_PARSER_MSG_AND_WAIT(mQueue, StopRequest, (request, aContext, status));
+ }
+ 
+ nsresult
+ nsParser::HandleStopRequest(nsIRequest *request,
+                             nsISupports* aContext,
+                             nsresult status)
+ {
+   nsresult rv = NS_OK;
+diff --git a/parser/htmlparser/src/nsParserQueue.cpp b/parser/htmlparser/src/nsParserQueue.cpp
+--- a/parser/htmlparser/src/nsParserQueue.cpp
++++ b/parser/htmlparser/src/nsParserQueue.cpp
+@@ -1,55 +1,10 @@
+-
+ #include "nsParserQueue.h"
+ #include "nsThreadUtils.h"
+-
+-NS_IMPL_ISUPPORTS0(nsParserQueue::Msg)
+-
+-nsresult
+-nsParserQueue::Flush(PRBool breakOnFailure)
+-{
+-  nsresult rv = NS_OK;
+-
+-  nsDeque q;
+-  {
+-    nsAutoLock synchronized(mLock);
+-    while (GetSize())
+-      q.Push(Pop());
+-  }
+-
+-  PRBool safeToRelease = NS_IsMainThread();
+-  while ((!breakOnFailure || NS_SUCCEEDED(rv)) &&
+-         q.GetSize())
+-  {
+-    Msg* msg = static_cast<Msg*>(q.Pop());
+-    rv = msg->Deliver();
+-    if (NS_SUCCEEDED(rv))
+-      rv = Flush(breakOnFailure);
+-
+-    msg->Notify(); // wake up waiting threads
+-
+-    if (safeToRelease) {
+-      msg->Release();
+-    } else {
+-      NS_DispatchToMainThread(
+-        new nsRunnableMethod<Msg>(msg, &Msg::VoidRelease));
+-    }
+-  }
+-
+-  // XXX what about document.write?
+-  if (q.GetSize()) {
+-    nsAutoLock synchronized(mLock);
+-    while (q.GetSize())
+-      // note: PushFront does not AddRef
+-      nsDeque::PushFront(q.PopFront());
+-  }
+-
+-  return rv;
+-}
+ 
+ nsresult
+ nsParserQueue::ParseUrlMsg
+              ::Init(nsIURI* aURL,
+                     nsIRequestObserver* aListener,
+                     void* aKey,
+                     nsDTDMode aMode)
+ {
+diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsParserQueue.h
+--- a/parser/htmlparser/src/nsParserQueue.h
++++ b/parser/htmlparser/src/nsParserQueue.h
+@@ -1,212 +1,57 @@
+ #ifndef __ns_parser_queue__
+ #define __ns_parser_queue__
+ 
+-#include "nsISupports.h"
++#include "nsProxyQueue.h"
+ #include "nsParser.h"
+ #include "nsIInputStream.h"
+-#include "nsDeque.h"
+-#include "nsAutoLock.h"
+-
+-/**
+-** "Private" #defines
+-** All private #defines SHOULD be undefined when possible
+-*/
+-
+-#define SCHEDULE_FLUSH                                                        \
+-  PR_BEGIN_MACRO                                                              \
+-    if (NS_FAILED(NS_DispatchToCurrentThread(                                 \
+-                    new nsParserContinueEvent(                                \
+-                      this, &nsParser::FlushQueue))))                         \
+-      NS_ASSERTION(PR_FALSE,                                                  \
+-        "Failed to schedule FlushQueue event!");                              \
+-  PR_END_MACRO
+-
+-// toggle to control flush method
+-// #undef SCHEDULE_FLUSH
+-
+-// stupid, uninteresting, reliable flush method
+-#ifndef SCHEDULE_FLUSH
+-#define SCHEDULE_FLUSH                                                        \
+-  PR_BEGIN_MACRO                                                              \
+-    FlushQueue(0);                                                            \
+-  PR_END_MACRO
+-#endif
+-
+-#define PRIVATE_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                       \
+-  NS_ASSERTION(NS_IsMainThread(),                                             \
+-    "Enqueueing off main thread");                                            \
+-  nsParserQueue::EVENT##Msg* msg =                                            \
+-    new nsParserQueue::EVENT##Msg(this, &nsParser::Handle##EVENT);            \
+-  nsresult rv = msg                                                           \
+-    ? msg->Init INIT_ARGS                                                     \
+-    : NS_ERROR_OUT_OF_MEMORY;                                                 \
+-  if (NS_SUCCEEDED(rv)) {                                                     \
+-    nsAutoLock synchronized(Q);                                               \
+-    (Q).Push(msg);                                                            \
+-  } else delete msg;                                                          \
+-  SCHEDULE_FLUSH;
+-
+-// Can't undefine unless used exclusively by inline functions:
+-// #undef SCHEDULE_FLUSH
+ 
+ #define HANDLER_TYPEDEF(PARAMS)                                               \
+   typedef nsresult (nsParser::*HandlerType)PARAMS;                            \
+   HandlerType mHandler;
+ 
+ #define DECL_INIT_AND_TYPEDEF_HANDLER(PARAMS)                                 \
+ public:                                                                       \
+   nsresult Init PARAMS;                                                       \
+ private:                                                                      \
+   HANDLER_TYPEDEF(PARAMS)
+ 
+-#define INLINE_MSG_CTOR(TYPE)                                                 \
+-public:                                                                       \
+-  TYPE##Msg(nsParser* aParser, HandlerType aHandler)                          \
+-    : Msg(aParser), mHandler(aHandler) {}
+-
+ #define INLINE_MSG_DELIVER(PARAMS)                                            \
+ public:                                                                       \
+   nsresult Deliver() {                                                        \
+-    return (mParser->*mHandler)PARAMS;                                        \
++    return (mReceiver->*mHandler)PARAMS;                                      \
+   }
+ 
+-#define TRIVIAL_MSG(TYPE)                                                     \
+-  class TYPE##Msg : public Msg {                                              \
++#define INLINE_MSG_CTOR(EVENT)                                                \
++public:                                                                       \
++  EVENT##Msg(nsParser* aParser, HandlerType aHandler)                         \
++    : nsProxyQueue<nsParser>::Msg(aParser)                                    \
++    , mHandler(aHandler) {}
++
++#define TRIVIAL_MSG(EVENT)                                                    \
++  PARSER_MSG_CLASS(EVENT) {                                                   \
+     HANDLER_TYPEDEF(())                                                       \
+   public:                                                                     \
+-    INLINE_MSG_CTOR(TYPE)                                                     \
++    INLINE_MSG_CTOR(EVENT)                                                    \
+     INLINE_MSG_DELIVER(())                                                    \
+     nsresult Init() { return NS_OK; }                                         \
+   };
+ 
++#define PARSER_MSG_CLASS(EVENT)                                               \
++  class EVENT##Msg : public Msg
++
+ /**
+-** "Public" #defines
++** nsParserQueue
+ */
+ 
+-#define IMMEDIATELY_INVOKE_PARSER_MSG(EVENT, RV, INIT_ARGS)                   \
+-  PR_BEGIN_MACRO                                                              \
+-    nsParserQueue::EVENT##Msg msg(this, &nsParser::Handle##EVENT);            \
+-    RV = msg.Init INIT_ARGS;                                                  \
+-    if (NS_SUCCEEDED(RV))                                                     \
+-      RV = msg.Deliver();                                                     \
+-  PR_END_MACRO
+-
+-#define ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                               \
+-  PR_BEGIN_MACRO                                                              \
+-    PRIVATE_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                           \
+-    return rv;                                                                \
+-  PR_END_MACRO
+-
+-#define VOID_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                          \
+-  PR_BEGIN_MACRO                                                              \
+-    PRIVATE_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                           \
+-  PR_END_MACRO
+-
+-#define PARSER_SYNC_OPERATION(Q) msg->Wait()
+-// TODO switch back to this version once the notifier and waiter are on different threads
+-#undef  PARSER_SYNC_OPERATION
+-
+-#ifndef PARSER_SYNC_OPERATION
+-#define PARSER_SYNC_OPERATION(Q) (Q).Flush()
+-#endif
+-
+-#define ENQUEUE_PARSER_MSG_AND_WAIT(Q, EVENT, INIT_ARGS)                      \
+-  PR_BEGIN_MACRO                                                              \
+-    PRIVATE_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS);                          \
+-    return PARSER_SYNC_OPERATION(Q);                                          \
+-  PR_END_MACRO
+-
+-// Can't undefine unless used exclusively by inline functions:
+-// #undef PRIVATE_ENQUEUE_PARSER_MSG
+-
+-class nsParserQueue : private nsDeque {
+-  PRLock* const mLock;
++class nsParserQueue : public nsProxyQueue<nsParser>
++{
+ public:
+-
+-  /**
+-  ** Queue-specific operations
+-  */
+-
+-  nsParserQueue() : mLock(nsAutoLock::NewLock("nsParserQueue::mLock")) {}
+-
+-  virtual ~nsParserQueue() {
+-    NS_ASSERTION(!GetSize(), "Expect leaks because you did "
+-      "not Flush(PR_FALSE) before deleting nsParserQueue!");
+-    nsAutoLock::DestroyLock(mLock);
+-  }
+-
+-  operator PRLock*() { return mLock; }
+-
+-  nsresult Flush(PRBool breakOnFailure=PR_TRUE);
+-
+-  // Type-safe interface to private nsDeque base:
+-
+-  class Msg;
+-
+-  void Push(Msg* msg) {
+-    if (msg) {
+-      nsDeque::Push(msg);
+-      // Released by nsParserQueue::Flush
+-      NS_ADDREF(msg);
+-    }
+-  }
+-
+-  Msg* Pop() {
+-    return (Msg*)nsDeque::Pop();
+-  }
+-
+-  PRUint32 GetSize() const {
+-    return nsDeque::GetSize();
+-  }
+-
+-  /**
+-  ** Common interface from which all the *Msg classes inherit
+-  */
+-
+-  class Msg : public nsISupports {
+-    NS_DECL_ISUPPORTS
+-  public:
+-    // TODO avoid this instantiation if not waiting?
+-    // TODO determine a more specific type name?
+-    Msg(nsParser* aParser)
+-      : mParser(aParser)
+-      , mMon(nsAutoMonitor::NewMonitor("nsParserQueue::Msg")) {}
+-
+-    virtual ~Msg() { nsAutoMonitor::DestroyMonitor(mMon); }
+-
+-    nsresult Wait(PRIntervalTime interval=PR_INTERVAL_NO_TIMEOUT) {
+-      nsAutoMonitor mon(mMon);
+-      return mon.Wait(interval);
+-    }
+-
+-    nsresult Notify() {
+-      nsAutoMonitor mon(mMon);
+-      return mon.Notify();
+-    }
+-
+-    void VoidRelease() {
+-      if (NS_FAILED(Release())) {
+-        NS_WARNING("Ignoring nsParserQueue::Msg::Release failure");
+-      }
+-    }
+-
+-    virtual nsresult Deliver() = 0;
+-
+-  protected:
+-    nsRefPtr<nsParser> mParser;
+-    PRMonitor* const mMon;
+-  };
+-
+-  /**
+-  ** nsIParser interface method-specific message classes
+-  */
+-
+-  class ParseUrlMsg : public Msg
++  PARSER_MSG_CLASS(ParseUrl)
+   {
+     HANDLER_TYPEDEF((const nsACString &spec,
+                      nsIRequestObserver* aListener,
+                      void* aKey,
+                      nsDTDMode aMode))
+ 
+     nsCString mSpec;
+     nsCOMPtr<nsIRequestObserver> mListener;
+@@ -218,17 +63,17 @@ public:
+     INLINE_MSG_DELIVER((mSpec, mListener, mKey, mMode))
+ 
+     nsresult Init(nsIURI* aURL,
+                   nsIRequestObserver* aListener,
+                   void* aKey,
+                   nsDTDMode aMode);
+   };
+ 
+-  class ParseBufferMsg : public Msg
++  PARSER_MSG_CLASS(ParseBuffer)
+   {
+     DECL_INIT_AND_TYPEDEF_HANDLER((const nsAString& aSourceBuffer,
+                                    void* aKey,
+                                    const nsACString& aMimeType,
+                                    PRBool aLastCall,
+                                    nsDTDMode aMode))
+     nsString mSourceBuffer;
+     void* mKey;
+@@ -236,29 +81,29 @@ public:
+     PRBool mLastCall;
+     nsDTDMode mMode;
+ 
+   public:
+     INLINE_MSG_CTOR(ParseBuffer)
+     INLINE_MSG_DELIVER((mSourceBuffer, mKey, mMimeType, mLastCall, mMode))
+   };
+ 
+-  class StartRequestMsg : public Msg
++  PARSER_MSG_CLASS(StartRequest)
+   {
+     DECL_INIT_AND_TYPEDEF_HANDLER((nsIRequest* aRequest,
+                                    nsISupports* aContext))
+     nsCOMPtr<nsIRequest> mRequest;
+     nsCOMPtr<nsISupports> mContext;
+ 
+   public:
+     INLINE_MSG_CTOR(StartRequest)
+     INLINE_MSG_DELIVER((mRequest, mContext))
+   };
+ 
+-  class DataAvailableMsg : public Msg
++  PARSER_MSG_CLASS(DataAvailable)
+   {
+     HANDLER_TYPEDEF((nsIRequest*, char*, PRUint32, PRUint32))
+ 
+     nsCOMPtr<nsIRequest> mRequest;
+     char* mBytes;
+     PRUint32 mNumBytes, mSourceOffset;
+ 
+   public:
+@@ -267,31 +112,31 @@ public:
+     INLINE_MSG_DELIVER((mRequest, mBytes, mNumBytes, mSourceOffset))
+ 
+     nsresult Init(nsIRequest* aRequest,
+                   nsIInputStream* pIStream,
+                   PRUint32 aSourceOffset,
+                   PRUint32 aLength);
+   };
+ 
+-  class StopRequestMsg : public Msg
++  PARSER_MSG_CLASS(StopRequest)
+   {
+     DECL_INIT_AND_TYPEDEF_HANDLER((nsIRequest* aRequest,
+                                    nsISupports* aContext,
+                                    nsresult aStatus))
+     nsCOMPtr<nsIRequest> mRequest;
+     nsCOMPtr<nsISupports> mContext;
+     nsresult mStatus;
+ 
+   public:
+     INLINE_MSG_CTOR(StopRequest)
+     INLINE_MSG_DELIVER((mRequest, mContext, mStatus))
+   };
+ 
+-  class ParseFragmentMsg : public Msg
++  PARSER_MSG_CLASS(ParseFragment)
+   {
+     DECL_INIT_AND_TYPEDEF_HANDLER((
+       const nsAString& aSourceBuffer,
+       void* aKey,
+       const nsTArray<nsString>& aTagStack,
+       PRBool aXMLMode,
+       const nsACString& aMimeType,
+       nsDTDMode aMode))
+@@ -313,15 +158,74 @@ public:
+   TRIVIAL_MSG(UnblockParser)
+   TRIVIAL_MSG(ContinueInterruptedParsing)
+   TRIVIAL_MSG(ContinueParsing)
+   TRIVIAL_MSG(CancelParsingEvents)
+ 
+ };
+ 
+ // Sayonara, macro scum!
++#undef PARSER_MSG_CLASS
+ #undef HANDLER_TYPEDEF
+ #undef DECL_INIT_AND_TYPEDEF_HANDLER
++#undef INLINE_MSG_DELIVER
+ #undef INLINE_MSG_CTOR
+-#undef INLINE_MSG_DELIVER
+ #undef TRIVIAL_MSG
+ 
++/**
++** "Private" #defines
++** All private #defines SHOULD be undefined when possible
++*/
++
++#define PRIVATE_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                       \
++  NS_ASSERTION(NS_IsMainThread(),                                             \
++    "Enqueueing off main thread");                                            \
++  nsParserQueue::EVENT##Msg* msg =                                            \
++    new nsParserQueue::EVENT##Msg(this, &nsParser::Handle##EVENT);            \
++  nsresult rv = msg                                                           \
++    ? msg->Init INIT_ARGS                                                     \
++    : NS_ERROR_OUT_OF_MEMORY;                                                 \
++  if (NS_SUCCEEDED(rv)) {                                                     \
++    nsAutoLock synchronized(*Q);                                              \
++    (Q)->Push(msg);                                                           \
++    if (NS_FAILED(NS_DispatchToCurrentThread(                                 \
++                    new nsParserQueue::FlushEvent(Q))))                       \
++      NS_ASSERTION(PR_FALSE, "Failed to schedule Flush event");               \
++  } else delete msg;
++
++/**
++** "Public" #defines
++*/
++
++#define IMMEDIATELY_INVOKE_PARSER_MSG(EVENT, RV, INIT_ARGS)                   \
++  PR_BEGIN_MACRO                                                              \
++    nsParserQueue::EVENT##Msg msg(this, &nsParser::Handle##EVENT);            \
++    RV = msg.Init INIT_ARGS;                                                  \
++    if (NS_SUCCEEDED(RV))                                                     \
++      RV = msg.Deliver();                                                     \
++  PR_END_MACRO
++
++#define ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                               \
++  PR_BEGIN_MACRO                                                              \
++    PRIVATE_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                           \
++    return rv;                                                                \
++  PR_END_MACRO
++
++#define VOID_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                          \
++  PR_BEGIN_MACRO                                                              \
++    PRIVATE_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                           \
++  PR_END_MACRO
++
++#define PARSER_SYNC_OPERATION(Q) msg->Wait()
++// TODO switch back to this version once the notifier and waiter are on different threads
++#undef  PARSER_SYNC_OPERATION
++
++#ifndef PARSER_SYNC_OPERATION
++#define PARSER_SYNC_OPERATION(Q) (Q)->Flush()
+ #endif
++
++#define ENQUEUE_PARSER_MSG_AND_WAIT(Q, EVENT, INIT_ARGS)                      \
++  PR_BEGIN_MACRO                                                              \
++    PRIVATE_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS);                          \
++    return PARSER_SYNC_OPERATION(Q);                                          \
++  PR_END_MACRO
++
++#endif
+diff --git a/parser/htmlparser/src/nsProxyQueue.cpp b/parser/htmlparser/src/nsProxyQueue.cpp
+new file mode 100644
+--- /dev/null
++++ b/parser/htmlparser/src/nsProxyQueue.cpp
+@@ -0,0 +1,55 @@
++template <class T>
++NS_IMPL_ADDREF(nsProxyQueue<T>::Msg)
++
++template <class T>
++NS_IMPL_RELEASE(nsProxyQueue<T>::Msg)
++
++// YOU SEE THIS? THIS FUCKING BULLSHIT? SHIT IS BULLSHIT!
++// NS_IMPL_QUERY_INTERFACE0(nsProxyQueue<T>::Msg)
++template <class T>
++NS_INTERFACE_TABLE_HEAD(nsProxyQueue<T>::Msg)
++NS_INTERFACE_TABLE0(typename nsProxyQueue<T>::Msg)
++NS_INTERFACE_TABLE_TAIL
++
++template <class T>
++nsresult
++nsProxyQueue<T>::Flush(PRBool breakOnFailure)
++{
++  nsresult rv = NS_OK;
++
++  nsDeque q;
++  {
++    nsAutoLock synchronized(mLock);
++    while (GetSize())
++      q.Push(Pop());
++  }
++
++  PRBool safeToRelease = NS_IsMainThread();
++  while ((!breakOnFailure || NS_SUCCEEDED(rv)) &&
++         q.GetSize())
++  {
++    Msg* msg = static_cast<Msg*>(q.Pop());
++    rv = msg->Deliver();
++    if (NS_SUCCEEDED(rv))
++      rv = Flush(breakOnFailure);
++
++    msg->Notify(); // wake up waiting threads
++
++    if (safeToRelease) {
++      msg->Release();
++    } else {
++      NS_DispatchToMainThread(
++        new nsRunnableMethod<Msg>(msg, &Msg::VoidRelease));
++    }
++  }
++
++  // XXX what about document.write?
++  if (q.GetSize()) {
++    nsAutoLock synchronized(mLock);
++    while (q.GetSize())
++      // note: PushFront does not AddRef
++      nsDeque::PushFront(q.PopFront());
++  }
++
++  return rv;
++}
+\ No newline at end of file
+diff --git a/parser/htmlparser/src/nsProxyQueue.h b/parser/htmlparser/src/nsProxyQueue.h
+new file mode 100644
+--- /dev/null
++++ b/parser/htmlparser/src/nsProxyQueue.h
+@@ -0,0 +1,106 @@
++#ifndef __ns_proxy_queue__
++#define __ns_proxy_queue__
++
++#include "nsDeque.h"
++#include "nsISupports.h"
++#include "nsAutoPtr.h"
++#include "nsAutoLock.h"
++#include "nsThreadUtils.h"
++
++template <class T>
++class nsProxyQueue : private nsDeque
++{
++  PRLock* const mLock;
++
++public:
++  typedef nsProxyQueue<T> QueueType;
++
++  /**
++  ** Queue-specific operations
++  */
++
++  nsProxyQueue() : mLock(nsAutoLock::NewLock("nsProxyQueue::mLock")) {}
++
++  virtual ~nsProxyQueue() {
++    NS_ASSERTION(!GetSize(), "Expect leaks because you did "
++      "not Flush(PR_FALSE) before deleting nsProxyQueue!");
++    nsAutoLock::DestroyLock(mLock);
++  }
++
++  operator PRLock*() { return mLock; }
++
++  nsresult Flush(PRBool breakOnFailure=PR_TRUE);
++
++  class FlushEvent : public nsRunnable {
++    QueueType* const mQueue;
++    const PRBool mBreakOnFailure;
++  public:
++    FlushEvent(QueueType* aQueue, PRBool aBreakOnFailure=PR_TRUE)
++      : mQueue(aQueue), mBreakOnFailure(aBreakOnFailure) {}
++    nsresult Run() { return mQueue->Flush(mBreakOnFailure); }
++  };
++
++  // Type-safe interface to private nsDeque base:
++
++  class Msg;
++
++  void Push(Msg* msg) {
++    if (msg) {
++      nsDeque::Push(msg);
++      // Released by nsProxyQueue::Flush
++      NS_ADDREF(msg);
++    }
++  }
++
++  Msg* Pop() {
++    return (Msg*)nsDeque::Pop();
++  }
++
++  PRUint32 GetSize() const {
++    return nsDeque::GetSize();
++  }
++
++  /**
++  ** Common interface from which all the *Msg classes inherit
++  */
++
++  class Msg : public nsISupports
++  {
++    NS_DECL_ISUPPORTS
++  public:
++    // TODO avoid this instantiation if not waiting?
++    // TODO determine a more specific type name?
++    Msg(T* aReceiver)
++      : mReceiver(aReceiver)
++      , mMon(nsAutoMonitor::NewMonitor("nsProxyQueue::Msg::mMon")) {}
++
++    virtual ~Msg() { nsAutoMonitor::DestroyMonitor(mMon); }
++
++    nsresult Wait(PRIntervalTime interval=PR_INTERVAL_NO_TIMEOUT) {
++      nsAutoMonitor mon(mMon);
++      return mon.Wait(interval);
++    }
++
++    nsresult Notify() {
++      nsAutoMonitor mon(mMon);
++      return mon.Notify();
++    }
++
++    void VoidRelease() {
++      if (NS_FAILED(Release())) {
++        NS_WARNING("Ignoring nsProxyQueue::Msg::Release failure");
++      }
++    }
++
++    virtual nsresult Deliver() = 0;
++
++  protected:
++    nsRefPtr<T> mReceiver;
++    PRMonitor* const mMon;
++  };
++
++};
++
++#include "nsProxyQueue.cpp"
++
++#endif
+\ No newline at end of file

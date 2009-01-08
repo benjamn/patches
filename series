@@ -3,5 +3,6 @@ safe-suspect-forget.diff
 hdst-index-bound.diff
 parser-copy-data.diff
 parser-msg-queue.diff
+proxy-queue-refactor.diff
 innerhtml.diff
 bug-468562.diff
