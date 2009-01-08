@@ -115,6 +115,25 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  {
    if (!(mFlags & NS_PARSER_FLAG_PARSER_ENABLED)) {
      mFlags |= NS_PARSER_FLAG_PARSER_ENABLED;
+@@ -1853,17 +1853,17 @@ void nsParser::HandleParserContinueEvent
+ 
+   NS_ASSERTION(mScriptsExecuting == 0, "Interrupted in the middle of a script?");
+ 
+   mQueue->Flush();
+ 
+   HandleContinueInterruptedParsing();
+ }
+ 
+-void nsParser::FlushQueue(const nsRunnable*)
++void nsParser::FlushQueue()
+ {
+   if (mQueue)
+     mQueue->Flush();
+ }
+ 
+ void
+ nsParser::ScriptExecuting()
+ {
 @@ -1931,17 +1931,17 @@ nsParser::SetCanInterrupt(PRBool aCanInt
   */
  NS_IMETHODIMP // result never checked as far as I can tell
@@ -163,7 +182,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
                          nsDTDMode aMode)
  {
 -  ENQUEUE_PARSER_MSG(*mQueue, ParseFragment,
-+  ENQUEUE_PARSER_MSG(mQueue, ParseFragment,
++  ENQUEUE_PARSER_MSG_AND_WAIT(mQueue, ParseFragment,
      (aSourceBuffer, aKey, aTagStack, aXMLMode, aMimeType, aMode));
  }
  
@@ -229,6 +248,28 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
                              nsresult status)
  {
    nsresult rv = NS_OK;
+diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
+--- a/parser/htmlparser/src/nsParser.h
++++ b/parser/htmlparser/src/nsParser.h
+@@ -456,17 +456,17 @@ class nsParser : public nsIParser,
+      * @update	gess5/11/98
+      * @return  TRUE if all went well, otherwise FALSE
+      */
+     virtual nsresult ResumeParse(PRBool allowIteration = PR_TRUE,
+                                  PRBool aIsFinalChunk = PR_FALSE,
+                                  PRBool aCanInterrupt = PR_TRUE);
+ 
+     nsParserQueue* mQueue;
+-    void FlushQueue(const nsRunnable*);
++    void FlushQueue();
+ 
+     DECL_PARSER_MSG_HANDLER(CancelParsingEvents, ())
+     DECL_PARSER_MSG_HANDLER(StartRequest, (nsIRequest*, nsISupports*))
+     DECL_PARSER_MSG_HANDLER(DataAvailable, (nsIRequest*, char*, PRUint32, PRUint32))
+     DECL_PARSER_MSG_HANDLER(StopRequest, (nsIRequest*, nsISupports*, nsresult))
+ 
+ private:
+ 
 diff --git a/parser/htmlparser/src/nsParserQueue.cpp b/parser/htmlparser/src/nsParserQueue.cpp
 --- a/parser/htmlparser/src/nsParserQueue.cpp
 +++ b/parser/htmlparser/src/nsParserQueue.cpp
@@ -607,7 +648,7 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
        PRBool aXMLMode,
        const nsACString& aMimeType,
        nsDTDMode aMode))
-@@ -313,15 +158,74 @@ public:
+@@ -313,15 +158,77 @@ public:
    TRIVIAL_MSG(UnblockParser)
    TRIVIAL_MSG(ContinueInterruptedParsing)
    TRIVIAL_MSG(ContinueParsing)
@@ -629,6 +670,11 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
 +** All private #defines SHOULD be undefined when possible
 +*/
 +
++#define PARSER_QUEUE_ASYNC_FLUSH                                              \
++  if (NS_FAILED(NS_DispatchToCurrentThread(                                   \
++        NS_NEW_RUNNABLE_METHOD(nsParser, this, FlushQueue))))                 \
++    NS_ASSERTION(PR_FALSE, "Failed to schedule Flush event");
++
 +#define PRIVATE_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                       \
 +  NS_ASSERTION(NS_IsMainThread(),                                             \
 +    "Enqueueing off main thread");                                            \
@@ -640,10 +686,8 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
 +  if (NS_SUCCEEDED(rv)) {                                                     \
 +    nsAutoLock synchronized(*Q);                                              \
 +    (Q)->Push(msg);                                                           \
-+    if (NS_FAILED(NS_DispatchToCurrentThread(                                 \
-+                    new nsParserQueue::FlushEvent(Q))))                       \
-+      NS_ASSERTION(PR_FALSE, "Failed to schedule Flush event");               \
-+  } else delete msg;
++  } else delete msg;                                                          \
++  PARSER_QUEUE_ASYNC_FLUSH
 +
 +/**
 +** "Public" #defines
@@ -748,7 +792,7 @@ diff --git a/parser/htmlparser/src/nsProxyQueue.h b/parser/htmlparser/src/nsProx
 new file mode 100644
 --- /dev/null
 +++ b/parser/htmlparser/src/nsProxyQueue.h
-@@ -0,0 +1,106 @@
+@@ -0,0 +1,97 @@
 +#ifndef __ns_proxy_queue__
 +#define __ns_proxy_queue__
 +
@@ -781,15 +825,6 @@ new file mode 100644
 +  operator PRLock*() { return mLock; }
 +
 +  nsresult Flush(PRBool breakOnFailure=PR_TRUE);
-+
-+  class FlushEvent : public nsRunnable {
-+    QueueType* const mQueue;
-+    const PRBool mBreakOnFailure;
-+  public:
-+    FlushEvent(QueueType* aQueue, PRBool aBreakOnFailure=PR_TRUE)
-+      : mQueue(aQueue), mBreakOnFailure(aBreakOnFailure) {}
-+    nsresult Run() { return mQueue->Flush(mBreakOnFailure); }
-+  };
 +
 +  // Type-safe interface to private nsDeque base:
 +
