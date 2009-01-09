@@ -11,7 +11,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  nsParser::CancelParsingEvents()
  {
 -  ENQUEUE_PARSER_MSG(*mQueue, CancelParsingEvents, ());
-+  ENQUEUE_PARSER_MSG(mQueue, CancelParsingEvents, ());
++  ENQUEUE_PARSER_MSG(CancelParsingEvents, ());
  }
  
  nsresult
@@ -30,7 +30,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  {
    // TODO somehow force the parser thread to activate?
 -  ENQUEUE_PARSER_MSG(*mQueue, Terminate, ());
-+  ENQUEUE_PARSER_MSG(mQueue, Terminate, ());
++  ENQUEUE_PARSER_MSG(Terminate, ());
  }
  
  nsresult
@@ -49,7 +49,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  nsParser::ContinueParsing()
  {
 -  ENQUEUE_PARSER_MSG(*mQueue, ContinueParsing, ());
-+  ENQUEUE_PARSER_MSG(mQueue, ContinueParsing, ());
++  ENQUEUE_PARSER_MSG(ContinueParsing, ());
  }
  
  nsresult
@@ -68,7 +68,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  nsParser::ContinueInterruptedParsing()
  {
 -  ENQUEUE_PARSER_MSG(*mQueue, ContinueInterruptedParsing, ());
-+  ENQUEUE_PARSER_MSG(mQueue, ContinueInterruptedParsing, ());
++  ENQUEUE_PARSER_MSG(ContinueInterruptedParsing, ());
  }
  
  nsresult
@@ -87,7 +87,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  nsParser::BlockParser()
  {
 -  VOID_ENQUEUE_PARSER_MSG(*mQueue, BlockParser, ());
-+  VOID_ENQUEUE_PARSER_MSG(mQueue, BlockParser, ());
++  VOID_ENQUEUE_PARSER_MSG(BlockParser, ());
  }
  
  nsresult
@@ -106,7 +106,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  nsParser::UnblockParser()
  {
 -  VOID_ENQUEUE_PARSER_MSG(*mQueue, UnblockParser, ());
-+  VOID_ENQUEUE_PARSER_MSG(mQueue, UnblockParser, ());
++  VOID_ENQUEUE_PARSER_MSG(UnblockParser, ());
    PostContinueEvent();
  }
  
@@ -144,7 +144,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  {
    NS_PRECONDITION(aURL, "Error: Null URL given");
 -  ENQUEUE_PARSER_MSG(*mQueue, ParseUrl,
-+  ENQUEUE_PARSER_MSG(mQueue, ParseUrl,
++  ENQUEUE_PARSER_MSG(ParseUrl,
      (aURL, aListener, aKey, aMode));
  }
  
@@ -163,7 +163,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
                  nsDTDMode aMode)
  {
 -  ENQUEUE_PARSER_MSG_AND_WAIT(*mQueue, ParseBuffer,
-+  ENQUEUE_PARSER_MSG_AND_WAIT(mQueue, ParseBuffer,
++  ENQUEUE_PARSER_MSG_AND_WAIT(ParseBuffer,
      (aSourceBuffer, aKey, aMimeType, aLastCall, aMode));
  }
  
@@ -182,7 +182,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
                          nsDTDMode aMode)
  {
 -  ENQUEUE_PARSER_MSG(*mQueue, ParseFragment,
-+  ENQUEUE_PARSER_MSG_AND_WAIT(mQueue, ParseFragment,
++  ENQUEUE_PARSER_MSG_AND_WAIT(ParseFragment,
      (aSourceBuffer, aKey, aTagStack, aXMLMode, aMimeType, aMode));
  }
  
@@ -201,7 +201,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  nsParser::OnStartRequest(nsIRequest *request, nsISupports* aContext)
  {
 -  ENQUEUE_PARSER_MSG(*mQueue, StartRequest, (request, aContext));
-+  ENQUEUE_PARSER_MSG(mQueue, StartRequest, (request, aContext));
++  ENQUEUE_PARSER_MSG(StartRequest, (request, aContext));
  }
  
  nsresult
@@ -220,7 +220,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    NS_PRECONDITION(NS_InputStreamIsBuffered(pIStream),
                    "Must have a buffered input stream");
 -  ENQUEUE_PARSER_MSG(*mQueue, DataAvailable,
-+  ENQUEUE_PARSER_MSG(mQueue, DataAvailable,
++  ENQUEUE_PARSER_MSG(DataAvailable,
      (request, pIStream, sourceOffset, aLength));
  }
  
@@ -239,7 +239,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
                          nsresult status)
  {
 -  ENQUEUE_PARSER_MSG_AND_WAIT(*mQueue, StopRequest, (request, aContext, status));
-+  ENQUEUE_PARSER_MSG_AND_WAIT(mQueue, StopRequest, (request, aContext, status));
++  ENQUEUE_PARSER_MSG_AND_WAIT(StopRequest, (request, aContext, status));
  }
  
  nsresult
@@ -273,14 +273,16 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
 diff --git a/parser/htmlparser/src/nsParserQueue.cpp b/parser/htmlparser/src/nsParserQueue.cpp
 --- a/parser/htmlparser/src/nsParserQueue.cpp
 +++ b/parser/htmlparser/src/nsParserQueue.cpp
-@@ -1,55 +1,10 @@
+@@ -1,146 +1,98 @@
 -
  #include "nsParserQueue.h"
  #include "nsThreadUtils.h"
--
+ 
 -NS_IMPL_ISUPPORTS0(nsParserQueue::Msg)
--
--nsresult
++#define QPMT(EVENT) QUALIFIED_PROXY_MSG_TYPENAME(Parser, EVENT)
++#define IMPL_INIT(EVENT) QPMT(EVENT)::Init
+ 
+ nsresult
 -nsParserQueue::Flush(PRBool breakOnFailure)
 -{
 -  nsresult rv = NS_OK;
@@ -321,18 +323,131 @@ diff --git a/parser/htmlparser/src/nsParserQueue.cpp b/parser/htmlparser/src/nsP
 -
 -  return rv;
 -}
- 
- nsresult
- nsParserQueue::ParseUrlMsg
-              ::Init(nsIURI* aURL,
+-
+-nsresult
+-nsParserQueue::ParseUrlMsg
+-             ::Init(nsIURI* aURL,
++IMPL_INIT(ParseUrl)(nsIURI* aURL,
                      nsIRequestObserver* aListener,
                      void* aKey,
                      nsDTDMode aMode)
  {
+   NS_ENSURE_ARG_POINTER(aURL);
+   nsresult rv = aURL->GetSpec(mSpec);
+   NS_ENSURE_SUCCESS(rv, rv);
+ 
+   mListener = aListener;
+   mKey = aKey;
+   mMode = aMode;
+   return NS_OK;
+ }
+ 
+ nsresult
+-nsParserQueue::ParseBufferMsg
+-             ::Init(const nsAString& aSourceBuffer,
+-                    void* aKey,
+-                    const nsACString& aMimeType,
+-                    PRBool aLastCall,
+-                    nsDTDMode aMode)
++IMPL_INIT(ParseBuffer)(const nsAString& aSourceBuffer,
++                       void* aKey,
++                       const nsACString& aMimeType,
++                       PRBool aLastCall,
++                       nsDTDMode aMode)
+ {
+   mSourceBuffer = aSourceBuffer;
+   mKey = aKey;
+   mMimeType = aMimeType;
+   mLastCall = aLastCall;
+   mMode = aMode;
+   return NS_OK;
+ }
+ 
+ nsresult
+-nsParserQueue::StartRequestMsg
+-             ::Init(nsIRequest* aRequest,
+-                    nsISupports* aContext)
++IMPL_INIT(StartRequest)(nsIRequest* aRequest,
++                        nsISupports* aContext)
+ {
+   mRequest = aRequest;
+   mContext = aContext;
+   return NS_OK;
+ }
+ 
+-nsParserQueue::DataAvailableMsg::~DataAvailableMsg()
++QPMT(DataAvailable)::~PROXY_MSG_TYPENAME(DataAvailable)()
+ {
+   if (mBytes) {
+     delete[] mBytes;
+     mBytes = nsnull;
+   }
+ }
+ 
+ nsresult
+-nsParserQueue::DataAvailableMsg
+-             ::Init(nsIRequest* aRequest,
+-                    nsIInputStream* pIStream,
+-                    PRUint32 aSourceOffset,
+-                    PRUint32 aLength)
++IMPL_INIT(DataAvailable)(nsIRequest* aRequest,
++                         nsIInputStream* pIStream,
++                         PRUint32 aSourceOffset,
++                         PRUint32 aLength)
+ {
+   mRequest = aRequest;
+   mSourceOffset = aSourceOffset;
+   mBytes = new char[aLength + 1];
+   nsresult rv = pIStream->Read(mBytes, aLength, &mNumBytes);
+   if (NS_FAILED(rv)) {
+     Release();
+     return rv;
+   }
+   mBytes[mNumBytes] = 0;
+   return NS_OK;
+ }
+ 
+ nsresult
+-nsParserQueue::StopRequestMsg
+-             ::Init(nsIRequest* aRequest,
+-                    nsISupports* aContext,
+-                    nsresult aStatus)
++IMPL_INIT(StopRequest)(nsIRequest* aRequest,
++                       nsISupports* aContext,
++                       nsresult aStatus)
+ {
+   mRequest = aRequest;
+   mContext = aContext;
+   mStatus = aStatus;
+   return NS_OK;
+ }
+ 
+ nsresult
+-nsParserQueue::ParseFragmentMsg
+-             ::Init(const nsAString& aSourceBuffer,
+-                    void* aKey,
+-                    const nsTArray<nsString>& aTagStack,
+-                    PRBool aXMLMode,
+-                    const nsACString& aMimeType,
+-                    nsDTDMode aMode)
++IMPL_INIT(ParseFragment)(const nsAString& aSourceBuffer,
++                         void* aKey,
++                         const nsTArray<nsString>& aTagStack,
++                         PRBool aXMLMode,
++                         const nsACString& aMimeType,
++                         nsDTDMode aMode)
+ {
+   mSourceBuffer = aSourceBuffer;
+   mKey = aKey;
+   mTagStack = aTagStack;
+   mXMLMode = aXMLMode;
+   mMimeType = aMimeType;
+   mMode = aMode;
+   return NS_OK;
 diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsParserQueue.h
 --- a/parser/htmlparser/src/nsParserQueue.h
 +++ b/parser/htmlparser/src/nsParserQueue.h
-@@ -1,212 +1,57 @@
+@@ -1,327 +1,173 @@
  #ifndef __ns_parser_queue__
  #define __ns_parser_queue__
  
@@ -342,12 +457,22 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
  #include "nsIInputStream.h"
 -#include "nsDeque.h"
 -#include "nsAutoLock.h"
--
--/**
++
++// These wrapper macros will be #undef'd at the end of this file:
++#define PARSER_MSG_TYPENAME(EVENT)           PROXY_MSG_TYPENAME(EVENT)
++#define PARSER_HANDLER_TYPEDEF(PARAMS)       PROXY_HANDLER_TYPEDEF(Parser, PARAMS)
++#define DECL_PARSER_INIT_AND_HANDLER(PARAMS) DECL_PROXY_INIT_AND_HANDLER(Parser, PARAMS)
++#define INLINE_PARSER_MSG_DELIVER(PARAMS)    INLINE_PROXY_MSG_DELIVER(PARAMS)
++#define INLINE_PARSER_MSG_CTOR(EVENT)        INLINE_PROXY_MSG_CTOR(Parser, EVENT)
++#define DECL_PARSER_MSG_CLASS(EVENT)         DECL_PROXY_MSG_CLASS(EVENT)
++#define TRIVIAL_PARSER_MSG(EVENT)            TRIVIAL_PROXY_MSG(Parser, EVENT)
+ 
+ /**
 -** "Private" #defines
 -** All private #defines SHOULD be undefined when possible
--*/
--
++** nsParserQueue
+ */
+ 
 -#define SCHEDULE_FLUSH                                                        \
 -  PR_BEGIN_MACRO                                                              \
 -    if (NS_FAILED(NS_DispatchToCurrentThread(                                 \
@@ -384,55 +509,41 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
 -
 -// Can't undefine unless used exclusively by inline functions:
 -// #undef SCHEDULE_FLUSH
- 
- #define HANDLER_TYPEDEF(PARAMS)                                               \
-   typedef nsresult (nsParser::*HandlerType)PARAMS;                            \
-   HandlerType mHandler;
- 
- #define DECL_INIT_AND_TYPEDEF_HANDLER(PARAMS)                                 \
- public:                                                                       \
-   nsresult Init PARAMS;                                                       \
- private:                                                                      \
-   HANDLER_TYPEDEF(PARAMS)
- 
+-
+-#define HANDLER_TYPEDEF(PARAMS)                                               \
+-  typedef nsresult (nsParser::*HandlerType)PARAMS;                            \
+-  HandlerType mHandler;
+-
+-#define DECL_INIT_AND_TYPEDEF_HANDLER(PARAMS)                                 \
+-public:                                                                       \
+-  nsresult Init PARAMS;                                                       \
+-private:                                                                      \
+-  HANDLER_TYPEDEF(PARAMS)
+-
 -#define INLINE_MSG_CTOR(TYPE)                                                 \
 -public:                                                                       \
 -  TYPE##Msg(nsParser* aParser, HandlerType aHandler)                          \
 -    : Msg(aParser), mHandler(aHandler) {}
 -
- #define INLINE_MSG_DELIVER(PARAMS)                                            \
- public:                                                                       \
-   nsresult Deliver() {                                                        \
+-#define INLINE_MSG_DELIVER(PARAMS)                                            \
+-public:                                                                       \
+-  nsresult Deliver() {                                                        \
 -    return (mParser->*mHandler)PARAMS;                                        \
-+    return (mReceiver->*mHandler)PARAMS;                                      \
-   }
- 
+-  }
+-
 -#define TRIVIAL_MSG(TYPE)                                                     \
 -  class TYPE##Msg : public Msg {                                              \
-+#define INLINE_MSG_CTOR(EVENT)                                                \
-+public:                                                                       \
-+  EVENT##Msg(nsParser* aParser, HandlerType aHandler)                         \
-+    : nsProxyQueue<nsParser>::Msg(aParser)                                    \
-+    , mHandler(aHandler) {}
-+
-+#define TRIVIAL_MSG(EVENT)                                                    \
-+  PARSER_MSG_CLASS(EVENT) {                                                   \
-     HANDLER_TYPEDEF(())                                                       \
-   public:                                                                     \
+-    HANDLER_TYPEDEF(())                                                       \
+-  public:                                                                     \
 -    INLINE_MSG_CTOR(TYPE)                                                     \
-+    INLINE_MSG_CTOR(EVENT)                                                    \
-     INLINE_MSG_DELIVER(())                                                    \
-     nsresult Init() { return NS_OK; }                                         \
-   };
- 
-+#define PARSER_MSG_CLASS(EVENT)                                               \
-+  class EVENT##Msg : public Msg
-+
- /**
+-    INLINE_MSG_DELIVER(())                                                    \
+-    nsresult Init() { return NS_OK; }                                         \
+-  };
+-
+-/**
 -** "Public" #defines
-+** nsParserQueue
- */
- 
+-*/
+-
 -#define IMMEDIATELY_INVOKE_PARSER_MSG(EVENT, RV, INIT_ARGS)                   \
 -  PR_BEGIN_MACRO                                                              \
 -    nsParserQueue::EVENT##Msg msg(this, &nsParser::Handle##EVENT);            \
@@ -554,17 +665,28 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
 -  */
 -
 -  class ParseUrlMsg : public Msg
-+  PARSER_MSG_CLASS(ParseUrl)
++  DECL_PARSER_MSG_CLASS(ParseUrl)
    {
-     HANDLER_TYPEDEF((const nsACString &spec,
-                      nsIRequestObserver* aListener,
-                      void* aKey,
-                      nsDTDMode aMode))
+-    HANDLER_TYPEDEF((const nsACString &spec,
+-                     nsIRequestObserver* aListener,
+-                     void* aKey,
+-                     nsDTDMode aMode))
++    PARSER_HANDLER_TYPEDEF((
++      const nsACString &spec,
++      nsIRequestObserver* aListener,
++      void* aKey,
++      nsDTDMode aMode))
  
      nsCString mSpec;
      nsCOMPtr<nsIRequestObserver> mListener;
-@@ -218,17 +63,17 @@ public:
-     INLINE_MSG_DELIVER((mSpec, mListener, mKey, mMode))
+     void* mKey;
+     nsDTDMode mMode;
+ 
+   public:
+-    INLINE_MSG_CTOR(ParseUrl)
+-    INLINE_MSG_DELIVER((mSpec, mListener, mKey, mMode))
++    INLINE_PARSER_MSG_CTOR(ParseUrl)
++    INLINE_PARSER_MSG_DELIVER((mSpec, mListener, mKey, mMode))
  
      nsresult Init(nsIURI* aURL,
                    nsIRequestObserver* aListener,
@@ -573,49 +695,69 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
    };
  
 -  class ParseBufferMsg : public Msg
-+  PARSER_MSG_CLASS(ParseBuffer)
++  DECL_PARSER_MSG_CLASS(ParseBuffer)
    {
-     DECL_INIT_AND_TYPEDEF_HANDLER((const nsAString& aSourceBuffer,
-                                    void* aKey,
-                                    const nsACString& aMimeType,
-                                    PRBool aLastCall,
-                                    nsDTDMode aMode))
+-    DECL_INIT_AND_TYPEDEF_HANDLER((const nsAString& aSourceBuffer,
+-                                   void* aKey,
+-                                   const nsACString& aMimeType,
+-                                   PRBool aLastCall,
+-                                   nsDTDMode aMode))
++    DECL_PARSER_INIT_AND_HANDLER((
++      const nsAString& aSourceBuffer,
++      void* aKey,
++      const nsACString& aMimeType,
++      PRBool aLastCall,
++      nsDTDMode aMode))
++
      nsString mSourceBuffer;
      void* mKey;
-@@ -236,29 +81,29 @@ public:
+     nsCString mMimeType;
      PRBool mLastCall;
      nsDTDMode mMode;
  
    public:
-     INLINE_MSG_CTOR(ParseBuffer)
-     INLINE_MSG_DELIVER((mSourceBuffer, mKey, mMimeType, mLastCall, mMode))
+-    INLINE_MSG_CTOR(ParseBuffer)
+-    INLINE_MSG_DELIVER((mSourceBuffer, mKey, mMimeType, mLastCall, mMode))
++    INLINE_PARSER_MSG_CTOR(ParseBuffer)
++    INLINE_PARSER_MSG_DELIVER((mSourceBuffer, mKey, mMimeType, mLastCall, mMode))
    };
  
 -  class StartRequestMsg : public Msg
-+  PARSER_MSG_CLASS(StartRequest)
++  DECL_PARSER_MSG_CLASS(StartRequest)
    {
-     DECL_INIT_AND_TYPEDEF_HANDLER((nsIRequest* aRequest,
-                                    nsISupports* aContext))
+-    DECL_INIT_AND_TYPEDEF_HANDLER((nsIRequest* aRequest,
+-                                   nsISupports* aContext))
++    DECL_PARSER_INIT_AND_HANDLER((
++      nsIRequest* aRequest,
++      nsISupports* aContext))
++
      nsCOMPtr<nsIRequest> mRequest;
      nsCOMPtr<nsISupports> mContext;
  
    public:
-     INLINE_MSG_CTOR(StartRequest)
-     INLINE_MSG_DELIVER((mRequest, mContext))
+-    INLINE_MSG_CTOR(StartRequest)
+-    INLINE_MSG_DELIVER((mRequest, mContext))
++    INLINE_PARSER_MSG_CTOR(StartRequest)
++    INLINE_PARSER_MSG_DELIVER((mRequest, mContext))
    };
  
 -  class DataAvailableMsg : public Msg
-+  PARSER_MSG_CLASS(DataAvailable)
++  DECL_PARSER_MSG_CLASS(DataAvailable)
    {
-     HANDLER_TYPEDEF((nsIRequest*, char*, PRUint32, PRUint32))
+-    HANDLER_TYPEDEF((nsIRequest*, char*, PRUint32, PRUint32))
++    PARSER_HANDLER_TYPEDEF((nsIRequest*, char*, PRUint32, PRUint32))
  
      nsCOMPtr<nsIRequest> mRequest;
      char* mBytes;
      PRUint32 mNumBytes, mSourceOffset;
  
    public:
-@@ -267,31 +112,31 @@ public:
-     INLINE_MSG_DELIVER((mRequest, mBytes, mNumBytes, mSourceOffset))
+-    INLINE_MSG_CTOR(DataAvailable)
+-    ~DataAvailableMsg();
+-    INLINE_MSG_DELIVER((mRequest, mBytes, mNumBytes, mSourceOffset))
++    INLINE_PARSER_MSG_CTOR(DataAvailable)
++   ~PARSER_MSG_TYPENAME(DataAvailable)();
++    INLINE_PARSER_MSG_DELIVER((mRequest, mBytes, mNumBytes, mSourceOffset))
  
      nsresult Init(nsIRequest* aRequest,
                    nsIInputStream* pIStream,
@@ -624,109 +766,100 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
    };
  
 -  class StopRequestMsg : public Msg
-+  PARSER_MSG_CLASS(StopRequest)
++  DECL_PARSER_MSG_CLASS(StopRequest)
    {
-     DECL_INIT_AND_TYPEDEF_HANDLER((nsIRequest* aRequest,
-                                    nsISupports* aContext,
-                                    nsresult aStatus))
+-    DECL_INIT_AND_TYPEDEF_HANDLER((nsIRequest* aRequest,
+-                                   nsISupports* aContext,
+-                                   nsresult aStatus))
++    DECL_PARSER_INIT_AND_HANDLER((
++      nsIRequest* aRequest,
++      nsISupports* aContext,
++      nsresult aStatus))
++
      nsCOMPtr<nsIRequest> mRequest;
      nsCOMPtr<nsISupports> mContext;
      nsresult mStatus;
  
    public:
-     INLINE_MSG_CTOR(StopRequest)
-     INLINE_MSG_DELIVER((mRequest, mContext, mStatus))
+-    INLINE_MSG_CTOR(StopRequest)
+-    INLINE_MSG_DELIVER((mRequest, mContext, mStatus))
++    INLINE_PARSER_MSG_CTOR(StopRequest)
++    INLINE_PARSER_MSG_DELIVER((mRequest, mContext, mStatus))
    };
  
 -  class ParseFragmentMsg : public Msg
-+  PARSER_MSG_CLASS(ParseFragment)
++  DECL_PARSER_MSG_CLASS(ParseFragment)
    {
-     DECL_INIT_AND_TYPEDEF_HANDLER((
+-    DECL_INIT_AND_TYPEDEF_HANDLER((
++    DECL_PARSER_INIT_AND_HANDLER((
        const nsAString& aSourceBuffer,
        void* aKey,
        const nsTArray<nsString>& aTagStack,
        PRBool aXMLMode,
        const nsACString& aMimeType,
        nsDTDMode aMode))
-@@ -313,15 +158,77 @@ public:
-   TRIVIAL_MSG(UnblockParser)
-   TRIVIAL_MSG(ContinueInterruptedParsing)
-   TRIVIAL_MSG(ContinueParsing)
-   TRIVIAL_MSG(CancelParsingEvents)
+ 
+     nsString mSourceBuffer;
+     void* mKey;
+     nsTArray<nsString> mTagStack;
+     PRBool mXMLMode;
+     nsCString mMimeType;
+     nsDTDMode mMode;
+ 
+   public:
+-    INLINE_MSG_CTOR(ParseFragment)
+-    INLINE_MSG_DELIVER((mSourceBuffer, mKey, mTagStack, mXMLMode, mMimeType, mMode))
++    INLINE_PARSER_MSG_CTOR(ParseFragment)
++    INLINE_PARSER_MSG_DELIVER((mSourceBuffer, mKey, mTagStack, mXMLMode, mMimeType, mMode))
+   };
+ 
+-  TRIVIAL_MSG(Terminate)
+-  TRIVIAL_MSG(BlockParser)
+-  TRIVIAL_MSG(UnblockParser)
+-  TRIVIAL_MSG(ContinueInterruptedParsing)
+-  TRIVIAL_MSG(ContinueParsing)
+-  TRIVIAL_MSG(CancelParsingEvents)
++  TRIVIAL_PARSER_MSG(Terminate)
++  TRIVIAL_PARSER_MSG(BlockParser)
++  TRIVIAL_PARSER_MSG(UnblockParser)
++  TRIVIAL_PARSER_MSG(ContinueInterruptedParsing)
++  TRIVIAL_PARSER_MSG(ContinueParsing)
++  TRIVIAL_PARSER_MSG(CancelParsingEvents)
  
  };
  
  // Sayonara, macro scum!
-+#undef PARSER_MSG_CLASS
- #undef HANDLER_TYPEDEF
- #undef DECL_INIT_AND_TYPEDEF_HANDLER
-+#undef INLINE_MSG_DELIVER
- #undef INLINE_MSG_CTOR
+-#undef HANDLER_TYPEDEF
+-#undef DECL_INIT_AND_TYPEDEF_HANDLER
+-#undef INLINE_MSG_CTOR
 -#undef INLINE_MSG_DELIVER
- #undef TRIVIAL_MSG
- 
-+/**
-+** "Private" #defines
-+** All private #defines SHOULD be undefined when possible
-+*/
-+
-+#define PARSER_QUEUE_ASYNC_FLUSH                                              \
-+  if (NS_FAILED(NS_DispatchToCurrentThread(                                   \
-+        NS_NEW_RUNNABLE_METHOD(nsParser, this, FlushQueue))))                 \
-+    NS_ASSERTION(PR_FALSE, "Failed to schedule Flush event");
-+
-+#define PRIVATE_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                       \
-+  NS_ASSERTION(NS_IsMainThread(),                                             \
-+    "Enqueueing off main thread");                                            \
-+  nsParserQueue::EVENT##Msg* msg =                                            \
-+    new nsParserQueue::EVENT##Msg(this, &nsParser::Handle##EVENT);            \
-+  nsresult rv = msg                                                           \
-+    ? msg->Init INIT_ARGS                                                     \
-+    : NS_ERROR_OUT_OF_MEMORY;                                                 \
-+  if (NS_SUCCEEDED(rv)) {                                                     \
-+    nsAutoLock synchronized(*Q);                                              \
-+    (Q)->Push(msg);                                                           \
-+  } else delete msg;                                                          \
-+  PARSER_QUEUE_ASYNC_FLUSH
+-#undef TRIVIAL_MSG
++#undef PARSER_MSG_TYPENAME
++#undef DECL_PARSER_MSG_CLASS
++#undef PARSER_HANDLER_TYPEDEF
++#undef DECL_PARSER_INIT_AND_HANDLER
++#undef INLINE_PARSER_MSG_DELIVER
++#undef INLINE_PARSER_MSG_CTOR
++#undef DECL_PARSER_MSG_CLASS
++#undef TRIVIAL_PARSER_MSG
 +
 +/**
 +** "Public" #defines
 +*/
 +
 +#define IMMEDIATELY_INVOKE_PARSER_MSG(EVENT, RV, INIT_ARGS)                   \
-+  PR_BEGIN_MACRO                                                              \
-+    nsParserQueue::EVENT##Msg msg(this, &nsParser::Handle##EVENT);            \
-+    RV = msg.Init INIT_ARGS;                                                  \
-+    if (NS_SUCCEEDED(RV))                                                     \
-+      RV = msg.Deliver();                                                     \
-+  PR_END_MACRO
++  IMMEDIATELY_INVOKE_PROXY_MSG(Parser, EVENT, RV, INIT_ARGS)
 +
-+#define ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                               \
-+  PR_BEGIN_MACRO                                                              \
-+    PRIVATE_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                           \
-+    return rv;                                                                \
-+  PR_END_MACRO
++#define ENQUEUE_PARSER_MSG(EVENT, INIT_ARGS)                                  \
++  ENQUEUE_PROXY_MSG(Parser, mQueue, EVENT, INIT_ARGS)
 +
-+#define VOID_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                          \
-+  PR_BEGIN_MACRO                                                              \
-+    PRIVATE_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS)                           \
-+  PR_END_MACRO
++#define VOID_ENQUEUE_PARSER_MSG(EVENT, INIT_ARGS)                             \
++  VOID_ENQUEUE_PROXY_MSG(Parser, mQueue, EVENT, INIT_ARGS)
 +
-+#define PARSER_SYNC_OPERATION(Q) msg->Wait()
-+// TODO switch back to this version once the notifier and waiter are on different threads
-+#undef  PARSER_SYNC_OPERATION
-+
-+#ifndef PARSER_SYNC_OPERATION
-+#define PARSER_SYNC_OPERATION(Q) (Q)->Flush()
++#define ENQUEUE_PARSER_MSG_AND_WAIT(EVENT, INIT_ARGS)                         \
++  ENQUEUE_PROXY_MSG_AND_WAIT(Parser, mQueue, EVENT, INIT_ARGS)
+ 
  #endif
-+
-+#define ENQUEUE_PARSER_MSG_AND_WAIT(Q, EVENT, INIT_ARGS)                      \
-+  PR_BEGIN_MACRO                                                              \
-+    PRIVATE_ENQUEUE_PARSER_MSG(Q, EVENT, INIT_ARGS);                          \
-+    return PARSER_SYNC_OPERATION(Q);                                          \
-+  PR_END_MACRO
-+
-+#endif
 diff --git a/parser/htmlparser/src/nsProxyQueue.cpp b/parser/htmlparser/src/nsProxyQueue.cpp
 new file mode 100644
 --- /dev/null
@@ -787,12 +920,11 @@ new file mode 100644
 +
 +  return rv;
 +}
-\ No newline at end of file
 diff --git a/parser/htmlparser/src/nsProxyQueue.h b/parser/htmlparser/src/nsProxyQueue.h
 new file mode 100644
 --- /dev/null
 +++ b/parser/htmlparser/src/nsProxyQueue.h
-@@ -0,0 +1,97 @@
+@@ -0,0 +1,235 @@
 +#ifndef __ns_proxy_queue__
 +#define __ns_proxy_queue__
 +
@@ -853,6 +985,7 @@ new file mode 100644
 +  class Msg : public nsISupports
 +  {
 +    NS_DECL_ISUPPORTS
++
 +  public:
 +    // TODO avoid this instantiation if not waiting?
 +    // TODO determine a more specific type name?
@@ -889,5 +1022,141 @@ new file mode 100644
 +
 +#include "nsProxyQueue.cpp"
 +
++/**
++** nsProxyQueue convenience macros
++* ================================
++* These macros save typing and enforce a number of invariants.  They are
++* meant to be wrapped by macros with simpler signatures wherever subclasses
++* of nsProxyQueue are defined (e.g., in nsParserQueue.h).
++*
++* By convention,
++*
++*   - CLASS is the subclass-specific part of the subclass name.  For example,
++*     if the signature of a subclass is
++*
++*       class nsParserQueue : public nsProxyQueue<nsParser>
++*
++*     then CLASS is expected to be Parser, so that the macro expansions
++*     ns##CLASS##Queue and ns##CLASS correctly identify nsParserQueue and
++*     T = nsParser.
++*
++*   - Q is a pointer to the queue.  The expression substituted for Q is
++*     evaluated only once.
++*
++*   - EVENT is the kind of message being enqueued or invoked.  The EVENT
++*     macro argument constrains the name of the message type and the name of
++*     the handler method: ns##CLASS##Queue::EVENT##Msg must expand to the
++*     message type and ns##CLASS::Handle##EVENT must expand to the name of the
++*     method invoked by ns##CLASS##Queue::EVENT##Msg::Deliver.
++*
++*   - INIT_ARGS is a parentheses-enclosed list of arguments to be passed to
++*     the ns##CLASS##Queue::EVENT##Msg::Init method.
++*/
++
++/**
++** Msg-implementation convenience macros
++*/
++
++#define PROXY_MSG_TYPENAME(EVENT)        EVENT##Msg
++#define PROXY_T_TYPENAME(CLASS)          ns##CLASS
++#define PROXY_SUBCLASS_NAME(CLASS)       PROXY_T_TYPENAME(CLASS##Queue)
++#define PROXY_HANDLER_METHOD_NAME(EVENT) Handle##EVENT
++
++#define PROXY_HANDLER_TYPEDEF(CLASS, PARAMS)                                  \
++private:                                                                      \
++  typedef nsresult (PROXY_T_TYPENAME(CLASS)::*HandlerType)PARAMS;             \
++  HandlerType mHandler;
++
++#define DECL_PROXY_INIT_AND_HANDLER(CLASS, PARAMS)                            \
++public:                                                                       \
++  nsresult Init PARAMS;                                                       \
++  PROXY_HANDLER_TYPEDEF(CLASS, PARAMS)
++
++#define INLINE_PROXY_MSG_DELIVER(PARAMS)                                      \
++public:                                                                       \
++  nsresult Deliver() {                                                        \
++    return (mReceiver->*mHandler)PARAMS;                                      \
++  }
++
++#define INLINE_PROXY_MSG_CTOR(CLASS, EVENT)                                   \
++public:                                                                       \
++  PROXY_MSG_TYPENAME(EVENT)(PROXY_T_TYPENAME(CLASS)* aReceiver,               \
++                            HandlerType aHandler)                             \
++    : nsProxyQueue<PROXY_T_TYPENAME(CLASS)>::Msg(aReceiver)                   \
++    , mHandler(aHandler) {}
++
++#define DECL_PROXY_MSG_CLASS(EVENT)                                           \
++  class PROXY_MSG_TYPENAME(EVENT) : public Msg
++
++#define TRIVIAL_PROXY_MSG(CLASS, EVENT)                                       \
++  DECL_PROXY_MSG_CLASS(EVENT) {                                               \
++    PROXY_HANDLER_TYPEDEF(CLASS, ())                                          \
++  public:                                                                     \
++    INLINE_PROXY_MSG_CTOR(CLASS, EVENT)                                       \
++    INLINE_PROXY_MSG_DELIVER(())                                              \
++    nsresult Init() { return NS_OK; }                                         \
++  };
++
++/**
++** Queue manipulation convenience macros
++*/
++
++#define QUALIFIED_PROXY_MSG_TYPENAME(CLASS, EVENT)                            \
++  PROXY_SUBCLASS_NAME(CLASS)::PROXY_MSG_TYPENAME(EVENT)
++
++#define ALLOC_NEW_PROXY_MSG(VAR, CLASS, EVENT)                                \
++  QUALIFIED_PROXY_MSG_TYPENAME(CLASS, EVENT)* VAR =                           \
++    new QUALIFIED_PROXY_MSG_TYPENAME(CLASS, EVENT)(this,                      \
++      &PROXY_T_TYPENAME(CLASS)::PROXY_HANDLER_METHOD_NAME(EVENT))
++
++#define PRIVATE_ENQUEUE_PROXY_MSG(CLASS, Q, EVENT, INIT_ARGS)                 \
++  NS_ASSERTION(NS_IsMainThread(), "Enqueueing off main thread");              \
++  PROXY_SUBCLASS_NAME(CLASS)* const q = Q;                                    \
++  ALLOC_NEW_PROXY_MSG(msg, CLASS, EVENT);                                     \
++  nsresult rv = msg ? msg->Init INIT_ARGS                                     \
++                    : NS_ERROR_OUT_OF_MEMORY;                                 \
++  if (NS_SUCCEEDED(rv)) {                                                     \
++    nsAutoLock synchronized(*q);                                              \
++    q->Push(msg);                                                             \
++  } else delete msg;                                                          \
++  if (msg && NS_FAILED(NS_DispatchToCurrentThread(                            \
++               NS_NEW_RUNNABLE_METHOD(PROXY_T_TYPENAME(CLASS),                \
++                                      this, FlushQueue)))) {                  \
++    NS_ASSERTION(PR_FALSE, "Failed to schedule Flush event");                 \
++  }
++
++#define ENQUEUE_PROXY_MSG(CLASS, Q, EVENT, INIT_ARGS)                         \
++  PR_BEGIN_MACRO                                                              \
++    PRIVATE_ENQUEUE_PROXY_MSG(CLASS, Q, EVENT, INIT_ARGS)                     \
++    return rv;                                                                \
++  PR_END_MACRO
++
++#define VOID_ENQUEUE_PROXY_MSG(CLASS, Q, EVENT, INIT_ARGS)                    \
++  PR_BEGIN_MACRO                                                              \
++    PRIVATE_ENQUEUE_PROXY_MSG(CLASS, Q, EVENT, INIT_ARGS)                     \
++  PR_END_MACRO
++
++#define PROXY_SYNC_OPERATION(IGNORED) msg->Wait()
++// TODO switch back to this version once the notifier and waiter are on different threads
++#undef  PROXY_SYNC_OPERATION
++
++#ifndef PROXY_SYNC_OPERATION
++#define PROXY_SYNC_OPERATION(Q) (Q)->Flush()
 +#endif
-\ No newline at end of file
++
++#define ENQUEUE_PROXY_MSG_AND_WAIT(CLASS, Q, EVENT, INIT_ARGS)                \
++  PR_BEGIN_MACRO                                                              \
++    PRIVATE_ENQUEUE_PROXY_MSG(CLASS, Q, EVENT, INIT_ARGS);                    \
++    return PROXY_SYNC_OPERATION(q);                                           \
++  PR_END_MACRO
++
++#define IMMEDIATELY_INVOKE_PROXY_MSG(CLASS, EVENT, RV, INIT_ARGS)             \
++  PR_BEGIN_MACRO                                                              \
++    QUALIFIED_PROXY_MSG_TYPENAME(CLASS, EVENT)                                \
++      msg(this, &PROXY_T_TYPENAME(CLASS)::PROXY_HANDLER_METHOD_NAME(EVENT));  \
++    RV = msg.Init INIT_ARGS;                                                  \
++    if (NS_SUCCEEDED(RV))                                                     \
++      RV = msg.Deliver();                                                     \
++  PR_END_MACRO
++
++#endif
