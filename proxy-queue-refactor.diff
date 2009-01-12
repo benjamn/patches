@@ -191,6 +191,70 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
                                void* aKey,
                                const nsTArray<nsString>& aTagStack,
                                PRBool aXMLMode,
+@@ -2172,17 +2172,17 @@ nsParser::HandleParseFragment(const nsAS
+     // Ensure that the buffer is not empty. Because none of the DTDs care
+     // about leading whitespace, this doesn't change the result.
+     theContext.AssignLiteral(" ");
+   }
+ 
+   // First, parse the context to build up the DTD's tag stack. Note that we
+   // pass PR_FALSE for the aLastCall parameter.
+ 
+-  IMMEDIATELY_INVOKE_PARSER_MSG(ParseBuffer, result,
++  IMMEDIATELY_DELIVER_PARSER_MSG(ParseBuffer, result,
+     (theContext, (void*)&theContext, aMimeType, PR_FALSE, aMode));
+ 
+   if (NS_FAILED(result)) {
+     mFlags |= NS_PARSER_FLAG_OBSERVERS_ENABLED;
+     return result;
+   }
+ 
+   if (!mSink) {
+@@ -2233,23 +2233,23 @@ nsParser::HandleParseFragment(const nsAS
+   }
+ 
+   fragSink->WillBuildContent();
+   // Now, parse the actual content. Note that this is the last call
+   // for HTML content, but for XML, we will want to build and parse
+   // the end tags.  However, if tagStack is empty, it's the last call
+   // for XML as well.
+   if (!aXMLMode || (theCount == 0)) {
+-    IMMEDIATELY_INVOKE_PARSER_MSG(ParseBuffer, result,
++    IMMEDIATELY_DELIVER_PARSER_MSG(ParseBuffer, result,
+       (aSourceBuffer, &theContext, aMimeType, PR_TRUE, aMode));
+     fragSink->DidBuildContent();
+   } else {
+     // Add an end tag chunk, so expat will read the whole source buffer,
+     // and not worry about ']]' etc.
+-    IMMEDIATELY_INVOKE_PARSER_MSG(ParseBuffer, result,
++    IMMEDIATELY_DELIVER_PARSER_MSG(ParseBuffer, result,
+       (aSourceBuffer + NS_LITERAL_STRING("</"),
+        &theContext, aMimeType, PR_FALSE, aMode));
+ 
+     fragSink->DidBuildContent();
+ 
+     if (NS_SUCCEEDED(result)) {
+       nsAutoString endContext;       
+       for (theIndex = 0; theIndex < theCount; theIndex++) {
+@@ -2265,17 +2265,17 @@ nsParser::HandleParseFragment(const nsAS
+           endContext.Append(thisTag);
+         } else {
+           endContext.Append(Substring(thisTag,0,endOfTag));
+         }
+ 
+         endContext.AppendLiteral(">");
+       }
+ 
+-      IMMEDIATELY_INVOKE_PARSER_MSG(ParseBuffer, result,
++      IMMEDIATELY_DELIVER_PARSER_MSG(ParseBuffer, result,
+         (endContext, &theContext, aMimeType, PR_TRUE, aMode));
+     }
+   }
+ 
+   mFlags |= NS_PARSER_FLAG_OBSERVERS_ENABLED;
+ 
+   return result;
+ }
 @@ -2480,17 +2480,17 @@ nsParser::BuildModel()
  
  /*******************************************************************
@@ -447,7 +511,7 @@ diff --git a/parser/htmlparser/src/nsParserQueue.cpp b/parser/htmlparser/src/nsP
 diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsParserQueue.h
 --- a/parser/htmlparser/src/nsParserQueue.h
 +++ b/parser/htmlparser/src/nsParserQueue.h
-@@ -1,327 +1,173 @@
+@@ -1,327 +1,166 @@
  #ifndef __ns_parser_queue__
  #define __ns_parser_queue__
  
@@ -459,12 +523,9 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
 -#include "nsAutoLock.h"
 +
 +// These wrapper macros will be #undef'd at the end of this file:
-+#define PARSER_MSG_TYPENAME(EVENT)           PROXY_MSG_TYPENAME(EVENT)
 +#define PARSER_HANDLER_TYPEDEF(PARAMS)       PROXY_HANDLER_TYPEDEF(Parser, PARAMS)
 +#define DECL_PARSER_INIT_AND_HANDLER(PARAMS) DECL_PROXY_INIT_AND_HANDLER(Parser, PARAMS)
-+#define INLINE_PARSER_MSG_DELIVER(PARAMS)    INLINE_PROXY_MSG_DELIVER(PARAMS)
 +#define INLINE_PARSER_MSG_CTOR(EVENT)        INLINE_PROXY_MSG_CTOR(Parser, EVENT)
-+#define DECL_PARSER_MSG_CLASS(EVENT)         DECL_PROXY_MSG_CLASS(EVENT)
 +#define TRIVIAL_PARSER_MSG(EVENT)            TRIVIAL_PROXY_MSG(Parser, EVENT)
  
  /**
@@ -665,7 +726,7 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
 -  */
 -
 -  class ParseUrlMsg : public Msg
-+  DECL_PARSER_MSG_CLASS(ParseUrl)
++  DECL_PROXY_MSG_SUBCLASS(ParseUrl)
    {
 -    HANDLER_TYPEDEF((const nsACString &spec,
 -                     nsIRequestObserver* aListener,
@@ -686,7 +747,7 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
 -    INLINE_MSG_CTOR(ParseUrl)
 -    INLINE_MSG_DELIVER((mSpec, mListener, mKey, mMode))
 +    INLINE_PARSER_MSG_CTOR(ParseUrl)
-+    INLINE_PARSER_MSG_DELIVER((mSpec, mListener, mKey, mMode))
++    INLINE_PROXY_MSG_DELIVER((mSpec, mListener, mKey, mMode))
  
      nsresult Init(nsIURI* aURL,
                    nsIRequestObserver* aListener,
@@ -695,7 +756,7 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
    };
  
 -  class ParseBufferMsg : public Msg
-+  DECL_PARSER_MSG_CLASS(ParseBuffer)
++  DECL_PROXY_MSG_SUBCLASS(ParseBuffer)
    {
 -    DECL_INIT_AND_TYPEDEF_HANDLER((const nsAString& aSourceBuffer,
 -                                   void* aKey,
@@ -719,11 +780,11 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
 -    INLINE_MSG_CTOR(ParseBuffer)
 -    INLINE_MSG_DELIVER((mSourceBuffer, mKey, mMimeType, mLastCall, mMode))
 +    INLINE_PARSER_MSG_CTOR(ParseBuffer)
-+    INLINE_PARSER_MSG_DELIVER((mSourceBuffer, mKey, mMimeType, mLastCall, mMode))
++    INLINE_PROXY_MSG_DELIVER((mSourceBuffer, mKey, mMimeType, mLastCall, mMode))
    };
  
 -  class StartRequestMsg : public Msg
-+  DECL_PARSER_MSG_CLASS(StartRequest)
++  DECL_PROXY_MSG_SUBCLASS(StartRequest)
    {
 -    DECL_INIT_AND_TYPEDEF_HANDLER((nsIRequest* aRequest,
 -                                   nsISupports* aContext))
@@ -738,11 +799,11 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
 -    INLINE_MSG_CTOR(StartRequest)
 -    INLINE_MSG_DELIVER((mRequest, mContext))
 +    INLINE_PARSER_MSG_CTOR(StartRequest)
-+    INLINE_PARSER_MSG_DELIVER((mRequest, mContext))
++    INLINE_PROXY_MSG_DELIVER((mRequest, mContext))
    };
  
 -  class DataAvailableMsg : public Msg
-+  DECL_PARSER_MSG_CLASS(DataAvailable)
++  DECL_PROXY_MSG_SUBCLASS(DataAvailable)
    {
 -    HANDLER_TYPEDEF((nsIRequest*, char*, PRUint32, PRUint32))
 +    PARSER_HANDLER_TYPEDEF((nsIRequest*, char*, PRUint32, PRUint32))
@@ -756,8 +817,8 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
 -    ~DataAvailableMsg();
 -    INLINE_MSG_DELIVER((mRequest, mBytes, mNumBytes, mSourceOffset))
 +    INLINE_PARSER_MSG_CTOR(DataAvailable)
-+   ~PARSER_MSG_TYPENAME(DataAvailable)();
-+    INLINE_PARSER_MSG_DELIVER((mRequest, mBytes, mNumBytes, mSourceOffset))
++   ~PROXY_MSG_TYPENAME(DataAvailable)();
++    INLINE_PROXY_MSG_DELIVER((mRequest, mBytes, mNumBytes, mSourceOffset))
  
      nsresult Init(nsIRequest* aRequest,
                    nsIInputStream* pIStream,
@@ -766,7 +827,7 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
    };
  
 -  class StopRequestMsg : public Msg
-+  DECL_PARSER_MSG_CLASS(StopRequest)
++  DECL_PROXY_MSG_SUBCLASS(StopRequest)
    {
 -    DECL_INIT_AND_TYPEDEF_HANDLER((nsIRequest* aRequest,
 -                                   nsISupports* aContext,
@@ -784,11 +845,11 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
 -    INLINE_MSG_CTOR(StopRequest)
 -    INLINE_MSG_DELIVER((mRequest, mContext, mStatus))
 +    INLINE_PARSER_MSG_CTOR(StopRequest)
-+    INLINE_PARSER_MSG_DELIVER((mRequest, mContext, mStatus))
++    INLINE_PROXY_MSG_DELIVER((mRequest, mContext, mStatus))
    };
  
 -  class ParseFragmentMsg : public Msg
-+  DECL_PARSER_MSG_CLASS(ParseFragment)
++  DECL_PROXY_MSG_SUBCLASS(ParseFragment)
    {
 -    DECL_INIT_AND_TYPEDEF_HANDLER((
 +    DECL_PARSER_INIT_AND_HANDLER((
@@ -810,7 +871,7 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
 -    INLINE_MSG_CTOR(ParseFragment)
 -    INLINE_MSG_DELIVER((mSourceBuffer, mKey, mTagStack, mXMLMode, mMimeType, mMode))
 +    INLINE_PARSER_MSG_CTOR(ParseFragment)
-+    INLINE_PARSER_MSG_DELIVER((mSourceBuffer, mKey, mTagStack, mXMLMode, mMimeType, mMode))
++    INLINE_PROXY_MSG_DELIVER((mSourceBuffer, mKey, mTagStack, mXMLMode, mMimeType, mMode))
    };
  
 -  TRIVIAL_MSG(Terminate)
@@ -834,21 +895,17 @@ diff --git a/parser/htmlparser/src/nsParserQueue.h b/parser/htmlparser/src/nsPar
 -#undef INLINE_MSG_CTOR
 -#undef INLINE_MSG_DELIVER
 -#undef TRIVIAL_MSG
-+#undef PARSER_MSG_TYPENAME
-+#undef DECL_PARSER_MSG_CLASS
 +#undef PARSER_HANDLER_TYPEDEF
 +#undef DECL_PARSER_INIT_AND_HANDLER
-+#undef INLINE_PARSER_MSG_DELIVER
 +#undef INLINE_PARSER_MSG_CTOR
-+#undef DECL_PARSER_MSG_CLASS
 +#undef TRIVIAL_PARSER_MSG
 +
 +/**
 +** "Public" #defines
 +*/
 +
-+#define IMMEDIATELY_INVOKE_PARSER_MSG(EVENT, RV, INIT_ARGS)                   \
-+  IMMEDIATELY_INVOKE_PROXY_MSG(Parser, EVENT, RV, INIT_ARGS)
++#define IMMEDIATELY_DELIVER_PARSER_MSG(EVENT, RV, INIT_ARGS)                  \
++  IMMEDIATELY_DELIVER_PROXY_MSG(Parser, EVENT, RV, INIT_ARGS)
 +
 +#define ENQUEUE_PARSER_MSG(EVENT, INIT_ARGS)                                  \
 +  ENQUEUE_PROXY_MSG(Parser, mQueue, EVENT, INIT_ARGS)
@@ -924,7 +981,7 @@ diff --git a/parser/htmlparser/src/nsProxyQueue.h b/parser/htmlparser/src/nsProx
 new file mode 100644
 --- /dev/null
 +++ b/parser/htmlparser/src/nsProxyQueue.h
-@@ -0,0 +1,235 @@
+@@ -0,0 +1,244 @@
 +#ifndef __ns_proxy_queue__
 +#define __ns_proxy_queue__
 +
@@ -1054,13 +1111,28 @@ new file mode 100644
 +*/
 +
 +/**
-+** Msg-implementation convenience macros
++** Naming convention enforcement macros
 +*/
 +
++// These two macros define the relationship between Msg subclass names and
++// the names of the handler methods called by Deliver:
 +#define PROXY_MSG_TYPENAME(EVENT)        EVENT##Msg
++#define PROXY_HANDLER_METHOD_NAME(EVENT) Handle##EVENT
++
++#define DECL_PROXY_MSG_SUBCLASS(EVENT)                                        \
++  class PROXY_MSG_TYPENAME(EVENT) : public Msg
++
++// These two macros define the naming convention for subclasses of
++// nsProxyQueue<PROXY_T_TYPENAME(CLASS)>:
 +#define PROXY_T_TYPENAME(CLASS)          ns##CLASS
 +#define PROXY_SUBCLASS_NAME(CLASS)       PROXY_T_TYPENAME(CLASS##Queue)
-+#define PROXY_HANDLER_METHOD_NAME(EVENT) Handle##EVENT
++
++#define QUALIFIED_PROXY_MSG_TYPENAME(CLASS, EVENT)                            \
++  PROXY_SUBCLASS_NAME(CLASS)::PROXY_MSG_TYPENAME(EVENT)
++
++/**
++** Msg-implementation convenience macros
++*/
 +
 +#define PROXY_HANDLER_TYPEDEF(CLASS, PARAMS)                                  \
 +private:                                                                      \
@@ -1085,11 +1157,8 @@ new file mode 100644
 +    : nsProxyQueue<PROXY_T_TYPENAME(CLASS)>::Msg(aReceiver)                   \
 +    , mHandler(aHandler) {}
 +
-+#define DECL_PROXY_MSG_CLASS(EVENT)                                           \
-+  class PROXY_MSG_TYPENAME(EVENT) : public Msg
-+
 +#define TRIVIAL_PROXY_MSG(CLASS, EVENT)                                       \
-+  DECL_PROXY_MSG_CLASS(EVENT) {                                               \
++  DECL_PROXY_MSG_SUBCLASS(EVENT) {                                            \
 +    PROXY_HANDLER_TYPEDEF(CLASS, ())                                          \
 +  public:                                                                     \
 +    INLINE_PROXY_MSG_CTOR(CLASS, EVENT)                                       \
@@ -1100,9 +1169,6 @@ new file mode 100644
 +/**
 +** Queue manipulation convenience macros
 +*/
-+
-+#define QUALIFIED_PROXY_MSG_TYPENAME(CLASS, EVENT)                            \
-+  PROXY_SUBCLASS_NAME(CLASS)::PROXY_MSG_TYPENAME(EVENT)
 +
 +#define ALLOC_NEW_PROXY_MSG(VAR, CLASS, EVENT)                                \
 +  QUALIFIED_PROXY_MSG_TYPENAME(CLASS, EVENT)* VAR =                           \
@@ -1150,7 +1216,7 @@ new file mode 100644
 +    return PROXY_SYNC_OPERATION(q);                                           \
 +  PR_END_MACRO
 +
-+#define IMMEDIATELY_INVOKE_PROXY_MSG(CLASS, EVENT, RV, INIT_ARGS)             \
++#define IMMEDIATELY_DELIVER_PROXY_MSG(CLASS, EVENT, RV, INIT_ARGS)            \
 +  PR_BEGIN_MACRO                                                              \
 +    QUALIFIED_PROXY_MSG_TYPENAME(CLASS, EVENT)                                \
 +      msg(this, &PROXY_T_TYPENAME(CLASS)::PROXY_HANDLER_METHOD_NAME(EVENT));  \
