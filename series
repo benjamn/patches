@@ -1,6 +1,7 @@
 kill-jsd_assert.diff
 safe-suspect-forget.diff
 hdst-index-bound.diff
+dtd-const-mparser.diff
 parser-copy-data.diff
 parser-msg-queue.diff
 proxy-queue-refactor.diff

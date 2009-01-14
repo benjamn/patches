@@ -1,0 +1,329 @@
+diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD.h
+--- a/parser/htmlparser/public/nsIDTD.h
++++ b/parser/htmlparser/public/nsIDTD.h
+@@ -121,17 +121,17 @@ public:
+      * created during the parse phase is stored in a deque (in the
+      * parser) and are passed to this method so that the DTD can
+      * process the token. Ultimately, the DTD will transform given
+      * token into calls onto a contentsink.
+      * @update  gess 3/25/98
+      * @param   aToken -- token object to be put into content model
+      * @return error code (usually 0)
+      */
+-    NS_IMETHOD HandleToken(CToken* aToken,nsIParser* aParser) = 0;
++    NS_IMETHOD HandleToken(CToken* aToken,const nsIParser* aParser) = 0;
+ 
+     /**
+      * If the parse process gets interrupted midway, this method is
+      * called by the parser prior to resuming the process.
+      * @update  gess5/18/98
+      * @return ignored
+      */
+     NS_IMETHOD WillResumeParse(nsIContentSink* aSink) = 0;
+@@ -181,16 +181,16 @@ public:
+ };
+ 
+ NS_DEFINE_STATIC_IID_ACCESSOR(nsIDTD, NS_IDTD_IID)
+ 
+ #define NS_DECL_NSIDTD \
+     NS_IMETHOD WillBuildModel(  const CParserContext& aParserContext, nsITokenizer* aTokenizer, nsIContentSink* aSink);\
+     NS_IMETHOD DidBuildModel(nsresult anErrorCode,PRBool aNotifySink,nsIParser* aParser,nsIContentSink* aSink);\
+     NS_IMETHOD BuildModel(nsIParser* aParser,nsITokenizer* aTokenizer,nsITokenObserver* anObserver,nsIContentSink* aSink);\
+-    NS_IMETHOD HandleToken(CToken* aToken,nsIParser* aParser);\
++    NS_IMETHOD HandleToken(CToken* aToken,const nsIParser* aParser);\
+     NS_IMETHOD WillResumeParse(nsIContentSink* aSink = 0);\
+     NS_IMETHOD WillInterruptParse(nsIContentSink* aSink = 0);\
+     NS_IMETHOD_(PRBool) CanContain(PRInt32 aParent,PRInt32 aChild) const;\
+     NS_IMETHOD_(PRBool) IsContainer(PRInt32 aTag) const;\
+     NS_IMETHOD_(void)  Terminate();\
+     NS_IMETHOD_(PRInt32) GetType();
+ #endif /* nsIDTD_h___ */
+diff --git a/parser/htmlparser/public/nsIParser.h b/parser/htmlparser/public/nsIParser.h
+--- a/parser/htmlparser/public/nsIParser.h
++++ b/parser/htmlparser/public/nsIParser.h
+@@ -142,17 +142,17 @@ class nsIParser : public nsISupports {
+     NS_IMETHOD_(void) SetContentSink(nsIContentSink* aSink)=0;
+ 
+ 
+     /**
+      * retrieve the sink set into the parser 
+      * @update	gess5/11/98
+      * @return  current sink
+      */
+-    NS_IMETHOD_(nsIContentSink*) GetContentSink(void)=0;
++    NS_IMETHOD_(nsIContentSink*) GetContentSink(void)const=0;
+ 
+     /**
+      *  Call this method once you've created a parser, and want to instruct it
+ 	   *  about the command which caused the parser to be constructed. For example,
+      *  this allows us to select a DTD which can do, say, view-source.
+      *  
+      *  @update  gess 3/25/98
+      *  @param   aCommand -- ptrs to string that contains command
+diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.cpp
+--- a/parser/htmlparser/src/CNavDTD.cpp
++++ b/parser/htmlparser/src/CNavDTD.cpp
+@@ -582,17 +582,17 @@ HasOpenTagOfType(PRInt32 aType, const ns
+       return PR_TRUE;
+     }
+   }
+ 
+   return PR_FALSE;
+ }
+ 
+ nsresult
+-CNavDTD::HandleToken(CToken* aToken, nsIParser* aParser)
++CNavDTD::HandleToken(CToken* aToken, const nsIParser* aParser)
+ {
+   if (!aToken) {
+     return NS_OK;
+   }
+ 
+   nsresult        result   = NS_OK;
+   CHTMLToken*     theToken = static_cast<CHTMLToken*>(aToken);
+   eHTMLTokenTypes theType  = eHTMLTokenTypes(theToken->GetTokenType());
+@@ -741,17 +741,17 @@ CNavDTD::HandleToken(CToken* aToken, nsI
+             }
+             return result;
+           }
+         }
+       }
+   }
+ 
+   if (theToken) {
+-    mParser = (nsParser*)aParser;
++    mParser = static_cast<const nsParser*>(aParser);
+ 
+     switch (theType) {
+       case eToken_text:
+       case eToken_start:
+       case eToken_whitespace:
+       case eToken_newline:
+         result = HandleStartToken(theToken);
+         break;
+diff --git a/parser/htmlparser/src/CNavDTD.h b/parser/htmlparser/src/CNavDTD.h
+--- a/parser/htmlparser/src/CNavDTD.h
++++ b/parser/htmlparser/src/CNavDTD.h
+@@ -385,17 +385,17 @@ protected:
+     }
+     
+     nsDeque             mMisplacedContent;
+     
+     nsCOMPtr<nsIHTMLContentSink> mSink;
+     nsTokenAllocator*   mTokenAllocator;
+     nsDTDContext*       mBodyContext;
+     nsDTDContext*       mTempContext;
+-    nsParser*           mParser;
++    const nsParser*     mParser;
+     nsITokenizer*       mTokenizer; // weak
+    
+     nsString            mFilename; 
+     nsString            mScratch;  //used for various purposes; non-persistent
+     nsCString           mMimeType;
+ 
+     nsNodeAllocator     mNodeAllocator;
+     nsDTDMode           mDTDMode;
+diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsExpatDriver.cpp
+--- a/parser/htmlparser/src/nsExpatDriver.cpp
++++ b/parser/htmlparser/src/nsExpatDriver.cpp
+@@ -1410,17 +1410,17 @@ nsExpatDriver::PrependTokens(nsDeque& aD
+ 
+ NS_IMETHODIMP
+ nsExpatDriver::CopyState(nsITokenizer* aTokenizer)
+ {
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+-nsExpatDriver::HandleToken(CToken* aToken,nsIParser* aParser)
++nsExpatDriver::HandleToken(CToken* aToken,const nsIParser* aParser)
+ {
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP_(PRBool)
+ nsExpatDriver::IsContainer(PRInt32 aTag) const
+ {
+   return PR_TRUE;
+diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
+--- a/parser/htmlparser/src/nsParser.cpp
++++ b/parser/htmlparser/src/nsParser.cpp
+@@ -233,17 +233,17 @@ public:
+     NS_ASSERTION(NS_IsMainThread(), "Potential threadsafety hazard");
+     return mDocument;
+   }
+ 
+   PRBool Parsing() {
+     return mCurrentlyParsing;
+   }
+ 
+-  CParserContext *Context() {
++  const CParserContext *Context() {
+     return mContext;
+   }
+ 
+   typedef nsDataHashtable<nsCStringHashKey, PRBool> PreloadedType;
+   PreloadedType& GetPreloadedURIs() {
+     return mPreloadedURIs;
+   }
+ 
+@@ -281,17 +281,17 @@ private:
+   nsAutoTArray<PrefetchEntry, kBatchPrefetchURIs> mURIs;
+   PRUint16 mNumURIs;
+ 
+   // Number of characters consumed by the last speculative parse.
+   PRUint32 mNumConsumed;
+ 
+   // These members are only accessed on the main thread.
+   nsCOMPtr<nsIDocument> mDocument;
+-  CParserContext *mContext;
++  const CParserContext *mContext;
+   PreloadedType mPreloadedURIs;
+   PRBool mTerminated;
+ };
+ 
+ class nsPreloadURIs : public nsIRunnable {
+ public:
+   nsPreloadURIs(nsAutoTArray<nsSpeculativeScriptThread::PrefetchEntry, 5> &aURIs,
+                 nsSpeculativeScriptThread *aScriptThread)
+@@ -420,17 +420,17 @@ nsSpeculativeScriptThread::StartParsing(
+   }
+ 
+   nsCOMPtr<nsIDocument> doc = do_QueryInterface(sink->GetTarget());
+   if (!doc) {
+     return NS_OK;
+   }
+ 
+   nsAutoString toScan;
+-  CParserContext *context = aParser->PeekContext();
++  const CParserContext *context = aParser->PeekContext();
+   if (!mLock.get()) {
+     mLock = nsAutoLock::NewLock("nsSpeculativeScriptThread::mLock");
+     if (!mLock.get()) {
+       return NS_ERROR_OUT_OF_MEMORY;
+     }
+ 
+     mCVar = PR_NewCondVar(mLock.get());
+     if (!mCVar.get()) {
+@@ -992,17 +992,17 @@ nsParser::SetContentSink(nsIContentSink*
+   }
+ }
+ 
+ /**
+  * retrieve the sink set into the parser
+  * @return  current sink
+  */
+ NS_IMETHODIMP_(nsIContentSink*)
+-nsParser::GetContentSink()
++nsParser::GetContentSink() const
+ {
+   return mSink;
+ }
+ 
+ /**
+  *  Retrieve parsemode from topmost parser context
+  *
+  *  @return  parsemode
+@@ -1843,17 +1843,17 @@ nsParser::DataAdded(const nsSubstring& a
+       canceled = PR_TRUE;
+     }
+   }
+ 
+   return rv;
+ }
+ 
+ PRBool
+-nsParser::CanInterrupt()
++nsParser::CanInterrupt() const
+ {
+   return (mFlags & NS_PARSER_FLAG_CAN_INTERRUPT) != 0;
+ }
+ 
+ void
+ nsParser::SetCanInterrupt(PRBool aCanInterrupt)
+ {
+   if (aCanInterrupt) {
+diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
+--- a/parser/htmlparser/src/nsParser.h
++++ b/parser/htmlparser/src/nsParser.h
+@@ -140,17 +140,17 @@ class nsParser : public nsIParser,
+     NS_IMETHOD_(void) SetContentSink(nsIContentSink* aSink);
+ 
+     /**
+      * retrive the sink set into the parser 
+      * @update	gess5/11/98
+      * @param   aSink is the new sink to be used by parser
+      * @return  old sink, or NULL
+      */
+-    NS_IMETHOD_(nsIContentSink*) GetContentSink(void);
++    NS_IMETHOD_(nsIContentSink*) GetContentSink(void) const;
+     
+     /**
+      *  Call this method once you've created a parser, and want to instruct it
+      *  about the command which caused the parser to be constructed. For example,
+      *  this allows us to select a DTD which can do, say, view-source.
+      *  
+      *  @update  gess 3/25/98
+      *  @param   aCommand -- ptrs to string that contains command
+@@ -292,17 +292,19 @@ class nsParser : public nsIParser,
+     // nsIRequestObserver methods:
+     NS_DECL_NSIREQUESTOBSERVER
+ 
+     // nsIStreamListener methods:
+     NS_DECL_NSISTREAMLISTENER
+ 
+     void              PushContext(CParserContext& aContext);
+     CParserContext*   PopContext();
+-    CParserContext*   PeekContext() {return mParserContext;}
++    const CParserContext* PeekContext() const {
++      return mParserContext;
++    }
+ 
+     /** 
+      * Get the channel associated with this parser
+      * @update harishd,gagan 07/17/01
+      * @param aChannel out param that will contain the result
+      * @return NS_OK if successful
+      */
+     NS_IMETHOD GetChannel(nsIChannel** aChannel);
+@@ -334,17 +336,17 @@ class nsParser : public nsIParser,
+     NS_IMETHODIMP CancelParsingEvents();
+ 
+     /**  
+      *  Indicates whether the parser is in a state where it
+      *  can be interrupted.
+      *  @return PR_TRUE if parser can be interrupted, PR_FALSE if it can not be interrupted.
+      *  @update  kmcclusk 5/18/98
+      */
+-    PRBool CanInterrupt(void);
++    PRBool CanInterrupt() const;
+ 
+     /**  
+      *  Set to parser state to indicate whether parsing tokens can be interrupted
+      *  @param aCanInterrupt PR_TRUE if parser can be interrupted, PR_FALSE if it can not be interrupted.
+      *  @update  kmcclusk 5/18/98
+      */
+     void SetCanInterrupt(PRBool aCanInterrupt);
+ 
+diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/nsViewSourceHTML.cpp
+--- a/parser/htmlparser/src/nsViewSourceHTML.cpp
++++ b/parser/htmlparser/src/nsViewSourceHTML.cpp
+@@ -854,17 +854,17 @@ nsresult CViewSourceHTML::WriteTag(PRInt
+ }
+ 
+ /**
+  *
+  *  @update  gess 3/25/98
+  *  @param   aToken -- token object to be put into content model
+  *  @return  0 if all is well; non-zero is an error
+  */
+-NS_IMETHODIMP CViewSourceHTML::HandleToken(CToken* aToken,nsIParser* aParser)
++NS_IMETHODIMP CViewSourceHTML::HandleToken(CToken* aToken,const nsIParser* aParser)
+ {
+   nsresult        result=NS_OK;
+   CHTMLToken*     theToken= (CHTMLToken*)(aToken);
+   eHTMLTokenTypes theType= (eHTMLTokenTypes)theToken->GetTokenType();
+ 
+   mParser=(nsParser*)aParser;
+   mSink=(nsIHTMLContentSink*)aParser->GetContentSink();
+ 

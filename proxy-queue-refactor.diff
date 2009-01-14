@@ -1,7 +1,38 @@
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -1469,17 +1469,17 @@ FindSuitableDTD(CParserContext& aParserC
+@@ -808,28 +808,29 @@ nsParser::Initialize(PRBool aConstructor
+   mStreamStatus = 0;
+   mCommand = eViewNormal;
+   mFlags = NS_PARSER_FLAG_OBSERVERS_ENABLED |
+            NS_PARSER_FLAG_PARSER_ENABLED |
+            NS_PARSER_FLAG_CAN_TOKENIZE;
+   mScriptsExecuting = 0;
+ 
+   mQueue = new nsParserQueue;
++  // NS_GetCurrentThread()->Dispatch(mQueue, NS_DISPATCH_NORMAL);
++  ThreadPool()->Dispatch(mQueue, NS_DISPATCH_NORMAL);
+ 
+   MOZ_TIMER_DEBUGLOG(("Reset: Parse Time: nsParser::nsParser(), this=%p\n", this));
+   MOZ_TIMER_RESET(mParseTime);
+   MOZ_TIMER_RESET(mDTDTime);
+   MOZ_TIMER_RESET(mTokenizeTime);
+ }
+ 
+ void
+ nsParser::Cleanup()
+ {
+   mQueue->Flush();
+-  delete mQueue;
+ 
+ #ifdef NS_DEBUG
+   if (gDumpContent) {
+     if (mSink) {
+       // Sink (HTMLContentSink at this time) supports nsIDebugDumpContent
+       // interface. We can get to the content model through the sink.
+       nsresult result = NS_OK;
+       nsCOMPtr<nsIDebugDumpContent> trigger = do_QueryInterface(mSink, &result);
+@@ -1469,17 +1470,17 @@ FindSuitableDTD(CParserContext& aParserC
    NS_ASSERTION(aParserContext.mDocType == eXML, "What are you trying to send me, here?");
    aParserContext.mDTD = new nsExpatDriver();
    return aParserContext.mDTD ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
@@ -20,7 +51,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    if (mFlags & NS_PARSER_FLAG_PENDING_CONTINUE_EVENT) {
      NS_ASSERTION(mContinueEvent, "mContinueEvent is null");
      // Revoke the pending continue parsing event
-@@ -1652,17 +1652,17 @@ nsParser::GetRootContextKey()
+@@ -1652,17 +1653,17 @@ nsParser::GetRootContextKey()
   *  Call this when you want to *force* the parser to terminate the
   *  parsing process altogether. This is binary -- so once you terminate
   *  you can't resume without restarting altogether.
@@ -39,7 +70,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    // We should only call DidBuildModel once, so don't do anything if this is
    // the second time that Terminate has been called.
    if (mInternalState == NS_ERROR_HTMLPARSER_STOPPARSING) {
-@@ -1710,17 +1710,17 @@ nsParser::HandleTerminate()
+@@ -1710,17 +1711,17 @@ nsParser::HandleTerminate()
    }
  
    return NS_OK;
@@ -58,7 +89,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    if (mFlags & NS_PARSER_FLAG_PARSER_ENABLED) {
      NS_WARNING("Trying to continue parsing on a unblocked parser.");
      return NS_OK;
-@@ -1729,17 +1729,17 @@ nsParser::HandleContinueParsing()
+@@ -1729,17 +1730,17 @@ nsParser::HandleContinueParsing()
    mFlags |= NS_PARSER_FLAG_PARSER_ENABLED;
  
    return HandleContinueInterruptedParsing();
@@ -77,7 +108,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    // If there are scripts executing, then the content sink is jumping the gun
    // (probably due to a synchronous XMLHttpRequest) and will re-enable us
    // later, see bug 460706.
-@@ -1781,17 +1781,17 @@ nsParser::HandleContinueInterruptedParsi
+@@ -1781,17 +1782,17 @@ nsParser::HandleContinueInterruptedParsi
  
  /**
   *  Stops parsing temporarily. That's it will prevent the
@@ -96,7 +127,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    mFlags &= ~NS_PARSER_FLAG_PARSER_ENABLED;
    MOZ_TIMER_DEBUGLOG(("Stop: Parse Time: nsParser::BlockParser(), this=%p\n", this));
    MOZ_TIMER_STOP(mParseTime);
-@@ -1802,17 +1802,17 @@ nsParser::HandleBlockParser()
+@@ -1802,17 +1803,17 @@ nsParser::HandleBlockParser()
   *  Open up the parser for tokenization, building up content
   *  model..etc. However, this method does not resume parsing
   *  automatically. It's the callers' responsibility to restart
@@ -115,7 +146,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  {
    if (!(mFlags & NS_PARSER_FLAG_PARSER_ENABLED)) {
      mFlags |= NS_PARSER_FLAG_PARSER_ENABLED;
-@@ -1853,17 +1853,17 @@ void nsParser::HandleParserContinueEvent
+@@ -1853,17 +1854,17 @@ void nsParser::HandleParserContinueEvent
  
    NS_ASSERTION(mScriptsExecuting == 0, "Interrupted in the middle of a script?");
  
@@ -134,7 +165,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  void
  nsParser::ScriptExecuting()
  {
-@@ -1931,17 +1931,17 @@ nsParser::SetCanInterrupt(PRBool aCanInt
+@@ -1931,17 +1932,17 @@ nsParser::SetCanInterrupt(PRBool aCanInt
   */
  NS_IMETHODIMP // result never checked as far as I can tell
  nsParser::Parse(nsIURI* aURL,
@@ -153,7 +184,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  // XXXX handlers must be atomic from the first actual parser operation (read, write) to the last
  // XXXX but it may be possible to reorder things...
  // TODO nsURI not threadsafe?
-@@ -1992,17 +1992,17 @@ nsParser::HandleParseUrl(const nsACStrin
+@@ -1992,17 +1993,17 @@ nsParser::HandleParseUrl(const nsACStrin
   */
  NS_IMETHODIMP
  nsParser::Parse(const nsAString& aSourceBuffer,
@@ -172,7 +203,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
                              void* aKey,
                              const nsACString& aMimeType,
                              PRBool aLastCall,
-@@ -2135,17 +2135,17 @@ NS_IMETHODIMP
+@@ -2135,17 +2136,17 @@ NS_IMETHODIMP
  NS_IMETHODIMP
  nsParser::ParseFragment(const nsAString& aSourceBuffer,
                          void* aKey,
@@ -191,7 +222,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
                                void* aKey,
                                const nsTArray<nsString>& aTagStack,
                                PRBool aXMLMode,
-@@ -2172,17 +2172,17 @@ nsParser::HandleParseFragment(const nsAS
+@@ -2172,17 +2173,17 @@ nsParser::HandleParseFragment(const nsAS
      // Ensure that the buffer is not empty. Because none of the DTDs care
      // about leading whitespace, this doesn't change the result.
      theContext.AssignLiteral(" ");
@@ -210,7 +241,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    if (!mSink) {
-@@ -2233,23 +2233,23 @@ nsParser::HandleParseFragment(const nsAS
+@@ -2233,23 +2234,23 @@ nsParser::HandleParseFragment(const nsAS
    }
  
    fragSink->WillBuildContent();
@@ -236,7 +267,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      if (NS_SUCCEEDED(result)) {
        nsAutoString endContext;       
        for (theIndex = 0; theIndex < theCount; theIndex++) {
-@@ -2265,17 +2265,17 @@ nsParser::HandleParseFragment(const nsAS
+@@ -2265,17 +2266,17 @@ nsParser::HandleParseFragment(const nsAS
            endContext.Append(thisTag);
          } else {
            endContext.Append(Substring(thisTag,0,endOfTag));
@@ -255,7 +286,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
    return result;
  }
-@@ -2480,17 +2480,17 @@ nsParser::BuildModel()
+@@ -2480,17 +2481,17 @@ nsParser::BuildModel()
  
  /*******************************************************************
    These methods are used to talk to the netlib system...
@@ -274,7 +305,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    NS_PRECONDITION(eNone == mParserContext->mStreamListenerState,
                    "Parser's nsIStreamListener API was not setup "
                    "correctly in constructor.");
-@@ -2909,17 +2909,17 @@ CheckCharset(const char* aBytes,
+@@ -2909,17 +2910,17 @@ CheckCharset(const char* aBytes,
  
  nsresult
  nsParser::OnDataAvailable(nsIRequest *request, nsISupports*,
@@ -293,7 +324,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
                                char* aBytes,
                                PRUint32 aNumBytes,
                                PRUint32 aSourceOffset)
-@@ -2978,17 +2978,17 @@ nsParser::HandleDataAvailable(nsIRequest
+@@ -2978,17 +2979,17 @@ nsParser::HandleDataAvailable(nsIRequest
  /**
   *  This is called by the networking library once the last block of data
   *  has been collected from the net.
@@ -315,7 +346,8 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
 --- a/parser/htmlparser/src/nsParser.h
 +++ b/parser/htmlparser/src/nsParser.h
-@@ -456,17 +456,17 @@ class nsParser : public nsIParser,
+@@ -455,18 +455,18 @@ class nsParser : public nsIParser,
+      * This method gets called (automatically) during incremental parsing
       * @update	gess5/11/98
       * @return  TRUE if all went well, otherwise FALSE
       */
@@ -323,8 +355,9 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
                                   PRBool aIsFinalChunk = PR_FALSE,
                                   PRBool aCanInterrupt = PR_TRUE);
  
-     nsParserQueue* mQueue;
+-    nsParserQueue* mQueue;
 -    void FlushQueue(const nsRunnable*);
++    nsCOMPtr<nsParserQueue> mQueue;
 +    void FlushQueue();
  
      DECL_PARSER_MSG_HANDLER(CancelParsingEvents, ())
@@ -921,7 +954,7 @@ diff --git a/parser/htmlparser/src/nsProxyQueue.cpp b/parser/htmlparser/src/nsPr
 new file mode 100644
 --- /dev/null
 +++ b/parser/htmlparser/src/nsProxyQueue.cpp
-@@ -0,0 +1,55 @@
+@@ -0,0 +1,65 @@
 +template <class T>
 +NS_IMPL_ADDREF(nsProxyQueue<T>::Msg)
 +
@@ -937,7 +970,7 @@ new file mode 100644
 +
 +template <class T>
 +nsresult
-+nsProxyQueue<T>::Flush(PRBool breakOnFailure)
++nsProxyQueue<T>::Flush(PRBool aBreakOnFailure)
 +{
 +  nsresult rv = NS_OK;
 +
@@ -949,13 +982,15 @@ new file mode 100644
 +  }
 +
 +  PRBool safeToRelease = NS_IsMainThread();
-+  while ((!breakOnFailure || NS_SUCCEEDED(rv)) &&
++  while ((!aBreakOnFailure || NS_SUCCEEDED(rv)) &&
 +         q.GetSize())
 +  {
 +    Msg* msg = static_cast<Msg*>(q.Pop());
 +    rv = msg->Deliver();
-+    if (NS_SUCCEEDED(rv))
-+      rv = Flush(breakOnFailure);
++
++    // Presumably any Msgs enqueued before Delivery failure were meant to be
++    // enqueued, and so they should be delivered unconditionally.
++    Flush(aBreakOnFailure);
 +
 +    msg->Notify(); // wake up waiting threads
 +
@@ -967,7 +1002,6 @@ new file mode 100644
 +    }
 +  }
 +
-+  // XXX what about document.write?
 +  if (q.GetSize()) {
 +    nsAutoLock synchronized(mLock);
 +    while (q.GetSize())
@@ -977,11 +1011,20 @@ new file mode 100644
 +
 +  return rv;
 +}
++
++template <class T>
++NS_IMETHODIMP
++nsProxyQueue<T>::Run()
++{
++  nsIThread* const thread = NS_GetCurrentThread();
++  if (thread == mThread) Flush();
++  return (mThread = thread)->Dispatch(this, NS_DISPATCH_NORMAL);
++}
 diff --git a/parser/htmlparser/src/nsProxyQueue.h b/parser/htmlparser/src/nsProxyQueue.h
 new file mode 100644
 --- /dev/null
 +++ b/parser/htmlparser/src/nsProxyQueue.h
-@@ -0,0 +1,244 @@
+@@ -0,0 +1,240 @@
 +#ifndef __ns_proxy_queue__
 +#define __ns_proxy_queue__
 +
@@ -992,9 +1035,12 @@ new file mode 100644
 +#include "nsThreadUtils.h"
 +
 +template <class T>
-+class nsProxyQueue : private nsDeque
++class nsProxyQueue
++  : private nsDeque
++  , public nsRunnable
 +{
 +  PRLock* const mLock;
++  nsCOMPtr<nsIThread> mThread;
 +
 +public:
 +  typedef nsProxyQueue<T> QueueType;
@@ -1003,7 +1049,9 @@ new file mode 100644
 +  ** Queue-specific operations
 +  */
 +
-+  nsProxyQueue() : mLock(nsAutoLock::NewLock("nsProxyQueue::mLock")) {}
++  nsProxyQueue()
++    : mLock(nsAutoLock::NewLock("nsProxyQueue::mLock"))
++  {}
 +
 +  virtual ~nsProxyQueue() {
 +    NS_ASSERTION(!GetSize(), "Expect leaks because you did "
@@ -1011,9 +1059,12 @@ new file mode 100644
 +    nsAutoLock::DestroyLock(mLock);
 +  }
 +
++  PRBool SameThread() { return mThread == NS_GetCurrentThread(); }
++  NS_IMETHOD Run();
++
 +  operator PRLock*() { return mLock; }
 +
-+  nsresult Flush(PRBool breakOnFailure=PR_TRUE);
++  nsresult Flush(PRBool aBreakOnFailure=PR_TRUE);
 +
 +  // Type-safe interface to private nsDeque base:
 +
@@ -1175,54 +1226,42 @@ new file mode 100644
 +    new QUALIFIED_PROXY_MSG_TYPENAME(CLASS, EVENT)(this,                      \
 +      &PROXY_T_TYPENAME(CLASS)::PROXY_HANDLER_METHOD_NAME(EVENT))
 +
-+#define PRIVATE_ENQUEUE_PROXY_MSG(CLASS, Q, EVENT, INIT_ARGS)                 \
++#define PRIVATE_ENQUEUE_PROXY_MSG(CLASS, Q, EVENT, INIT_ARGS, RV)             \
 +  NS_ASSERTION(NS_IsMainThread(), "Enqueueing off main thread");              \
 +  PROXY_SUBCLASS_NAME(CLASS)* const q = Q;                                    \
 +  ALLOC_NEW_PROXY_MSG(msg, CLASS, EVENT);                                     \
-+  nsresult rv = msg ? msg->Init INIT_ARGS                                     \
-+                    : NS_ERROR_OUT_OF_MEMORY;                                 \
-+  if (NS_SUCCEEDED(rv)) {                                                     \
++  nsresult RV = msg ? msg->Init INIT_ARGS : NS_ERROR_OUT_OF_MEMORY;           \
++  if (NS_SUCCEEDED(RV)) {                                                     \
 +    nsAutoLock synchronized(*q);                                              \
 +    q->Push(msg);                                                             \
-+  } else delete msg;                                                          \
-+  if (msg && NS_FAILED(NS_DispatchToCurrentThread(                            \
-+               NS_NEW_RUNNABLE_METHOD(PROXY_T_TYPENAME(CLASS),                \
-+                                      this, FlushQueue)))) {                  \
-+    NS_ASSERTION(PR_FALSE, "Failed to schedule Flush event");                 \
-+  }
++  } else delete msg;
 +
 +#define ENQUEUE_PROXY_MSG(CLASS, Q, EVENT, INIT_ARGS)                         \
 +  PR_BEGIN_MACRO                                                              \
-+    PRIVATE_ENQUEUE_PROXY_MSG(CLASS, Q, EVENT, INIT_ARGS)                     \
++    PRIVATE_ENQUEUE_PROXY_MSG(CLASS, Q, EVENT, INIT_ARGS, rv)                 \
 +    return rv;                                                                \
 +  PR_END_MACRO
 +
 +#define VOID_ENQUEUE_PROXY_MSG(CLASS, Q, EVENT, INIT_ARGS)                    \
 +  PR_BEGIN_MACRO                                                              \
-+    PRIVATE_ENQUEUE_PROXY_MSG(CLASS, Q, EVENT, INIT_ARGS)                     \
++    PRIVATE_ENQUEUE_PROXY_MSG(CLASS, Q, EVENT, INIT_ARGS, rv)                 \
 +  PR_END_MACRO
 +
-+#define PROXY_SYNC_OPERATION(IGNORED) msg->Wait()
-+// TODO switch back to this version once the notifier and waiter are on different threads
-+#undef  PROXY_SYNC_OPERATION
-+
-+#ifndef PROXY_SYNC_OPERATION
-+#define PROXY_SYNC_OPERATION(Q) (Q)->Flush()
-+#endif
++#define PROXY_SYNC_OPERATION(Q)                                               \
++  Q->SameThread() ? Q->Flush() : msg->Wait()
 +
 +#define ENQUEUE_PROXY_MSG_AND_WAIT(CLASS, Q, EVENT, INIT_ARGS)                \
 +  PR_BEGIN_MACRO                                                              \
-+    PRIVATE_ENQUEUE_PROXY_MSG(CLASS, Q, EVENT, INIT_ARGS);                    \
++    PRIVATE_ENQUEUE_PROXY_MSG(CLASS, Q, EVENT, INIT_ARGS, rv)                 \
 +    return PROXY_SYNC_OPERATION(q);                                           \
 +  PR_END_MACRO
 +
++// Have to enqueue and flush so that messages are not delivered out of order:
 +#define IMMEDIATELY_DELIVER_PROXY_MSG(CLASS, EVENT, RV, INIT_ARGS)            \
 +  PR_BEGIN_MACRO                                                              \
-+    QUALIFIED_PROXY_MSG_TYPENAME(CLASS, EVENT)                                \
-+      msg(this, &PROXY_T_TYPENAME(CLASS)::PROXY_HANDLER_METHOD_NAME(EVENT));  \
-+    RV = msg.Init INIT_ARGS;                                                  \
-+    if (NS_SUCCEEDED(RV))                                                     \
-+      RV = msg.Deliver();                                                     \
++    PRIVATE_ENQUEUE_PROXY_MSG(CLASS, mQueue, EVENT, INIT_ARGS, idpm_##RV)     \
++    RV = idpm_##RV;                                                           \
++    PROXY_SYNC_OPERATION(q);                                                  \
 +  PR_END_MACRO
 +
 +#endif
