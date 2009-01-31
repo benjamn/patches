@@ -1,0 +1,22 @@
+diff --git a/dom/src/base/nsJSEnvironment.cpp b/dom/src/base/nsJSEnvironment.cpp
+--- a/dom/src/base/nsJSEnvironment.cpp
++++ b/dom/src/base/nsJSEnvironment.cpp
+@@ -1207,16 +1207,18 @@ nsJSContext::JSOptionChangedCallback(con
+     newDefaultJSOptions &= ~JSOPTION_WERROR;
+ 
+   PRBool relimit = nsContentUtils::GetBoolPref(js_relimit_option_str);
+   if (relimit)
+     newDefaultJSOptions |= JSOPTION_RELIMIT;
+   else
+     newDefaultJSOptions &= ~JSOPTION_RELIMIT;
+ 
++  newDefaultJSOptions |= JSOPTION_NO_SCRIPT_RVAL;
++
+   if (newDefaultJSOptions != oldDefaultJSOptions) {
+     // Set options only if we used the old defaults; otherwise the page has
+     // customized some via the options object and we defer to its wisdom.
+     if (::JS_GetOptions(context->mContext) == oldDefaultJSOptions)
+       ::JS_SetOptions(context->mContext, newDefaultJSOptions);
+ 
+     // Save the new defaults for the next page load (InitContext).
+     context->mDefaultJSOptions = newDefaultJSOptions;

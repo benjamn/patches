@@ -2,6 +2,8 @@ functor.diff
 kill-jsd_assert.diff
 safe-suspect-forget.diff
 hdst-index-bound.diff
+bug-475467.diff
+suppress-title-change-events.diff
 bug-470356.diff
 dtd-const-mparser.diff
 parser-copy-data.diff
