@@ -2,7 +2,7 @@ diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Bind.h
-@@ -0,0 +1,287 @@
+@@ -0,0 +1,288 @@
 +#ifndef __bind_h__
 +#define __bind_h__
 +
@@ -235,13 +235,14 @@ new file mode 100644
 +#define BIND1(F, A) bind(F, A)
 +
 +// [[[cog
++// slash = "\\"
 +// for i in range(2, MAX_FUNCTOR_ARITY+1):
 +//   prev = i - 1
 +//   alist = tlist("A", i)
 +//   ainit = tlist("A", i-1)
 +//   alast = "A%d" % i;
 +//   cog.out(r"""
-+// #define BIND%(i)d(F, %(alist)s) \
++// #define BIND%(i)d(F, %(alist)s) %(slash)s
 +//    bind(BIND%(prev)d(F, %(ainit)s), %(alast)s)
 +// """ % locals())
 +// ]]]
@@ -295,7 +296,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Functor.h
-@@ -0,0 +1,282 @@
+@@ -0,0 +1,269 @@
 +#ifndef __functor_h__
 +#define __functor_h__
 +
@@ -303,19 +304,22 @@ new file mode 100644
 +#include "TList.h"
 +#include "nsAutoPtr.h"
 +
++
++class FunctorSupports : public nsISupports {
++public:
++  virtual ~FunctorSupports() {}
++  NS_IMPL_ISUPPORTS0(FunctorSupports)
++protected:
++  nsAutoRefCnt mRefCnt;
++  NS_DECL_OWNINGTHREAD
++};
++
++
 +// [[[cog
 +// from cogutil import tlist
 +// MAX_FUNCTOR_ARITY = 15
 +// ]]]
 +// [[[end]]]
-+
-+class FunctorSupports : public nsISupports {
-+public:
-+  NS_DECL_ISUPPORTS
-+};
-+
-+NS_IMPL_ISUPPORTS0(FunctorSupports)
-+
 +
 +template <typename R, class Params>
 +class FunctorImpl;
@@ -324,8 +328,6 @@ new file mode 100644
 +  class FunctorImpl<R, TLIST##N TS> : public FunctorSupports {                 \
 +  public:                                                                      \
 +    virtual R operator()TS const = 0;                                          \
-+    virtual ~FunctorImpl() {}                                                  \
-+    virtual FunctorImpl* Copy() const = 0;                                     \
 +  }
 +
 +// [[[cog
@@ -391,12 +393,13 @@ new file mode 100644
 +
 +
 +// [[[cog
++// slash = "\\"
 +// cog.out(r"#define GEN_CALL_OPERATORS(R, FEXP, QUAL)")
 +// for i in range(MAX_FUNCTOR_ARITY+1):
 +//   Pps, ps = tlist(r"QUAL##0 p", i), tlist("p", i)
-+//   cog.out(r""" \
-+//   R operator()(%(Pps)s) const { \
-+//     return (FEXP)(%(ps)s); \
++//   cog.out(""" %(slash)s
++//   R operator()(%(Pps)s) const { %(slash)s
++//     return (FEXP)(%(ps)s); %(slash)s
 +//   }""" % locals())
 +// ]]]
 +#define GEN_CALL_OPERATORS(R, FEXP, QUAL) \
@@ -460,10 +463,12 @@ new file mode 100644
 +  typedef Params ParamList;
 +  // [[[cog
 +  // for i in range(MAX_FUNCTOR_ARITY):
-+  //   cog.out("""\
-+  // typedef typename tlist::TypeAtNS<Params, %(i)d>::type P%(i+1)d;
-+  // """ % { "i": i, "i+1": i+1 })
++  //   cog.out(r"""
++  // typedef typename tlist::TypeAtNS<Params, %(i)d>::type P%(i+1)d;""" % {
++  //     "i": i, "i+1": i+1
++  //   })
 +  // ]]]
++
 +  typedef typename tlist::TypeAtNS<Params, 0>::type P1;
 +  typedef typename tlist::TypeAtNS<Params, 1>::type P2;
 +  typedef typename tlist::TypeAtNS<Params, 2>::type P3;
@@ -488,21 +493,14 @@ new file mode 100644
 +
 +public:
 +  Functor(const Functor& fun) : mImpl(fun.mImpl) {}
-+  explicit Functor(ImplType* impl) : mImpl(impl) {}
 +
 +  template <class Fun>
 +  Functor(const Fun&);
 +
-+  template <typename ObjPtr,
++  template <typename Class,
 +            typename MethodPtr>
-+  Functor(const ObjPtr& objPtr,
++  Functor(Class* objPtr,
 +          MethodPtr methodPtr);
-+
-+  Functor& operator=(const Functor& fun) {
-+    if (this != &fun)
-+      mImpl = fun.mImpl;
-+    return *this;
-+  }
 +
 +  GEN_CALL_OPERATORS(R, *mImpl, P)
 +
@@ -520,20 +518,15 @@ new file mode 100644
 +public:
 +  typedef typename ParentFunctor::ResultType ResultType;
 +  FunctorHandler(const Fun& fun) : mFun(*(Fun*)&fun) {}
-+  FunctorHandler* Copy() const {
-+    return new FunctorHandler(*this);
-+  }
 +
-+  GEN_CALL_OPERATORS(
-+    ResultType, mFun,
-+    typename ParentFunctor::P)
++  GEN_CALL_OPERATORS(ResultType, mFun, typename ParentFunctor::P)
 +
 +private:
 +  Fun& mFun;
 +};
 +
 +template <class ParentFunctor,
-+          typename ObjPtr, typename MethodPtr>
++          typename Class, typename MethodPtr>
 +class MethodHandler
 +  : public FunctorImpl<
 +      typename ParentFunctor::ResultType,
@@ -542,22 +535,17 @@ new file mode 100644
 +public:
 +  typedef typename ParentFunctor::ResultType ResultType;
 +
-+  MethodHandler(const ObjPtr& objPtr, MethodPtr methodPtr)
++  MethodHandler(Class* objPtr, MethodPtr methodPtr)
 +    : mObjPtr(objPtr)
 +    , mMethodPtr(methodPtr)
 +  {}
 +
-+  MethodHandler* Copy() const {
-+    return new MethodHandler(*this);
-+  }
-+
-+  GEN_CALL_OPERATORS(
-+    ResultType,
++  GEN_CALL_OPERATORS(ResultType,
 +    (*mObjPtr).*mMethodPtr,
 +    typename ParentFunctor::P)
 +
 +private:
-+  ObjPtr    mObjPtr;
++  nsRefPtr<Class> mObjPtr;
 +  MethodPtr mMethodPtr;
 +};
 +
@@ -570,36 +558,40 @@ new file mode 100644
 +{}
 +
 +template <typename R, class Params>
-+template <typename ObjPtr, typename MethodPtr>
-+Functor<R, Params>::Functor(const ObjPtr& objPtr,
++template <typename Class, typename MethodPtr>
++Functor<R, Params>::Functor(Class* objPtr,
 +                            MethodPtr methodPtr)
-+  : mImpl(new MethodHandler<Functor, ObjPtr, MethodPtr>(objPtr, methodPtr))
++  : mImpl(new MethodHandler<Functor, Class, MethodPtr>(objPtr, methodPtr))
 +{}
++
++
++#endif
+diff --git a/xpcom/glue/FunctorSupports.cpp b/xpcom/glue/FunctorSupports.cpp
+new file mode 100644
+--- /dev/null
++++ b/xpcom/glue/FunctorSupports.cpp
+@@ -0,0 +1,4 @@
++#include "FunctorSupports.h"
++
++NS_IMPL_ISUPPORTS0(FunctorSupports)
++
+diff --git a/xpcom/glue/FunctorSupports.h b/xpcom/glue/FunctorSupports.h
+new file mode 100644
+--- /dev/null
++++ b/xpcom/glue/FunctorSupports.h
+@@ -0,0 +1,8 @@
++#ifndef __functor_supports_h__
++#define __functor_supports_h__
++
++#include "nsISupports.h"
++
 +
 +
 +#endif
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
-@@ -66,16 +66,17 @@ CSRCS		= \
- CSRCS		= \
- 		$(XPCOM_GLUE_SRC_LCSRCS) \
- 		$(NULL)  
- 
- CPPSRCS		= \
- 		$(XPCOM_GLUE_SRC_LCPPSRCS) \
- 		$(XPCOM_GLUENS_SRC_LCPPSRCS) \
- 		nsStringAPI.cpp \
-+		test.cpp \
- 		$(NULL)
- 
- SDK_HEADERS = \
- 		pldhash.h \
- 		nsArrayEnumerator.h \
- 		nsArrayUtils.h \
- 		nsAutoLock.h \
- 		nsBaseHashtable.h \
-@@ -119,16 +120,18 @@ SDK_HEADERS = \
+@@ -119,16 +119,18 @@ SDK_HEADERS = \
  		nsCycleCollectionParticipant.h \
  		nsDeque.h \
  		$(NULL)
@@ -618,7 +610,7 @@ diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
  
  # we don't want the shared lib, but we want to force the creation of a static lib.
  FORCE_STATIC_LIB = 1
-@@ -145,11 +148,13 @@ include $(topsrcdir)/config/rules.mk
+@@ -145,11 +147,13 @@ include $(topsrcdir)/config/rules.mk
  
  ifdef _MSC_VER
  # Don't include directives about which CRT to use
@@ -636,7 +628,7 @@ diff --git a/xpcom/glue/TList.h b/xpcom/glue/TList.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/TList.h
-@@ -0,0 +1,130 @@
+@@ -0,0 +1,131 @@
 +#ifndef __tlist_h__
 +#define __tlist_h__
 +
@@ -659,59 +651,60 @@ new file mode 100644
 +//
 +// for i in range(1, MAX_TUPLE_ARITY+1):
 +//   cog.out(r"""
-+// #define TLIST%(arity)d(%(tlist)s) \
-+//   TList<T1, TLIST%(arity-1)d(%(trest)s)> 
++// #define TLIST%(arity)d(%(tlist)s) %(slash)s
++//   TList<T1, TLIST%(arity-1)d(%(trest)s)>
 +// """ % {
 +//   "arity": i, "arity-1": i-1,
 +//   "tlist": tlist("T", i),
 +//   "trest": tlist("T", rfirst=2, rlast=i),
++//   "slash": "\\",
 +// })
 +// ]]]
 +
 +#define TLIST1(T1) \
-+  TList<T1, TLIST0()> 
++  TList<T1, TLIST0()>
 +
 +#define TLIST2(T1, T2) \
-+  TList<T1, TLIST1(T2)> 
++  TList<T1, TLIST1(T2)>
 +
 +#define TLIST3(T1, T2, T3) \
-+  TList<T1, TLIST2(T2, T3)> 
++  TList<T1, TLIST2(T2, T3)>
 +
 +#define TLIST4(T1, T2, T3, T4) \
-+  TList<T1, TLIST3(T2, T3, T4)> 
++  TList<T1, TLIST3(T2, T3, T4)>
 +
 +#define TLIST5(T1, T2, T3, T4, T5) \
-+  TList<T1, TLIST4(T2, T3, T4, T5)> 
++  TList<T1, TLIST4(T2, T3, T4, T5)>
 +
 +#define TLIST6(T1, T2, T3, T4, T5, T6) \
-+  TList<T1, TLIST5(T2, T3, T4, T5, T6)> 
++  TList<T1, TLIST5(T2, T3, T4, T5, T6)>
 +
 +#define TLIST7(T1, T2, T3, T4, T5, T6, T7) \
-+  TList<T1, TLIST6(T2, T3, T4, T5, T6, T7)> 
++  TList<T1, TLIST6(T2, T3, T4, T5, T6, T7)>
 +
 +#define TLIST8(T1, T2, T3, T4, T5, T6, T7, T8) \
-+  TList<T1, TLIST7(T2, T3, T4, T5, T6, T7, T8)> 
++  TList<T1, TLIST7(T2, T3, T4, T5, T6, T7, T8)>
 +
 +#define TLIST9(T1, T2, T3, T4, T5, T6, T7, T8, T9) \
-+  TList<T1, TLIST8(T2, T3, T4, T5, T6, T7, T8, T9)> 
++  TList<T1, TLIST8(T2, T3, T4, T5, T6, T7, T8, T9)>
 +
 +#define TLIST10(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10) \
-+  TList<T1, TLIST9(T2, T3, T4, T5, T6, T7, T8, T9, T10)> 
++  TList<T1, TLIST9(T2, T3, T4, T5, T6, T7, T8, T9, T10)>
 +
 +#define TLIST11(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11) \
-+  TList<T1, TLIST10(T2, T3, T4, T5, T6, T7, T8, T9, T10, T11)> 
++  TList<T1, TLIST10(T2, T3, T4, T5, T6, T7, T8, T9, T10, T11)>
 +
 +#define TLIST12(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12) \
-+  TList<T1, TLIST11(T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12)> 
++  TList<T1, TLIST11(T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12)>
 +
 +#define TLIST13(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13) \
-+  TList<T1, TLIST12(T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13)> 
++  TList<T1, TLIST12(T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13)>
 +
 +#define TLIST14(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14) \
-+  TList<T1, TLIST13(T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14)> 
++  TList<T1, TLIST13(T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14)>
 +
 +#define TLIST15(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15) \
-+  TList<T1, TLIST14(T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15)> 
++  TList<T1, TLIST14(T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15)>
 +// [[[end]]]
 +
 +namespace tlist {
@@ -771,9 +764,10 @@ diff --git a/xpcom/glue/cogutil.py b/xpcom/glue/cogutil.py
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/cogutil.py
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,12 @@
 +#!/usr/bin/env python
 +
++import cog
 +import re
 +
 +tpat = re.compile(r"\b[a-z]\b", re.I)
@@ -783,24 +777,78 @@ new file mode 100644
 +                           npat.sub("%u" % i, tmpl))
 +                  for i in range(rfirst, rlast+1))
 +
-+# def GenerateCallOperators(fexp, r="ResultType",
-+#                           prefix="operator()(",
-+#                           rfirst=0, rlast=MAX_FUNCTOR_ARITY+1,
-+#                           pqual="typename ParentFunctor::P",
-+#                           psep=None):
-+#   prefix = "%s %s" % (r, prefix)
-+#   if psep is None:
-+#     indent = " " * len(prefix)
-+#     psep = ",\n%s" % indent
-+#   for i in range(rfirst, rlast):
-+#     PFPps = tlist("%s p" % pqual, i, sep=psep)
-+#     ps = tlist("p", i)
-+#     cog.out(r"""
-+# %(prefix)s%(PFPps)s)
-+# {
-+#   return %(fexp)s%(ps)s);
-+# }
-+# """ % locals())
+diff --git a/xpcom/glue/nsThreadUtils.h b/xpcom/glue/nsThreadUtils.h
+--- a/xpcom/glue/nsThreadUtils.h
++++ b/xpcom/glue/nsThreadUtils.h
+@@ -41,16 +41,17 @@
+ 
+ #include "prthread.h"
+ #include "prinrval.h"
+ #include "nsIThreadManager.h"
+ #include "nsIThread.h"
+ #include "nsIRunnable.h"
+ #include "nsStringGlue.h"
+ #include "nsCOMPtr.h"
++#include "Functor.h"
+ 
+ // This is needed on some systems to prevent collisions between the symbols
+ // appearing in xpcom_core and xpcomglue.  It may be unnecessary in the future
+ // with better toolchain support.
+ #ifdef MOZILLA_INTERNAL_API
+ # define NS_NewThread NS_NewThread_P
+ # define NS_GetCurrentThread NS_GetCurrentThread_P
+ # define NS_GetMainThread NS_GetMainThread_P
+@@ -249,38 +250,34 @@ protected:
+ // with nsRevocableEventPtr.
+ template <class T>
+ class nsRunnableMethod : public nsRunnable
+ {
+ public:
+   typedef void (T::*Method)();
+ 
+   nsRunnableMethod(T *obj, Method method)
+-    : mObj(obj), mMethod(method) {
+-    NS_ADDREF(mObj);
++    : mRevoked(PR_FALSE)
++    , mFun(obj, method)
++  {}
++
++  NS_IMETHOD Run() {
++    if (!mRevoked)
++      mFun();
++    return NS_OK;
+   }
+ 
+-  NS_IMETHOD Run() {
+-    if (!mObj)
+-      return NS_OK;
+-    (mObj->*mMethod)();
+-    return NS_OK;
+-  }
+-  
+   void Revoke() {
+-    NS_IF_RELEASE(mObj);
++    mRevoked = PR_TRUE;
+   }
+ 
+ private:
+-  virtual ~nsRunnableMethod() {
+-    NS_IF_RELEASE(mObj);
+-  }
+-
+-  T      *mObj;
+-  Method  mMethod;
++  virtual ~nsRunnableMethod() {}
++  PRBool mRevoked;
++  Functor<void, TLIST0()> mFun;
+ };
+ 
+ // Use this helper macro like so:
+ //
+ //   nsCOMPtr<nsIRunnable> event =
+ //       NS_NEW_RUNNABLE_METHOD(MyClass, myObject, HandleEvent);
+ //   NS_DispatchToCurrentThread(event);
+ //
 diff --git a/xpcom/glue/test.cpp b/xpcom/glue/test.cpp
 new file mode 100644
 --- /dev/null
