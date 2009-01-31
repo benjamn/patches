@@ -1,0 +1,29 @@
+diff --git a/content/html/content/src/nsHTMLTitleElement.cpp b/content/html/content/src/nsHTMLTitleElement.cpp
+--- a/content/html/content/src/nsHTMLTitleElement.cpp
++++ b/content/html/content/src/nsHTMLTitleElement.cpp
+@@ -184,17 +184,24 @@ nsHTMLTitleElement::BindToTree(nsIDocume
+   SendTitleChangeEvent(PR_TRUE);
+ 
+   return NS_OK;
+ }
+ 
+ void
+ nsHTMLTitleElement::UnbindFromTree(PRBool aDeep, PRBool aNullParent)
+ {
+-  SendTitleChangeEvent(PR_FALSE);
++  // If just the <title> is being removed, send the usual notification.
++  // If UnbindFromTree is being called recursively from an unbind of <head>,
++  // however, the notification doesn't matter.  Moreover, we may be in the
++  // process of destroying the document, so calling NotifyPossibleTitleChange
++  // against the current document isn't safe (see SendTitleChangeEvent).
++  if (aNullParent) {
++    SendTitleChangeEvent(PR_FALSE);
++  }
+ 
+   // Let this fall through.
+   nsGenericHTMLElement::UnbindFromTree(aDeep, aNullParent);
+ }
+ 
+ nsresult
+ nsHTMLTitleElement::DoneAddingChildren(PRBool aHaveNotified)
+ {
