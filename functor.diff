@@ -1,8 +1,10 @@
+* * *
+
 diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Bind.h
-@@ -0,0 +1,288 @@
+@@ -0,0 +1,287 @@
 +#ifndef __bind_h__
 +#define __bind_h__
 +
@@ -30,10 +32,6 @@ new file mode 100644
 +    : mFun(fun)
 +    , mBound(bound)
 +  {}
-+
-+  Binder* Copy() const {
-+    return new Binder(*this);
-+  }
 +
 +  // [[[cog
 +  // prefix = "ResultType operator()("
@@ -229,7 +227,10 @@ new file mode 100644
 +template <class Fun>
 +typename Binder<Fun>::Outgoing
 +bind(const Fun& fun, typename Fun::P1 bound) {
-+  return typename Binder<Fun>::Outgoing(*new Binder<Fun>(fun, bound));
++  typedef typename Binder<Fun>::Outgoing O;
++  typedef typename O::ImplType I;
++  I* binder = new Binder<Fun>(fun, bound);
++  return O(binder);
 +}
 +
 +#define BIND1(F, A) bind(F, A)
@@ -296,7 +297,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Functor.h
-@@ -0,0 +1,269 @@
+@@ -0,0 +1,279 @@
 +#ifndef __functor_h__
 +#define __functor_h__
 +
@@ -307,6 +308,12 @@ new file mode 100644
 +
 +class FunctorSupports : public nsISupports {
 +public:
++  // nsISupports implementation must be inlined so that this file can be
++  // included across modules.  Because NS_IMPL_ISUPPORTS0 appears inline,
++  // the method prototypes for AddRef, Release, and QueryInterface provided by
++  // NS_DECL_ISUPPORTS are not needed, but the nsAutoRefCnt and
++  // NS_DECL_OWNINGTHREAD members (also provided by NS_DECL_ISUPPORTS)
++  // must now be declared manually.
 +  virtual ~FunctorSupports() {}
 +  NS_IMPL_ISUPPORTS0(FunctorSupports)
 +protected:
@@ -492,14 +499,16 @@ new file mode 100644
 +  typedef R           result_type;
 +
 +public:
++ ~Functor() {}
 +  Functor(const Functor& fun) : mImpl(fun.mImpl) {}
++  explicit Functor(ImplType* impl) : mImpl(impl) {}
 +
 +  template <class Fun>
 +  Functor(const Fun&);
 +
-+  template <typename Class,
++  template <typename ObjPtr,
 +            typename MethodPtr>
-+  Functor(Class* objPtr,
++  Functor(const ObjPtr& objPtr,
 +          MethodPtr methodPtr);
 +
 +  GEN_CALL_OPERATORS(R, *mImpl, P)
@@ -517,16 +526,18 @@ new file mode 100644
 +{
 +public:
 +  typedef typename ParentFunctor::ResultType ResultType;
-+  FunctorHandler(const Fun& fun) : mFun(*(Fun*)&fun) {}
 +
-+  GEN_CALL_OPERATORS(ResultType, mFun, typename ParentFunctor::P)
++  FunctorHandler(const Fun& fun) : mFun(fun) {}
++
++  GEN_CALL_OPERATORS(ResultType, *(Fun*)(&mFun), typename ParentFunctor::P)
 +
 +private:
-+  Fun& mFun;
++  Fun mFun;
 +};
 +
++
 +template <class ParentFunctor,
-+          typename Class, typename MethodPtr>
++          typename ObjPtr, typename MethodPtr>
 +class MethodHandler
 +  : public FunctorImpl<
 +      typename ParentFunctor::ResultType,
@@ -535,7 +546,7 @@ new file mode 100644
 +public:
 +  typedef typename ParentFunctor::ResultType ResultType;
 +
-+  MethodHandler(Class* objPtr, MethodPtr methodPtr)
++  MethodHandler(const ObjPtr& objPtr, MethodPtr methodPtr)
 +    : mObjPtr(objPtr)
 +    , mMethodPtr(methodPtr)
 +  {}
@@ -545,7 +556,7 @@ new file mode 100644
 +    typename ParentFunctor::P)
 +
 +private:
-+  nsRefPtr<Class> mObjPtr;
++  ObjPtr mObjPtr;
 +  MethodPtr mMethodPtr;
 +};
 +
@@ -558,10 +569,10 @@ new file mode 100644
 +{}
 +
 +template <typename R, class Params>
-+template <typename Class, typename MethodPtr>
-+Functor<R, Params>::Functor(Class* objPtr,
++template <typename ObjPtr, typename MethodPtr>
++Functor<R, Params>::Functor(const ObjPtr& objPtr,
 +                            MethodPtr methodPtr)
-+  : mImpl(new MethodHandler<Functor, Class, MethodPtr>(objPtr, methodPtr))
++  : mImpl(new MethodHandler<Functor, ObjPtr, MethodPtr>(objPtr, methodPtr))
 +{}
 +
 +
@@ -591,7 +602,25 @@ new file mode 100644
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
-@@ -119,16 +119,18 @@ SDK_HEADERS = \
+@@ -66,16 +66,17 @@ CSRCS		= \
+ CSRCS		= \
+ 		$(XPCOM_GLUE_SRC_LCSRCS) \
+ 		$(NULL)  
+ 
+ CPPSRCS		= \
+ 		$(XPCOM_GLUE_SRC_LCPPSRCS) \
+ 		$(XPCOM_GLUENS_SRC_LCPPSRCS) \
+ 		nsStringAPI.cpp \
++		test.cpp \
+ 		$(NULL)
+ 
+ SDK_HEADERS = \
+ 		pldhash.h \
+ 		nsArrayEnumerator.h \
+ 		nsArrayUtils.h \
+ 		nsAutoLock.h \
+ 		nsBaseHashtable.h \
+@@ -119,16 +120,19 @@ SDK_HEADERS = \
  		nsCycleCollectionParticipant.h \
  		nsDeque.h \
  		$(NULL)
@@ -602,6 +631,7 @@ diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
  		nsXPTCUtils.h \
 +		Functor.h \
 +		TList.h \
++		Bind.h \
  		$(NULL)
  
  SDK_LIBRARY     =                        \
@@ -610,7 +640,7 @@ diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
  
  # we don't want the shared lib, but we want to force the creation of a static lib.
  FORCE_STATIC_LIB = 1
-@@ -145,11 +147,13 @@ include $(topsrcdir)/config/rules.mk
+@@ -145,11 +149,13 @@ include $(topsrcdir)/config/rules.mk
  
  ifdef _MSC_VER
  # Don't include directives about which CRT to use
@@ -886,12 +916,12 @@ new file mode 100644
 +
 +void example()
 +{
-+  Functor<int, TLIST1(int)> s(Succ);
++  Functor<int, TLIST1(int)> s(&Succ);
 +  Pred pred;
 +  Functor<int, TLIST1(int)> p(pred);
 +  Functor<int, TLIST2(int, int)> ds(
 +    new DiffStruct, &DiffStruct::Sub);
-+  Functor<int, TLIST3(int, int, int)> a3(DiffStruct::Add3);
++  Functor<int, TLIST3(int, int, int)> a3(&DiffStruct::Add3);
 +
 +  int a = 1, b = 5;
 +
@@ -905,7 +935,7 @@ new file mode 100644
 +
 +void test_bind()
 +{
-+  Functor<int, TLIST3(int, int, int)> a3(DiffStruct::Add3);
++  Functor<int, TLIST3(int, int, int)> a3(&DiffStruct::Add3);
 +  is(BIND1(a3, 1)(2, 3), 6);
 +  is(BIND2(a3, 1, 2)(3), 6);
 +  is(BIND3(a3, 1, 2, 3)(), 6);

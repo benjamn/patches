@@ -32,9 +32,9 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  {
 +  Functor<nsresult, TLIST2(nsCOMPtr<nsIRequest>,
 +                           nsCOMPtr<nsISupports>)>
-+         f(this, &nsParser::HandleStartRequest);
-+  return f(request, aContext);
-+  // return BIND2(f, request, aContext)();
++         f(nsRefPtr<nsParser>(this),
++           &nsParser::HandleStartRequest);
++  return BIND2(f, request, aContext)();
 +}
 +
 +nsresult
@@ -48,7 +48,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
    mParserContext->mStreamListenerState = eOnStart;
    mParserContext->mAutoDetectStatus = eUnknownDetect;
-@@ -2807,32 +2820,46 @@ CheckCharset(const char* aBytes,
+@@ -2807,32 +2820,48 @@ CheckCharset(const char* aBytes,
    }
  }
  
@@ -75,11 +75,13 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
    data[aLength] = 0;
 +
-+  Functor<nsresult, TLIST4(nsCOMPtr<nsIRequest>, char*, PRUint32, PRUint32)>
-+    f(this, &nsParser::HandleDataAvailable);
-+
-+  return f(request, data, totalRead, sourceOffset);
-+  // return BIND4(f, request, data, totalRead, sourceOffset)();
++  Functor<nsresult, TLIST4(nsCOMPtr<nsIRequest>,
++                           char*,
++                           PRUint32,
++                           PRUint32)>
++    f(nsRefPtr<nsParser>(this),
++      &nsParser::HandleDataAvailable);
++  return BIND4(f, request, data, totalRead, sourceOffset)();
 +}
 +
 +nsresult
@@ -101,7 +103,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    if (theContext) {
-@@ -2878,16 +2905,28 @@ nsParser::OnDataAvailable(nsIRequest *re
+@@ -2878,16 +2907,28 @@ nsParser::OnDataAvailable(nsIRequest *re
  
  /**
   *  This is called by the networking library once the last block of data
@@ -114,9 +116,9 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +  Functor<nsresult, TLIST3(nsCOMPtr<nsIRequest>,
 +                           nsCOMPtr<nsISupports>,
 +                           nsresult)>
-+         f(this, &nsParser::HandleStopRequest);
-+  return f(request, aContext, status);
-+  // return BIND3(f, request, aContext, status)();
++         f(nsRefPtr<nsParser>(this),
++           &nsParser::HandleStopRequest);
++  return BIND3(f, request, aContext, status)();
 +}
 +
 +nsresult
@@ -168,24 +170,3 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
  
      /**
       *  Part of the code sandwich, this gets called right before
-diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
---- a/xpcom/glue/Makefile.in
-+++ b/xpcom/glue/Makefile.in
-@@ -121,16 +121,17 @@ SDK_HEADERS = \
- 		$(NULL)
- 
- EXPORTS = \
- 		nsThreadUtils.h \
- 		nsProxyRelease.h \
- 		nsXPTCUtils.h \
- 		Functor.h \
- 		TList.h \
-+		Bind.h \
- 		$(NULL)
- 
- SDK_LIBRARY     =                        \
- 		$(LIB_PREFIX)xpcomglue_s.$(LIB_SUFFIX) \
- 		$(NULL)
- 
- # we don't want the shared lib, but we want to force the creation of a static lib.
- FORCE_STATIC_LIB = 1
