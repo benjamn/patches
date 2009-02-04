@@ -297,7 +297,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Functor.h
-@@ -0,0 +1,279 @@
+@@ -0,0 +1,394 @@
 +#ifndef __functor_h__
 +#define __functor_h__
 +
@@ -517,6 +517,11 @@ new file mode 100644
 +  nsRefPtr<ImplType> mImpl;
 +};
 +
++// XXX Should the parameter types of the method itself determine the types
++// of the bound values?  Or should the argument types of the values themselves
++// determine the type.  More flexibility in the latter approach, but both
++// approaches assume the Binder<Fun> technique.
++
 +
 +template <class ParentFunctor, typename Fun>
 +class FunctorHandler
@@ -575,6 +580,116 @@ new file mode 100644
 +  : mImpl(new MethodHandler<Functor, ObjPtr, MethodPtr>(objPtr, methodPtr))
 +{}
 +
++
++#define IMPL_GLOBAL_FUNCTOR_METHOD(N, TYPES)                                  \
++  Functor<Result, TLIST##N TYPES>                                             \
++  functor(Class* obj, Result (Class::*method)TYPES) {                         \
++    return Functor<Result, TLIST##N TYPES>                                    \
++                  (nsRefPtr<Class>(obj), method);                             \
++  }
++
++#define IMPL_GLOBAL_FUNCTOR_FUNCTION(N, TYPES)                                \
++  Functor<Result, TLIST##N TYPES>                                             \
++  functor(Result (*function)TYPES) {                                          \
++    return Functor<Result, TLIST##N TYPES>                                    \
++                  (function);                                                 \
++  }
++
++// [[[cog
++// for i in range(MAX_FUNCTOR_ARITY+1):
++//   typenames = tlist(", typename T", i, sep="")
++//   Tts = tlist("T t", i)
++//   Ts = tlist("T", i)
++//   ts = tlist("t", i)
++//   TLIST = "TLIST%d(%s)" % (i, Ts)
++//   cog.out(r"""
++// template <typename Result, class Class%(typenames)s>
++// IMPL_GLOBAL_FUNCTOR_METHOD(%(i)d, (%(Ts)s))
++// template <typename Result%(typenames)s>
++// IMPL_GLOBAL_FUNCTOR_FUNCTION(%(i)d, (%(Ts)s))
++// """ % locals())
++// ]]]
++
++template <typename Result, class Class>
++IMPL_GLOBAL_FUNCTOR_METHOD(0, ())
++template <typename Result>
++IMPL_GLOBAL_FUNCTOR_FUNCTION(0, ())
++
++template <typename Result, class Class, typename T1>
++IMPL_GLOBAL_FUNCTOR_METHOD(1, (T1))
++template <typename Result, typename T1>
++IMPL_GLOBAL_FUNCTOR_FUNCTION(1, (T1))
++
++template <typename Result, class Class, typename T1, typename T2>
++IMPL_GLOBAL_FUNCTOR_METHOD(2, (T1, T2))
++template <typename Result, typename T1, typename T2>
++IMPL_GLOBAL_FUNCTOR_FUNCTION(2, (T1, T2))
++
++template <typename Result, class Class, typename T1, typename T2, typename T3>
++IMPL_GLOBAL_FUNCTOR_METHOD(3, (T1, T2, T3))
++template <typename Result, typename T1, typename T2, typename T3>
++IMPL_GLOBAL_FUNCTOR_FUNCTION(3, (T1, T2, T3))
++
++template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4>
++IMPL_GLOBAL_FUNCTOR_METHOD(4, (T1, T2, T3, T4))
++template <typename Result, typename T1, typename T2, typename T3, typename T4>
++IMPL_GLOBAL_FUNCTOR_FUNCTION(4, (T1, T2, T3, T4))
++
++template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5>
++IMPL_GLOBAL_FUNCTOR_METHOD(5, (T1, T2, T3, T4, T5))
++template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5>
++IMPL_GLOBAL_FUNCTOR_FUNCTION(5, (T1, T2, T3, T4, T5))
++
++template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6>
++IMPL_GLOBAL_FUNCTOR_METHOD(6, (T1, T2, T3, T4, T5, T6))
++template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6>
++IMPL_GLOBAL_FUNCTOR_FUNCTION(6, (T1, T2, T3, T4, T5, T6))
++
++template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7>
++IMPL_GLOBAL_FUNCTOR_METHOD(7, (T1, T2, T3, T4, T5, T6, T7))
++template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7>
++IMPL_GLOBAL_FUNCTOR_FUNCTION(7, (T1, T2, T3, T4, T5, T6, T7))
++
++template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8>
++IMPL_GLOBAL_FUNCTOR_METHOD(8, (T1, T2, T3, T4, T5, T6, T7, T8))
++template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8>
++IMPL_GLOBAL_FUNCTOR_FUNCTION(8, (T1, T2, T3, T4, T5, T6, T7, T8))
++
++template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9>
++IMPL_GLOBAL_FUNCTOR_METHOD(9, (T1, T2, T3, T4, T5, T6, T7, T8, T9))
++template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9>
++IMPL_GLOBAL_FUNCTOR_FUNCTION(9, (T1, T2, T3, T4, T5, T6, T7, T8, T9))
++
++template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10>
++IMPL_GLOBAL_FUNCTOR_METHOD(10, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10))
++template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10>
++IMPL_GLOBAL_FUNCTOR_FUNCTION(10, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10))
++
++template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10, typename T11>
++IMPL_GLOBAL_FUNCTOR_METHOD(11, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11))
++template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10, typename T11>
++IMPL_GLOBAL_FUNCTOR_FUNCTION(11, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11))
++
++template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10, typename T11, typename T12>
++IMPL_GLOBAL_FUNCTOR_METHOD(12, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12))
++template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10, typename T11, typename T12>
++IMPL_GLOBAL_FUNCTOR_FUNCTION(12, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12))
++
++template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10, typename T11, typename T12, typename T13>
++IMPL_GLOBAL_FUNCTOR_METHOD(13, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13))
++template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10, typename T11, typename T12, typename T13>
++IMPL_GLOBAL_FUNCTOR_FUNCTION(13, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13))
++
++template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10, typename T11, typename T12, typename T13, typename T14>
++IMPL_GLOBAL_FUNCTOR_METHOD(14, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14))
++template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10, typename T11, typename T12, typename T13, typename T14>
++IMPL_GLOBAL_FUNCTOR_FUNCTION(14, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14))
++
++template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10, typename T11, typename T12, typename T13, typename T14, typename T15>
++IMPL_GLOBAL_FUNCTOR_METHOD(15, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15))
++template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10, typename T11, typename T12, typename T13, typename T14, typename T15>
++IMPL_GLOBAL_FUNCTOR_FUNCTION(15, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15))
++// [[[end]]]
 +
 +#endif
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in

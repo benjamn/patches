@@ -21,7 +21,87 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  #define NS_PARSER_FLAG_PARSER_ENABLED         0x00000002
  #define NS_PARSER_FLAG_OBSERVERS_ENABLED      0x00000004
  #define NS_PARSER_FLAG_PENDING_CONTINUE_EVENT 0x00000008
-@@ -2385,16 +2388,26 @@ nsParser::BuildModel()
+@@ -1683,31 +1686,40 @@ nsParser::Terminate(void)
+     // got any data).  Manually break the reference cycle with the sink.
+     result = mSink->DidBuildModel();
+     NS_ENSURE_SUCCESS(result, result);
+   }
+ 
+   return NS_OK;
+ }
+ 
+-NS_IMETHODIMP
+-nsParser::ContinueParsing()
++
++#define SIMPLE_PROXY(RTYPE, EVENT)                                            \
++  NS_IMETHODIMP_(RTYPE) nsParser::EVENT() {                                   \
++    Functor<RTYPE, TLIST0()>                                                  \
++           f(nsRefPtr<nsParser>(this),                                        \
++             &nsParser::Handle##EVENT);                                       \
++    return f();                                                               \
++  }                                                                           \
++  RTYPE nsParser::Handle##EVENT()
++
++
++SIMPLE_PROXY(nsresult, ContinueParsing)
+ {
+   if (mFlags & NS_PARSER_FLAG_PARSER_ENABLED) {
+     NS_WARNING("Trying to continue parsing on a unblocked parser.");
+     return NS_OK;
+   }
+ 
+   mFlags |= NS_PARSER_FLAG_PARSER_ENABLED;
+ 
+   return ContinueInterruptedParsing();
+ }
+ 
+-NS_IMETHODIMP
+-nsParser::ContinueInterruptedParsing()
++SIMPLE_PROXY(nsresult, ContinueInterruptedParsing)
+ {
+   // If there are scripts executing, then the content sink is jumping the gun
+   // (probably due to a synchronous XMLHttpRequest) and will re-enable us
+   // later, see bug 460706.
+   if (mScriptsExecuting) {
+     return NS_OK;
+   }
+ 
+@@ -1742,32 +1754,30 @@ nsParser::ContinueInterruptedParsing()
+ 
+   return result;
+ }
+ 
+ /**
+  *  Stops parsing temporarily. That's it will prevent the
+  *  parser from building up content model.
+  */
+-NS_IMETHODIMP_(void)
+-nsParser::BlockParser()
++SIMPLE_PROXY(void, BlockParser)
+ {
+   mFlags &= ~NS_PARSER_FLAG_PARSER_ENABLED;
+   MOZ_TIMER_DEBUGLOG(("Stop: Parse Time: nsParser::BlockParser(), this=%p\n", this));
+   MOZ_TIMER_STOP(mParseTime);
+ }
+ 
+ /**
+  *  Open up the parser for tokenization, building up content
+  *  model..etc. However, this method does not resume parsing
+  *  automatically. It's the callers' responsibility to restart
+  *  the parsing engine.
+  */
+-NS_IMETHODIMP_(void)
+-nsParser::UnblockParser()
++SIMPLE_PROXY(void, UnblockParser)
+ {
+   if (!(mFlags & NS_PARSER_FLAG_PARSER_ENABLED)) {
+     mFlags |= NS_PARSER_FLAG_PARSER_ENABLED;
+     MOZ_TIMER_DEBUGLOG(("Start: Parse Time: nsParser::UnblockParser(), this=%p\n", this));
+     MOZ_TIMER_START(mParseTime);
+   } else {
+     NS_WARNING("Trying to unblock an unblocked parser.");
+   }
+@@ -2385,16 +2395,26 @@ nsParser::BuildModel()
  
  /*******************************************************************
    These methods are used to talk to the netlib system...
@@ -30,8 +110,8 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  nsresult
  nsParser::OnStartRequest(nsIRequest *request, nsISupports* aContext)
  {
-+  Functor<nsresult, TLIST2(nsCOMPtr<nsIRequest>,
-+                           nsCOMPtr<nsISupports>)>
++  Functor<nsresult, TLIST2(nsRefPtr<nsIRequest>,
++                           nsRefPtr<nsISupports>)>
 +         f(nsRefPtr<nsParser>(this),
 +           &nsParser::HandleStartRequest);
 +  return BIND2(f, request, aContext)();
@@ -48,7 +128,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
    mParserContext->mStreamListenerState = eOnStart;
    mParserContext->mAutoDetectStatus = eUnknownDetect;
-@@ -2807,32 +2820,48 @@ CheckCharset(const char* aBytes,
+@@ -2807,32 +2827,48 @@ CheckCharset(const char* aBytes,
    }
  }
  
@@ -75,7 +155,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
    data[aLength] = 0;
 +
-+  Functor<nsresult, TLIST4(nsCOMPtr<nsIRequest>,
++  Functor<nsresult, TLIST4(nsRefPtr<nsIRequest>,
 +                           char*,
 +                           PRUint32,
 +                           PRUint32)>
@@ -103,7 +183,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    if (theContext) {
-@@ -2878,16 +2907,28 @@ nsParser::OnDataAvailable(nsIRequest *re
+@@ -2878,16 +2914,28 @@ nsParser::OnDataAvailable(nsIRequest *re
  
  /**
   *  This is called by the networking library once the last block of data
@@ -113,8 +193,8 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  nsParser::OnStopRequest(nsIRequest *request, nsISupports* aContext,
                          nsresult status)
 +{
-+  Functor<nsresult, TLIST3(nsCOMPtr<nsIRequest>,
-+                           nsCOMPtr<nsISupports>,
++  Functor<nsresult, TLIST3(nsRefPtr<nsIRequest>,
++                           nsRefPtr<nsISupports>,
 +                           nsresult)>
 +         f(nsRefPtr<nsParser>(this),
 +           &nsParser::HandleStopRequest);
@@ -135,7 +215,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
 --- a/parser/htmlparser/src/nsParser.h
 +++ b/parser/htmlparser/src/nsParser.h
-@@ -422,16 +422,34 @@ class nsParser : public nsIParser,
+@@ -422,16 +422,41 @@ class nsParser : public nsIParser,
       * @update	gess5/18/98
       * @param 
       * @return
@@ -144,8 +224,15 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
  
      void SpeculativelyParse();
  
++    // TODO move these handlers nearer to their counterparts
++
++    nsresult HandleContinueParsing();
++    nsresult HandleContinueInterruptedParsing();
++    void     HandleBlockParser();
++    void     HandleUnblockParser();
++
 +    nsresult
-+    nsParser::HandleStartRequest(
++    HandleStartRequest(
 +      nsIRequest*  request,
 +      nsISupports* context);
 +
