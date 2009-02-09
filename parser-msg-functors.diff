@@ -101,7 +101,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    } else {
      NS_WARNING("Trying to unblock an unblocked parser.");
    }
-@@ -1877,31 +1887,49 @@ nsParser::SetCanInterrupt(PRBool aCanInt
+@@ -1877,52 +1887,69 @@ nsParser::SetCanInterrupt(PRBool aCanInt
   *  of this method.
   */
  NS_IMETHODIMP
@@ -150,17 +150,55 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 -      return rv;
 -    }
 -    NS_ConvertUTF8toUTF16 theName(spec);
--
-+  if (PR_TRUE) {
-     nsScanner* theScanner = new nsScanner(theName, PR_FALSE, mCharset,
-                                           mCharsetSource);
-     CParserContext* pc = new CParserContext(theScanner, aKey, mCommand,
-                                             aListener);
-     if (pc && theScanner) {
-       pc->mMultipart = PR_TRUE;
-       pc->mContextType = CParserContext::eCTURL;
-       pc->mDTDMode = aMode;
-@@ -2390,16 +2418,26 @@ nsParser::BuildModel()
++  nsScanner* theScanner = new nsScanner(theName, PR_FALSE, mCharset,
++                                        mCharsetSource);
++  CParserContext* pc = new CParserContext(theScanner, aKey, mCommand,
++                                          aListener);
++  if (pc && theScanner) {
++    pc->mMultipart = PR_TRUE;
++    pc->mContextType = CParserContext::eCTURL;
++    pc->mDTDMode = aMode;
++    PushContext(*pc);
+ 
+-    nsScanner* theScanner = new nsScanner(theName, PR_FALSE, mCharset,
+-                                          mCharsetSource);
+-    CParserContext* pc = new CParserContext(theScanner, aKey, mCommand,
+-                                            aListener);
+-    if (pc && theScanner) {
+-      pc->mMultipart = PR_TRUE;
+-      pc->mContextType = CParserContext::eCTURL;
+-      pc->mDTDMode = aMode;
+-      PushContext(*pc);
++    // Here, and only here, hand this parser off to the scanner. We
++    // only want to do that here since the only reason the scanner
++    // needs the parser is to call DataAdded() on it, and that's
++    // only ever wanted when parsing from an URI.
++    theScanner->SetParser(this);
+ 
+-      // Here, and only here, hand this parser off to the scanner. We
+-      // only want to do that here since the only reason the scanner
+-      // needs the parser is to call DataAdded() on it, and that's
+-      // only ever wanted when parsing from an URI.
+-      theScanner->SetParser(this);
++    result = NS_OK;
++  } else {
++    result = mInternalState = NS_ERROR_HTMLPARSER_BADCONTEXT;
++  }
+ 
+-      result = NS_OK;
+-    } else {
+-      result = mInternalState = NS_ERROR_HTMLPARSER_BADCONTEXT;
+-    }
+-  }
+   return result;
+ }
+ 
+ /**
+  * Call this method if all you want to do is parse 1 string full of HTML text.
+  * In particular, this method should be called by the DOM when it has an HTML
+  * string to feed to the parser in real-time.
+  *
+@@ -2390,16 +2417,26 @@ nsParser::BuildModel()
  }
  
  /*******************************************************************
@@ -187,7 +225,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      mObserver->OnStartRequest(request, aContext);
    }
    mParserContext->mStreamListenerState = eOnStart;
-@@ -2813,32 +2851,48 @@ CheckCharset(const char* aBytes,
+@@ -2813,32 +2850,48 @@ CheckCharset(const char* aBytes,
    }
  }
  
@@ -242,7 +280,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    if (theContext) {
-@@ -2884,16 +2938,28 @@ nsParser::OnDataAvailable(nsIRequest *re
+@@ -2884,16 +2937,28 @@ nsParser::OnDataAvailable(nsIRequest *re
  
  /**
   *  This is called by the networking library once the last block of data
