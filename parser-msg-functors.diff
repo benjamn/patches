@@ -21,7 +21,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  #define NS_PARSER_FLAG_PARSER_ENABLED         0x00000002
  #define NS_PARSER_FLAG_OBSERVERS_ENABLED      0x00000004
  #define NS_PARSER_FLAG_PENDING_CONTINUE_EVENT 0x00000008
-@@ -1683,31 +1686,40 @@ nsParser::Terminate(void)
+@@ -1689,31 +1692,40 @@ nsParser::Terminate(void)
      // got any data).  Manually break the reference cycle with the sink.
      result = mSink->DidBuildModel();
      NS_ENSURE_SUCCESS(result, result);
@@ -66,7 +66,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      return NS_OK;
    }
  
-@@ -1742,32 +1754,30 @@ nsParser::ContinueInterruptedParsing()
+@@ -1748,32 +1760,30 @@ nsParser::ContinueInterruptedParsing()
  
    return result;
  }
@@ -101,7 +101,67 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    } else {
      NS_WARNING("Trying to unblock an unblocked parser.");
    }
-@@ -2385,16 +2395,26 @@ nsParser::BuildModel()
+@@ -1877,31 +1887,49 @@ nsParser::SetCanInterrupt(PRBool aCanInt
+  *  of this method.
+  */
+ NS_IMETHODIMP
+ nsParser::Parse(nsIURI* aURL,
+                 nsIRequestObserver* aListener,
+                 void* aKey,
+                 nsDTDMode aMode)
+ {
++  NS_PRECONDITION(aURL, "Error: Null URL given");
++  NS_ENSURE_TRUE(aURL, kBadURL);
+ 
+-  NS_PRECONDITION(aURL, "Error: Null URL given");
++  nsCAutoString spec;
++  nsresult rv = aURL->GetSpec(spec);
++  if (rv != NS_OK) {
++    return rv;
++  }
++  NS_ConvertUTF8toUTF16 theName(spec);
++
++  Functor<nsresult, TLIST4(nsString,
++                           nsRefPtr<nsIRequestObserver>,
++                           void*,
++                           nsDTDMode)>
++         f(nsRefPtr<nsParser>(this),
++           &nsParser::HandleParseUrl);
++  return BIND4(f, theName, aListener, aKey, aMode)();
++}
++
++nsresult
++nsParser::HandleParseUrl(nsString& theName,
++                         nsIRequestObserver* aListener,
++                         void* aKey,
++                         nsDTDMode aMode)
++{
+   NS_ASSERTION(!mSpeculativeScriptThread, "Can't reuse a parser like this");
+ 
+   nsresult result=kBadURL;
++  // Technically this should happen even if aURL was null, but the truthiness
++  // of aURL is supposedly a precondition, so I've opted for the simpler route.
+   mObserver = aListener;
+ 
+-  if (aURL) {
+-    nsCAutoString spec;
+-    nsresult rv = aURL->GetSpec(spec);
+-    if (rv != NS_OK) {
+-      return rv;
+-    }
+-    NS_ConvertUTF8toUTF16 theName(spec);
+-
++  if (PR_TRUE) {
+     nsScanner* theScanner = new nsScanner(theName, PR_FALSE, mCharset,
+                                           mCharsetSource);
+     CParserContext* pc = new CParserContext(theScanner, aKey, mCommand,
+                                             aListener);
+     if (pc && theScanner) {
+       pc->mMultipart = PR_TRUE;
+       pc->mContextType = CParserContext::eCTURL;
+       pc->mDTDMode = aMode;
+@@ -2390,16 +2418,26 @@ nsParser::BuildModel()
+ }
  
  /*******************************************************************
    These methods are used to talk to the netlib system...
@@ -109,7 +169,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
  nsresult
  nsParser::OnStartRequest(nsIRequest *request, nsISupports* aContext)
- {
++{
 +  Functor<nsresult, TLIST2(nsRefPtr<nsIRequest>,
 +                           nsRefPtr<nsISupports>)>
 +         f(nsRefPtr<nsParser>(this),
@@ -119,7 +179,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +
 +nsresult
 +nsParser::HandleStartRequest(nsIRequest *request, nsISupports* aContext)
-+{
+ {
    NS_PRECONDITION(eNone == mParserContext->mStreamListenerState,
                    "Parser's nsIStreamListener API was not setup "
                    "correctly in constructor.");
@@ -127,8 +187,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      mObserver->OnStartRequest(request, aContext);
    }
    mParserContext->mStreamListenerState = eOnStart;
-   mParserContext->mAutoDetectStatus = eUnknownDetect;
-@@ -2807,32 +2827,48 @@ CheckCharset(const char* aBytes,
+@@ -2813,32 +2851,48 @@ CheckCharset(const char* aBytes,
    }
  }
  
@@ -183,7 +242,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    if (theContext) {
-@@ -2878,16 +2914,28 @@ nsParser::OnDataAvailable(nsIRequest *re
+@@ -2884,16 +2938,28 @@ nsParser::OnDataAvailable(nsIRequest *re
  
  /**
   *  This is called by the networking library once the last block of data
@@ -215,7 +274,27 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
 --- a/parser/htmlparser/src/nsParser.h
 +++ b/parser/htmlparser/src/nsParser.h
-@@ -422,16 +422,41 @@ class nsParser : public nsIParser,
+@@ -399,17 +399,17 @@ class nsParser : public nsIParser,
+     virtual void ScriptExecuting();
+ 
+     /**
+      * Tells the parser that the script is done executing. We should now
+      * continue the regular parsing process.
+      */
+     virtual void ScriptDidExecute();
+ 
+- protected:
++protected:
+ 
+     void Initialize(PRBool aConstructor = PR_FALSE);
+     void Cleanup();
+ 
+     /**
+      * 
+      * @update	gess5/18/98
+      * @param 
+@@ -421,16 +421,48 @@ class nsParser : public nsIParser,
+      * 
       * @update	gess5/18/98
       * @param 
       * @return
@@ -223,7 +302,7 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
      nsresult DidBuildModel(nsresult anErrorCode);
  
      void SpeculativelyParse();
- 
++
 +    // TODO move these handlers nearer to their counterparts
 +
 +    nsresult HandleContinueParsing();
@@ -248,7 +327,14 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
 +      nsIRequest*  request,
 +      nsISupports* context,
 +      nsresult     status);
-+
++    
++    nsresult
++    HandleParseUrl(
++      nsString& spec,
++      nsIRequestObserver* aListener,
++      void* aKey,
++      nsDTDMode aMode);
+ 
  private:
  
      /*******************************************
@@ -256,4 +342,3 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
       *******************************************/
  
      /**
-      *  Part of the code sandwich, this gets called right before
