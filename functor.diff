@@ -4,7 +4,7 @@ diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Bind.h
-@@ -0,0 +1,167 @@
+@@ -0,0 +1,164 @@
 +#ifndef __bind_h__
 +#define __bind_h__
 +
@@ -16,21 +16,18 @@ new file mode 100644
 +// ]]]
 +// [[[end]]]
 +
-+template <class Incoming>
++template <typename Result, typename Params, typename Bound>
 +class Binder
-+  : public FunctorImpl<
-+      typename Incoming::ResultType,
-+      typename Incoming::ParamList::Tail>
++  : public FunctorImpl<Result, typename Params::Tail>
 +{
 +public:
++  typedef Functor<Result, Params> Incoming;
 +  typedef typename Incoming::ResultType ResultType;
-+  typedef typename Incoming::P1 BoundType;
-+  typedef Functor<ResultType, typename Incoming::ParamList::Tail>
-+          Outgoing;
++  typedef Functor<Result, typename Params::Tail> Outgoing;
 +
 +  COOPT_PARAM_TYPEDEFS(Outgoing)
 +
-+  Binder(const Incoming& fun, BoundType bound)
++  Binder(const Incoming& fun, Bound bound)
 +    : mFun(fun)
 +    , mBound(bound)
 +  {}
@@ -99,14 +96,14 @@ new file mode 100644
 +
 +private:
 +  Incoming mFun;
-+  BoundType mBound;
++  Bound mBound;
 +};
 +
 +
 +template <typename Result, class Params, typename Bound>
-+typename Binder<Functor<Result, Params> >::Outgoing
++typename Binder<Result, Params, Bound>::Outgoing
 +bind(Functor<Result, Params> fun, Bound bound) {
-+  typedef Binder<Functor<Result, Params> > B;
++  typedef Binder<Result, Params, Bound> B;
 +  typedef typename B::Outgoing O;
 +  typedef typename O::ImplType I;
 +  I* binder = new B(fun, bound);

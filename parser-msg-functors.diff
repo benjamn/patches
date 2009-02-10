@@ -21,7 +21,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  #define NS_PARSER_FLAG_PARSER_ENABLED         0x00000002
  #define NS_PARSER_FLAG_OBSERVERS_ENABLED      0x00000004
  #define NS_PARSER_FLAG_PENDING_CONTINUE_EVENT 0x00000008
-@@ -1689,31 +1692,40 @@ nsParser::Terminate(void)
+@@ -1689,31 +1692,38 @@ nsParser::Terminate(void)
      // got any data).  Manually break the reference cycle with the sink.
      result = mSink->DidBuildModel();
      NS_ENSURE_SUCCESS(result, result);
@@ -35,10 +35,8 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +
 +#define SIMPLE_PROXY(RTYPE, EVENT)                                            \
 +  NS_IMETHODIMP_(RTYPE) nsParser::EVENT() {                                   \
-+    Functor<RTYPE, TLIST0()>                                                  \
-+           f(nsRefPtr<nsParser>(this),                                        \
-+             &nsParser::Handle##EVENT);                                       \
-+    return f();                                                               \
++    return BIND1(&nsParser::Handle##EVENT,                                    \
++                 nsRefPtr<nsParser>(this))();                                 \
 +  }                                                                           \
 +  RTYPE nsParser::Handle##EVENT()
 +
@@ -66,7 +64,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      return NS_OK;
    }
  
-@@ -1748,32 +1760,30 @@ nsParser::ContinueInterruptedParsing()
+@@ -1748,32 +1758,30 @@ nsParser::ContinueInterruptedParsing()
  
    return result;
  }
@@ -101,7 +99,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    } else {
      NS_WARNING("Trying to unblock an unblocked parser.");
    }
-@@ -1877,52 +1887,69 @@ nsParser::SetCanInterrupt(PRBool aCanInt
+@@ -1877,52 +1885,64 @@ nsParser::SetCanInterrupt(PRBool aCanInt
   *  of this method.
   */
  NS_IMETHODIMP
@@ -121,13 +119,8 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +  }
 +  NS_ConvertUTF8toUTF16 theName(spec);
 +
-+  Functor<nsresult, TLIST4(nsString,
-+                           nsRefPtr<nsIRequestObserver>,
-+                           void*,
-+                           nsDTDMode)>
-+         f(nsRefPtr<nsParser>(this),
-+           &nsParser::HandleParseUrl);
-+  return BIND4(f, theName, aListener, aKey, aMode)();
++  return BIND5(&nsParser::HandleParseUrl, nsRefPtr<nsParser>(this),
++               theName, aListener, aKey, aMode)();
 +}
 +
 +nsresult
@@ -198,7 +191,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
   * In particular, this method should be called by the DOM when it has an HTML
   * string to feed to the parser in real-time.
   *
-@@ -1930,16 +1957,41 @@ nsParser::Parse(nsIURI* aURL,
+@@ -1930,16 +1950,27 @@ nsParser::Parse(nsIURI* aURL,
   * @param   aMimeType tells us what type of content to expect in the given string
   */
  NS_IMETHODIMP
@@ -208,22 +201,8 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
                  PRBool aLastCall,
                  nsDTDMode aMode)
 +{
-+  Functor<nsresult, TLIST5(nsString,
-+                           void*,
-+                           nsCString,
-+                           PRBool,
-+                           nsDTDMode)>
-+         f(nsRefPtr<nsParser>(this),
-+           &nsParser::HandleParseBuffer);
-+
-+  Functor<nsresult, TLIST0()> f0 =
-+    BIND5(f, nsString(aSourceBuffer),
-+             aKey,
-+             nsCString(aMimeType),
-+             aLastCall,
-+             aMode);
-+
-+  return f0();
++  return BIND6(&nsParser::HandleParseBuffer, nsRefPtr<nsParser>(this),
++               nsString(aSourceBuffer), aKey, nsCString(aMimeType), aLastCall, aMode)();
 +}
 +
 +nsresult
@@ -240,7 +219,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      return result;
    }
  
-@@ -2055,23 +2107,52 @@ nsParser::Parse(const nsAString& aSource
+@@ -2055,23 +2086,37 @@ nsParser::Parse(const nsAString& aSource
          }
        }
      }
@@ -258,24 +237,9 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
                          const nsACString& aMimeType,
                          nsDTDMode aMode)
 +{
-+  Functor<nsresult, TLIST6(nsString,
-+                           void*,
-+                           nsTArray<nsString>,
-+                           PRBool,
-+                           nsCString,
-+                           nsDTDMode)>
-+         f(nsRefPtr<nsParser>(this),
-+           &nsParser::HandleParseFragment);
-+
-+  Functor<nsresult, TLIST0()> f0 =
-+    BIND6(f, nsString(aSourceBuffer),
-+             aKey,
-+             aTagStack,
-+             aXMLMode,
-+             nsCString(aMimeType),
-+             aMode);
-+
-+  return f0();
++  return BIND7(&nsParser::HandleParseFragment, nsRefPtr<nsParser>(this),
++               nsString(aSourceBuffer), aKey, aTagStack, aXMLMode,
++               nsCString(aMimeType), aMode)();
 +}
 +
 +nsresult
@@ -293,7 +257,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
    // Disable observers for fragments
    mFlags &= ~NS_PARSER_FLAG_OBSERVERS_ENABLED;
-@@ -2390,16 +2471,26 @@ nsParser::BuildModel()
+@@ -2390,16 +2435,23 @@ nsParser::BuildModel()
  }
  
  /*******************************************************************
@@ -303,11 +267,8 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  nsresult
  nsParser::OnStartRequest(nsIRequest *request, nsISupports* aContext)
 +{
-+  Functor<nsresult, TLIST2(nsRefPtr<nsIRequest>,
-+                           nsRefPtr<nsISupports>)>
-+         f(nsRefPtr<nsParser>(this),
-+           &nsParser::HandleStartRequest);
-+  return BIND2(f, request, aContext)();
++  return BIND3(&nsParser::HandleStartRequest, nsRefPtr<nsParser>(this),
++               request, aContext)();
 +}
 +
 +nsresult
@@ -320,7 +281,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      mObserver->OnStartRequest(request, aContext);
    }
    mParserContext->mStreamListenerState = eOnStart;
-@@ -2813,32 +2904,48 @@ CheckCharset(const char* aBytes,
+@@ -2813,32 +2865,43 @@ CheckCharset(const char* aBytes,
    }
  }
  
@@ -347,13 +308,8 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
    data[aLength] = 0;
 +
-+  Functor<nsresult, TLIST4(nsRefPtr<nsIRequest>,
-+                           char*,
-+                           PRUint32,
-+                           PRUint32)>
-+    f(nsRefPtr<nsParser>(this),
-+      &nsParser::HandleDataAvailable);
-+  return BIND4(f, request, data, totalRead, sourceOffset)();
++  return BIND5(&nsParser::HandleDataAvailable, nsRefPtr<nsParser>(this),
++               request, data, totalRead, sourceOffset)();
 +}
 +
 +nsresult
@@ -375,7 +331,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    if (theContext) {
-@@ -2884,16 +2991,28 @@ nsParser::OnDataAvailable(nsIRequest *re
+@@ -2884,16 +2947,24 @@ nsParser::OnDataAvailable(nsIRequest *re
  
  /**
   *  This is called by the networking library once the last block of data
@@ -385,12 +341,8 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  nsParser::OnStopRequest(nsIRequest *request, nsISupports* aContext,
                          nsresult status)
 +{
-+  Functor<nsresult, TLIST3(nsRefPtr<nsIRequest>,
-+                           nsRefPtr<nsISupports>,
-+                           nsresult)>
-+         f(nsRefPtr<nsParser>(this),
-+           &nsParser::HandleStopRequest);
-+  return BIND3(f, request, aContext, status)();
++  return BIND4(&nsParser::HandleStopRequest, nsRefPtr<nsParser>(this),
++               request, aContext, status)();
 +}
 +
 +nsresult
