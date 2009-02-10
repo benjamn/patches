@@ -103,13 +103,13 @@ new file mode 100644
 +};
 +
 +
-+template <class Fun, typename Bound>
-+typename Binder<Fun>::Outgoing
-+bind(const Fun& fun, Bound bound) {
-+  if (0) typename Fun::P1 p1 = bound;
-+  typedef typename Binder<Fun>::Outgoing O;
++template <typename Result, class Params, typename Bound>
++typename Binder<Functor<Result, Params> >::Outgoing
++bind(Functor<Result, Params> fun, Bound bound) {
++  typedef Binder<Functor<Result, Params> > B;
++  typedef typename B::Outgoing O;
 +  typedef typename O::ImplType I;
-+  I* binder = new Binder<Fun>(fun, bound);
++  I* binder = new B(fun, bound);
 +  return O(binder);
 +}
 +
@@ -177,7 +177,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Functor.h
-@@ -0,0 +1,577 @@
+@@ -0,0 +1,583 @@
 +#ifndef __functor_h__
 +#define __functor_h__
 +
@@ -578,6 +578,12 @@ new file mode 100644
 +  Method mMethod;
 +};
 +
++// Just pass Functors through:
++template <typename R, class List>
++Functor<R, List>
++functor(Functor<R, List> fun) {
++  return fun;
++}
 +
 +/**
 + * To explain all this preprocessing...
@@ -967,7 +973,7 @@ diff --git a/xpcom/glue/test.cpp b/xpcom/glue/test.cpp
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/test.cpp
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,81 @@
 +#include <iostream>
 +#include "Functor.h"
 +#include "Bind.h"
@@ -1024,26 +1030,24 @@ new file mode 100644
 +void test_bind()
 +{
 +  // Interesting (near-)equivalences:
-+  // is(Pred()(2), 1);
-+  // is((Pred().*(&Pred::operator()))(2), 1);
-+  // is(Pred().operator()(2), 1);
-+  // is(BIND1(&Pred::operator(), Pred())(2), 1);
++  is(Pred()(2), 1);
++  is((Pred().*(&Pred::operator()))(2), 1);
++  is(Pred().operator()(2), 1);
++  is(BIND1(&Pred::operator(), Pred())(2), 1);
 +
-+//   Functor<int, TLIST3(int, int, int)> a3(&DiffStruct::Add3);
-+//   is(BIND1(a3, 1)(2, 3), 6);
-+//   is(BIND2(a3, 1, 2)(3), 6);
-+//   is(BIND3(a3, 1, 2, 3)(), 6);
-+//   is(BIND2(BIND1(a3, 1), 2, 3)(), 6);
-+// 
-+//   double x = 5, y = 3;
-+//   DiffStruct ds;
-+//   Functor<int, TLIST2(int, int)> sub(
-+//     &ds, &DiffStruct::Sub);
-+//   Functor<int, TLIST1(int)> f = BIND1(sub, x);
-+//   is(sub(x, y), x - y);
-+//   is(sub(y, x), y - x);
-+//   is(f(x), 0);
-+//   is(f(y), x - y);
++  Functor<int, TLIST2(int, int)> a2 = functor(&DiffStruct::Add2);
++  is(BIND1(a2, 2)(3), 5);
++  is(BIND2(a2, 2, 3)(), 5);
++  is(BIND1(BIND1(a2, 2), 3)(), 5);
++
++  double x = 5, y = 3;
++  DiffStruct ds;
++  Functor<int, TLIST2(int, int)> sub = BIND1(&DiffStruct::Sub, ds);
++  Functor<int, TLIST1(int)> f = BIND1(sub, x);
++  is(sub(x, y), x - y);
++  is(sub(y, x), y - x);
++  is(f(x), 0);
++  is(f(y), x - y);
 +}
 +
 +int main() {
