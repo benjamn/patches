@@ -967,7 +967,7 @@ diff --git a/xpcom/glue/test.cpp b/xpcom/glue/test.cpp
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/test.cpp
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,83 @@
 +#include <iostream>
 +#include "Functor.h"
 +#include "Bind.h"
@@ -1000,28 +1000,25 @@ new file mode 100644
 +
 +void example()
 +{
-+  // Functor<int, TLIST1(int)> s =
-+  //   Functor<int, TLIST1(int)>::callable(&Succ);
-+  // 
-+  // Pred pred;
-+  // Functor<int, TLIST1(int)> p =
-+  //   Functor<int, TLIST1(int)>::callable(pred);
-+  // 
-+  // Functor<int, TLIST3(DiffStruct, int, int)> ds =
-+  //   Functor<int, TLIST3(DiffStruct, int, int)>::method(&DiffStruct::Sub);
-+  // 
-+  // Functor<int, TLIST2(int, int)> a2 =
-+  //   Functor<int, TLIST2(int, int)>::callable(&DiffStruct::Add2);
-+  // 
-+  // int a = 1, b = 5;
-+  // is(s(a), a + 1);
-+  // is(p(b), b - 1);
-+  // is(ds(DiffStruct(), s(a), p(b)), a - b + 2);
++  Functor<int, TLIST1(int)> s = functor(&Succ);
++
++  Pred pred;
++  Functor<int, TLIST1(int)> p = BIND1(&Pred::operator(), pred);
++
++  Functor<int, TLIST3(DiffStruct, int, int)> ds =
++    functor(&DiffStruct::Sub);
++
++  Functor<int, TLIST2(int, int)> a2 = functor(&DiffStruct::Add2);
++
++  int a = 1, b = 5;
++  is(s(a), a + 1);
++  is(p(b), b - 1);
++  is(ds(DiffStruct(), s(a), p(b)), a - b + 2);
 +
 +  // is(std::bind1st(ds, 6)(4), 2);
 +  // is(std::bind2nd(ds, 6)(4), -2);
 +
-+  // is(a2(2, 3), 5);
++  is(a2(2, 3), 5);
 +}
 +
 +void test_bind()
