@@ -520,54 +520,54 @@ new file mode 100644
 +  //   ps2 = tlist("p", rfirst=2, rlast=i)
 +  //   cog.out("""
 +  // ResultType operator()(%(Pps)s) {
-+  //   return (p1.*mMethod)(%(ps2)s);
++  //   return ((*p1).*mMethod)(%(ps2)s);
 +  // }""" % locals())
 +  // ]]]
 +
 +  ResultType operator()(P1 p1) {
-+    return (p1.*mMethod)();
++    return ((*p1).*mMethod)();
 +  }
 +  ResultType operator()(P1 p1, P2 p2) {
-+    return (p1.*mMethod)(p2);
++    return ((*p1).*mMethod)(p2);
 +  }
 +  ResultType operator()(P1 p1, P2 p2, P3 p3) {
-+    return (p1.*mMethod)(p2, p3);
++    return ((*p1).*mMethod)(p2, p3);
 +  }
 +  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4) {
-+    return (p1.*mMethod)(p2, p3, p4);
++    return ((*p1).*mMethod)(p2, p3, p4);
 +  }
 +  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5) {
-+    return (p1.*mMethod)(p2, p3, p4, p5);
++    return ((*p1).*mMethod)(p2, p3, p4, p5);
 +  }
 +  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6) {
-+    return (p1.*mMethod)(p2, p3, p4, p5, p6);
++    return ((*p1).*mMethod)(p2, p3, p4, p5, p6);
 +  }
 +  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7) {
-+    return (p1.*mMethod)(p2, p3, p4, p5, p6, p7);
++    return ((*p1).*mMethod)(p2, p3, p4, p5, p6, p7);
 +  }
 +  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
-+    return (p1.*mMethod)(p2, p3, p4, p5, p6, p7, p8);
++    return ((*p1).*mMethod)(p2, p3, p4, p5, p6, p7, p8);
 +  }
 +  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
-+    return (p1.*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9);
++    return ((*p1).*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9);
 +  }
 +  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10) {
-+    return (p1.*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9, p10);
++    return ((*p1).*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9, p10);
 +  }
 +  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11) {
-+    return (p1.*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9, p10, p11);
++    return ((*p1).*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9, p10, p11);
 +  }
 +  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12) {
-+    return (p1.*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12);
++    return ((*p1).*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12);
 +  }
 +  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13) {
-+    return (p1.*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13);
++    return ((*p1).*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13);
 +  }
 +  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13, P14 p14) {
-+    return (p1.*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14);
++    return ((*p1).*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14);
 +  }
 +  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13, P14 p14, P15 p15) {
-+    return (p1.*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15);
++    return ((*p1).*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15);
 +  }
 +  // [[[end]]]
 +
@@ -659,57 +659,57 @@ new file mode 100644
 +  }
 +
 +// Special-casing these makes the following generator code a bit simpler:
-+DECL_GLOBAL_METHOD_ADAPTERS(TLIST1, (C), 0)
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST1, (C*), 0)
 +DECL_GLOBAL_FUNCTION_ADAPTER(TLIST0, (), 0)
 +
 +// [[[cog
 +// for (i, j) in ijs[1:]:
 +//   cog.out("""
-+// DECL_GLOBAL_METHOD_ADAPTERS(TLIST%(j)d, (C, Ps%(i)d), %(i)d)
++// DECL_GLOBAL_METHOD_ADAPTERS(TLIST%(j)d, (C*, Ps%(i)d), %(i)d)
 +// DECL_GLOBAL_FUNCTION_ADAPTER(TLIST%(i)d, (Ps%(i)d), %(i)d)
 +// """ % locals())
 +// ]]]
 +
-+DECL_GLOBAL_METHOD_ADAPTERS(TLIST2, (C, Ps1), 1)
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST2, (C*, Ps1), 1)
 +DECL_GLOBAL_FUNCTION_ADAPTER(TLIST1, (Ps1), 1)
 +
-+DECL_GLOBAL_METHOD_ADAPTERS(TLIST3, (C, Ps2), 2)
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST3, (C*, Ps2), 2)
 +DECL_GLOBAL_FUNCTION_ADAPTER(TLIST2, (Ps2), 2)
 +
-+DECL_GLOBAL_METHOD_ADAPTERS(TLIST4, (C, Ps3), 3)
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST4, (C*, Ps3), 3)
 +DECL_GLOBAL_FUNCTION_ADAPTER(TLIST3, (Ps3), 3)
 +
-+DECL_GLOBAL_METHOD_ADAPTERS(TLIST5, (C, Ps4), 4)
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST5, (C*, Ps4), 4)
 +DECL_GLOBAL_FUNCTION_ADAPTER(TLIST4, (Ps4), 4)
 +
-+DECL_GLOBAL_METHOD_ADAPTERS(TLIST6, (C, Ps5), 5)
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST6, (C*, Ps5), 5)
 +DECL_GLOBAL_FUNCTION_ADAPTER(TLIST5, (Ps5), 5)
 +
-+DECL_GLOBAL_METHOD_ADAPTERS(TLIST7, (C, Ps6), 6)
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST7, (C*, Ps6), 6)
 +DECL_GLOBAL_FUNCTION_ADAPTER(TLIST6, (Ps6), 6)
 +
-+DECL_GLOBAL_METHOD_ADAPTERS(TLIST8, (C, Ps7), 7)
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST8, (C*, Ps7), 7)
 +DECL_GLOBAL_FUNCTION_ADAPTER(TLIST7, (Ps7), 7)
 +
-+DECL_GLOBAL_METHOD_ADAPTERS(TLIST9, (C, Ps8), 8)
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST9, (C*, Ps8), 8)
 +DECL_GLOBAL_FUNCTION_ADAPTER(TLIST8, (Ps8), 8)
 +
-+DECL_GLOBAL_METHOD_ADAPTERS(TLIST10, (C, Ps9), 9)
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST10, (C*, Ps9), 9)
 +DECL_GLOBAL_FUNCTION_ADAPTER(TLIST9, (Ps9), 9)
 +
-+DECL_GLOBAL_METHOD_ADAPTERS(TLIST11, (C, Ps10), 10)
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST11, (C*, Ps10), 10)
 +DECL_GLOBAL_FUNCTION_ADAPTER(TLIST10, (Ps10), 10)
 +
-+DECL_GLOBAL_METHOD_ADAPTERS(TLIST12, (C, Ps11), 11)
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST12, (C*, Ps11), 11)
 +DECL_GLOBAL_FUNCTION_ADAPTER(TLIST11, (Ps11), 11)
 +
-+DECL_GLOBAL_METHOD_ADAPTERS(TLIST13, (C, Ps12), 12)
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST13, (C*, Ps12), 12)
 +DECL_GLOBAL_FUNCTION_ADAPTER(TLIST12, (Ps12), 12)
 +
-+DECL_GLOBAL_METHOD_ADAPTERS(TLIST14, (C, Ps13), 13)
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST14, (C*, Ps13), 13)
 +DECL_GLOBAL_FUNCTION_ADAPTER(TLIST13, (Ps13), 13)
 +
-+DECL_GLOBAL_METHOD_ADAPTERS(TLIST15, (C, Ps14), 14)
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST15, (C*, Ps14), 14)
 +DECL_GLOBAL_FUNCTION_ADAPTER(TLIST14, (Ps14), 14)
 +// [[[end]]]
 +
@@ -1006,9 +1006,9 @@ new file mode 100644
 +  Functor<int, TLIST1(int)> s = functor(&Succ);
 +
 +  Pred pred;
-+  Functor<int, TLIST1(int)> p = BIND1(&Pred::operator(), pred);
++  Functor<int, TLIST1(int)> p = BIND1(&Pred::operator(), &pred);
 +
-+  Functor<int, TLIST3(DiffStruct, int, int)> ds =
++  Functor<int, TLIST3(DiffStruct*, int, int)> ds =
 +    functor(&DiffStruct::Sub);
 +
 +  Functor<int, TLIST2(int, int)> a2 = functor(&DiffStruct::Add2);
@@ -1016,7 +1016,7 @@ new file mode 100644
 +  int a = 1, b = 5;
 +  is(s(a), a + 1);
 +  is(p(b), b - 1);
-+  is(ds(DiffStruct(), s(a), p(b)), a - b + 2);
++  is(ds(new DiffStruct, s(a), p(b)), a - b + 2);
 +
 +  // is(std::bind1st(ds, 6)(4), 2);
 +  // is(std::bind2nd(ds, 6)(4), -2);
@@ -1030,7 +1030,7 @@ new file mode 100644
 +  is(Pred()(2), 1);
 +  is((Pred().*(&Pred::operator()))(2), 1);
 +  is(Pred().operator()(2), 1);
-+  is(BIND1(&Pred::operator(), Pred())(2), 1);
++  is(BIND1(&Pred::operator(), new Pred)(2), 1);
 +
 +  Functor<int, TLIST2(int, int)> a2 = functor(&DiffStruct::Add2);
 +  is(BIND1(a2, 2)(3), 5);
@@ -1039,7 +1039,7 @@ new file mode 100644
 +
 +  double x = 5, y = 3;
 +  DiffStruct ds;
-+  Functor<int, TLIST2(int, int)> sub = BIND1(&DiffStruct::Sub, ds);
++  Functor<int, TLIST2(int, int)> sub = BIND1(&DiffStruct::Sub, &ds);
 +  Functor<int, TLIST1(int)> f = BIND1(sub, x);
 +  is(sub(x, y), x - y);
 +  is(sub(y, x), y - x);
