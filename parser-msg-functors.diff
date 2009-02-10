@@ -198,7 +198,102 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
   * In particular, this method should be called by the DOM when it has an HTML
   * string to feed to the parser in real-time.
   *
-@@ -2390,16 +2417,26 @@ nsParser::BuildModel()
+@@ -1930,16 +1957,41 @@ nsParser::Parse(nsIURI* aURL,
+  * @param   aMimeType tells us what type of content to expect in the given string
+  */
+ NS_IMETHODIMP
+ nsParser::Parse(const nsAString& aSourceBuffer,
+                 void* aKey,
+                 const nsACString& aMimeType,
+                 PRBool aLastCall,
+                 nsDTDMode aMode)
++{
++  Functor<nsresult, TLIST5(nsString,
++                           void*,
++                           nsCString,
++                           PRBool,
++                           nsDTDMode)>
++         f(nsRefPtr<nsParser>(this),
++           &nsParser::HandleParseBuffer);
++
++  Functor<nsresult, TLIST0()> f0 =
++    BIND5(f, nsString(aSourceBuffer),
++             aKey,
++             nsCString(aMimeType),
++             aLastCall,
++             aMode);
++
++  return f0();
++}
++
++nsresult
++nsParser::HandleParseBuffer(const nsAString& aSourceBuffer,
++                            void* aKey,
++                            const nsACString& aMimeType,
++                            PRBool aLastCall,
++                            nsDTDMode aMode)
+ {
+   nsresult result = NS_OK;
+ 
+   // Don't bother if we're never going to parse this.
+   if (mInternalState == NS_ERROR_HTMLPARSER_STOPPARSING) {
+     return result;
+   }
+ 
+@@ -2055,23 +2107,52 @@ nsParser::Parse(const nsAString& aSource
+         }
+       }
+     }
+   }
+ 
+   return result;
+ }
+ 
++// TODO compute the tag stack on the parser thread
+ NS_IMETHODIMP
+ nsParser::ParseFragment(const nsAString& aSourceBuffer,
+                         void* aKey,
+                         nsTArray<nsString>& aTagStack,
+                         PRBool aXMLMode,
+                         const nsACString& aMimeType,
+                         nsDTDMode aMode)
++{
++  Functor<nsresult, TLIST6(nsString,
++                           void*,
++                           nsTArray<nsString>,
++                           PRBool,
++                           nsCString,
++                           nsDTDMode)>
++         f(nsRefPtr<nsParser>(this),
++           &nsParser::HandleParseFragment);
++
++  Functor<nsresult, TLIST0()> f0 =
++    BIND6(f, nsString(aSourceBuffer),
++             aKey,
++             aTagStack,
++             aXMLMode,
++             nsCString(aMimeType),
++             aMode);
++
++  return f0();
++}
++
++nsresult
++nsParser::HandleParseFragment(const nsAString& aSourceBuffer,
++                              void* aKey,
++                              nsTArray<nsString>& aTagStack,
++                              PRBool aXMLMode,
++                              const nsACString& aMimeType,
++                              nsDTDMode aMode)
+ {
+   nsresult result = NS_OK;
+   nsAutoString  theContext;
+   PRUint32 theCount = aTagStack.Length();
+   PRUint32 theIndex = 0;
+ 
+   // Disable observers for fragments
+   mFlags &= ~NS_PARSER_FLAG_OBSERVERS_ENABLED;
+@@ -2390,16 +2471,26 @@ nsParser::BuildModel()
  }
  
  /*******************************************************************
@@ -225,7 +320,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      mObserver->OnStartRequest(request, aContext);
    }
    mParserContext->mStreamListenerState = eOnStart;
-@@ -2813,32 +2850,48 @@ CheckCharset(const char* aBytes,
+@@ -2813,32 +2904,48 @@ CheckCharset(const char* aBytes,
    }
  }
  
@@ -280,7 +375,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    if (theContext) {
-@@ -2884,16 +2937,28 @@ nsParser::OnDataAvailable(nsIRequest *re
+@@ -2884,16 +2991,28 @@ nsParser::OnDataAvailable(nsIRequest *re
  
  /**
   *  This is called by the networking library once the last block of data
@@ -331,7 +426,7 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
       * 
       * @update	gess5/18/98
       * @param 
-@@ -421,16 +421,48 @@ class nsParser : public nsIParser,
+@@ -421,16 +421,65 @@ class nsParser : public nsIParser,
       * 
       * @update	gess5/18/98
       * @param 
@@ -371,6 +466,23 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
 +      nsString& spec,
 +      nsIRequestObserver* aListener,
 +      void* aKey,
++      nsDTDMode aMode);
++
++    nsresult
++    HandleParseBuffer(
++      const nsAString& aSourceBuffer,
++      void* aKey,
++      const nsACString& aMimeType,
++      PRBool aLastCall,
++      nsDTDMode aMode);
++
++    nsresult
++    HandleParseFragment(
++      const nsAString& aSourceBuffer,
++      void* aKey,
++      nsTArray<nsString>& aTagStack,
++      PRBool aXMLMode,
++      const nsACString& aMimeType,
 +      nsDTDMode aMode);
  
  private:

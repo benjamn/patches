@@ -4,7 +4,7 @@ diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Bind.h
-@@ -0,0 +1,287 @@
+@@ -0,0 +1,167 @@
 +#ifndef __bind_h__
 +#define __bind_h__
 +
@@ -28,6 +28,8 @@ new file mode 100644
 +  typedef Functor<ResultType, typename Incoming::ParamList::Tail>
 +          Outgoing;
 +
++  COOPT_PARAM_TYPEDEFS(Outgoing)
++
 +  Binder(const Incoming& fun, BoundType bound)
 +    : mFun(fun)
 +    , mBound(bound)
@@ -37,183 +39,60 @@ new file mode 100644
 +  // prefix = "ResultType operator()("
 +  // indent = " " * len(prefix)
 +  // for i in range(MAX_FUNCTOR_ARITY+1):
-+  //   Pps = tlist("typename Outgoing::P p", i,
-+  //               sep=",\n"+indent)
++  //   Pps = tlist("P p", i)
 +  //   ps = tlist(", p", i, sep="")
 +  //   cog.out(r"""
-+  // %(prefix)s%(Pps)s) const
-+  // {
++  // %(prefix)s%(Pps)s) {
 +  //   return mFun(mBound%(ps)s);
 +  // }""" % locals())
 +  // ]]]
 +
-+  ResultType operator()() const
-+  {
++  ResultType operator()() {
 +    return mFun(mBound);
 +  }
-+  ResultType operator()(typename Outgoing::P1 p1) const
-+  {
++  ResultType operator()(P1 p1) {
 +    return mFun(mBound, p1);
 +  }
-+  ResultType operator()(typename Outgoing::P1 p1,
-+                        typename Outgoing::P2 p2) const
-+  {
++  ResultType operator()(P1 p1, P2 p2) {
 +    return mFun(mBound, p1, p2);
 +  }
-+  ResultType operator()(typename Outgoing::P1 p1,
-+                        typename Outgoing::P2 p2,
-+                        typename Outgoing::P3 p3) const
-+  {
++  ResultType operator()(P1 p1, P2 p2, P3 p3) {
 +    return mFun(mBound, p1, p2, p3);
 +  }
-+  ResultType operator()(typename Outgoing::P1 p1,
-+                        typename Outgoing::P2 p2,
-+                        typename Outgoing::P3 p3,
-+                        typename Outgoing::P4 p4) const
-+  {
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4) {
 +    return mFun(mBound, p1, p2, p3, p4);
 +  }
-+  ResultType operator()(typename Outgoing::P1 p1,
-+                        typename Outgoing::P2 p2,
-+                        typename Outgoing::P3 p3,
-+                        typename Outgoing::P4 p4,
-+                        typename Outgoing::P5 p5) const
-+  {
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5) {
 +    return mFun(mBound, p1, p2, p3, p4, p5);
 +  }
-+  ResultType operator()(typename Outgoing::P1 p1,
-+                        typename Outgoing::P2 p2,
-+                        typename Outgoing::P3 p3,
-+                        typename Outgoing::P4 p4,
-+                        typename Outgoing::P5 p5,
-+                        typename Outgoing::P6 p6) const
-+  {
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6) {
 +    return mFun(mBound, p1, p2, p3, p4, p5, p6);
 +  }
-+  ResultType operator()(typename Outgoing::P1 p1,
-+                        typename Outgoing::P2 p2,
-+                        typename Outgoing::P3 p3,
-+                        typename Outgoing::P4 p4,
-+                        typename Outgoing::P5 p5,
-+                        typename Outgoing::P6 p6,
-+                        typename Outgoing::P7 p7) const
-+  {
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7) {
 +    return mFun(mBound, p1, p2, p3, p4, p5, p6, p7);
 +  }
-+  ResultType operator()(typename Outgoing::P1 p1,
-+                        typename Outgoing::P2 p2,
-+                        typename Outgoing::P3 p3,
-+                        typename Outgoing::P4 p4,
-+                        typename Outgoing::P5 p5,
-+                        typename Outgoing::P6 p6,
-+                        typename Outgoing::P7 p7,
-+                        typename Outgoing::P8 p8) const
-+  {
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
 +    return mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8);
 +  }
-+  ResultType operator()(typename Outgoing::P1 p1,
-+                        typename Outgoing::P2 p2,
-+                        typename Outgoing::P3 p3,
-+                        typename Outgoing::P4 p4,
-+                        typename Outgoing::P5 p5,
-+                        typename Outgoing::P6 p6,
-+                        typename Outgoing::P7 p7,
-+                        typename Outgoing::P8 p8,
-+                        typename Outgoing::P9 p9) const
-+  {
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
 +    return mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9);
 +  }
-+  ResultType operator()(typename Outgoing::P1 p1,
-+                        typename Outgoing::P2 p2,
-+                        typename Outgoing::P3 p3,
-+                        typename Outgoing::P4 p4,
-+                        typename Outgoing::P5 p5,
-+                        typename Outgoing::P6 p6,
-+                        typename Outgoing::P7 p7,
-+                        typename Outgoing::P8 p8,
-+                        typename Outgoing::P9 p9,
-+                        typename Outgoing::P10 p10) const
-+  {
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10) {
 +    return mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10);
 +  }
-+  ResultType operator()(typename Outgoing::P1 p1,
-+                        typename Outgoing::P2 p2,
-+                        typename Outgoing::P3 p3,
-+                        typename Outgoing::P4 p4,
-+                        typename Outgoing::P5 p5,
-+                        typename Outgoing::P6 p6,
-+                        typename Outgoing::P7 p7,
-+                        typename Outgoing::P8 p8,
-+                        typename Outgoing::P9 p9,
-+                        typename Outgoing::P10 p10,
-+                        typename Outgoing::P11 p11) const
-+  {
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11) {
 +    return mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11);
 +  }
-+  ResultType operator()(typename Outgoing::P1 p1,
-+                        typename Outgoing::P2 p2,
-+                        typename Outgoing::P3 p3,
-+                        typename Outgoing::P4 p4,
-+                        typename Outgoing::P5 p5,
-+                        typename Outgoing::P6 p6,
-+                        typename Outgoing::P7 p7,
-+                        typename Outgoing::P8 p8,
-+                        typename Outgoing::P9 p9,
-+                        typename Outgoing::P10 p10,
-+                        typename Outgoing::P11 p11,
-+                        typename Outgoing::P12 p12) const
-+  {
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12) {
 +    return mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12);
 +  }
-+  ResultType operator()(typename Outgoing::P1 p1,
-+                        typename Outgoing::P2 p2,
-+                        typename Outgoing::P3 p3,
-+                        typename Outgoing::P4 p4,
-+                        typename Outgoing::P5 p5,
-+                        typename Outgoing::P6 p6,
-+                        typename Outgoing::P7 p7,
-+                        typename Outgoing::P8 p8,
-+                        typename Outgoing::P9 p9,
-+                        typename Outgoing::P10 p10,
-+                        typename Outgoing::P11 p11,
-+                        typename Outgoing::P12 p12,
-+                        typename Outgoing::P13 p13) const
-+  {
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13) {
 +    return mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13);
 +  }
-+  ResultType operator()(typename Outgoing::P1 p1,
-+                        typename Outgoing::P2 p2,
-+                        typename Outgoing::P3 p3,
-+                        typename Outgoing::P4 p4,
-+                        typename Outgoing::P5 p5,
-+                        typename Outgoing::P6 p6,
-+                        typename Outgoing::P7 p7,
-+                        typename Outgoing::P8 p8,
-+                        typename Outgoing::P9 p9,
-+                        typename Outgoing::P10 p10,
-+                        typename Outgoing::P11 p11,
-+                        typename Outgoing::P12 p12,
-+                        typename Outgoing::P13 p13,
-+                        typename Outgoing::P14 p14) const
-+  {
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13, P14 p14) {
 +    return mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14);
 +  }
-+  ResultType operator()(typename Outgoing::P1 p1,
-+                        typename Outgoing::P2 p2,
-+                        typename Outgoing::P3 p3,
-+                        typename Outgoing::P4 p4,
-+                        typename Outgoing::P5 p5,
-+                        typename Outgoing::P6 p6,
-+                        typename Outgoing::P7 p7,
-+                        typename Outgoing::P8 p8,
-+                        typename Outgoing::P9 p9,
-+                        typename Outgoing::P10 p10,
-+                        typename Outgoing::P11 p11,
-+                        typename Outgoing::P12 p12,
-+                        typename Outgoing::P13 p13,
-+                        typename Outgoing::P14 p14,
-+                        typename Outgoing::P15 p15) const
-+  {
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13, P14 p14, P15 p15) {
 +    return mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15);
 +  }
 +  // [[[end]]]
@@ -224,16 +103,17 @@ new file mode 100644
 +};
 +
 +
-+template <class Fun>
++template <class Fun, typename Bound>
 +typename Binder<Fun>::Outgoing
-+bind(const Fun& fun, typename Fun::P1 bound) {
++bind(const Fun& fun, Bound bound) {
++  if (0) typename Fun::P1 p1 = bound;
 +  typedef typename Binder<Fun>::Outgoing O;
 +  typedef typename O::ImplType I;
 +  I* binder = new Binder<Fun>(fun, bound);
 +  return O(binder);
 +}
 +
-+#define BIND1(F, A) bind(F, A)
++#define BIND1(F, A) bind(functor(F), A)
 +
 +// [[[cog
 +// slash = "\\"
@@ -297,7 +177,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Functor.h
-@@ -0,0 +1,394 @@
+@@ -0,0 +1,577 @@
 +#ifndef __functor_h__
 +#define __functor_h__
 +
@@ -325,8 +205,11 @@ new file mode 100644
 +// [[[cog
 +// from cogutil import tlist
 +// MAX_FUNCTOR_ARITY = 15
++// rng = range(MAX_FUNCTOR_ARITY+1)
++// ijs = zip(rng, rng[1:])
 +// ]]]
 +// [[[end]]]
++
 +
 +template <typename R, class Params>
 +class FunctorImpl;
@@ -334,11 +217,11 @@ new file mode 100644
 +#define DECL_FUNCTORIMPL_CLASS(R, N, TS)                                       \
 +  class FunctorImpl<R, TLIST##N TS> : public FunctorSupports {                 \
 +  public:                                                                      \
-+    virtual R operator()TS const = 0;                                          \
++    virtual R operator()TS = 0;                                                \
 +  }
 +
 +// [[[cog
-+// for i in range(MAX_FUNCTOR_ARITY+1):
++// for i in rng:
 +//   typenames = tlist(", typename T", i, sep="")
 +//   Ts = tlist("T", i)
 +//   cog.out("""
@@ -399,66 +282,11 @@ new file mode 100644
 +#undef DECL_FUNCTORIMPL_CLASS
 +
 +
-+// [[[cog
-+// slash = "\\"
-+// cog.out(r"#define GEN_CALL_OPERATORS(R, FEXP, QUAL)")
-+// for i in range(MAX_FUNCTOR_ARITY+1):
-+//   Pps, ps = tlist(r"QUAL##0 p", i), tlist("p", i)
-+//   cog.out(""" %(slash)s
-+//   R operator()(%(Pps)s) const { %(slash)s
-+//     return (FEXP)(%(ps)s); %(slash)s
-+//   }""" % locals())
-+// ]]]
-+#define GEN_CALL_OPERATORS(R, FEXP, QUAL) \
-+  R operator()() const { \
-+    return (FEXP)(); \
-+  } \
-+  R operator()(QUAL##1 p1) const { \
-+    return (FEXP)(p1); \
-+  } \
-+  R operator()(QUAL##1 p1, QUAL##2 p2) const { \
-+    return (FEXP)(p1, p2); \
-+  } \
-+  R operator()(QUAL##1 p1, QUAL##2 p2, QUAL##3 p3) const { \
-+    return (FEXP)(p1, p2, p3); \
-+  } \
-+  R operator()(QUAL##1 p1, QUAL##2 p2, QUAL##3 p3, QUAL##4 p4) const { \
-+    return (FEXP)(p1, p2, p3, p4); \
-+  } \
-+  R operator()(QUAL##1 p1, QUAL##2 p2, QUAL##3 p3, QUAL##4 p4, QUAL##5 p5) const { \
-+    return (FEXP)(p1, p2, p3, p4, p5); \
-+  } \
-+  R operator()(QUAL##1 p1, QUAL##2 p2, QUAL##3 p3, QUAL##4 p4, QUAL##5 p5, QUAL##6 p6) const { \
-+    return (FEXP)(p1, p2, p3, p4, p5, p6); \
-+  } \
-+  R operator()(QUAL##1 p1, QUAL##2 p2, QUAL##3 p3, QUAL##4 p4, QUAL##5 p5, QUAL##6 p6, QUAL##7 p7) const { \
-+    return (FEXP)(p1, p2, p3, p4, p5, p6, p7); \
-+  } \
-+  R operator()(QUAL##1 p1, QUAL##2 p2, QUAL##3 p3, QUAL##4 p4, QUAL##5 p5, QUAL##6 p6, QUAL##7 p7, QUAL##8 p8) const { \
-+    return (FEXP)(p1, p2, p3, p4, p5, p6, p7, p8); \
-+  } \
-+  R operator()(QUAL##1 p1, QUAL##2 p2, QUAL##3 p3, QUAL##4 p4, QUAL##5 p5, QUAL##6 p6, QUAL##7 p7, QUAL##8 p8, QUAL##9 p9) const { \
-+    return (FEXP)(p1, p2, p3, p4, p5, p6, p7, p8, p9); \
-+  } \
-+  R operator()(QUAL##1 p1, QUAL##2 p2, QUAL##3 p3, QUAL##4 p4, QUAL##5 p5, QUAL##6 p6, QUAL##7 p7, QUAL##8 p8, QUAL##9 p9, QUAL##10 p10) const { \
-+    return (FEXP)(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10); \
-+  } \
-+  R operator()(QUAL##1 p1, QUAL##2 p2, QUAL##3 p3, QUAL##4 p4, QUAL##5 p5, QUAL##6 p6, QUAL##7 p7, QUAL##8 p8, QUAL##9 p9, QUAL##10 p10, QUAL##11 p11) const { \
-+    return (FEXP)(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11); \
-+  } \
-+  R operator()(QUAL##1 p1, QUAL##2 p2, QUAL##3 p3, QUAL##4 p4, QUAL##5 p5, QUAL##6 p6, QUAL##7 p7, QUAL##8 p8, QUAL##9 p9, QUAL##10 p10, QUAL##11 p11, QUAL##12 p12) const { \
-+    return (FEXP)(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12); \
-+  } \
-+  R operator()(QUAL##1 p1, QUAL##2 p2, QUAL##3 p3, QUAL##4 p4, QUAL##5 p5, QUAL##6 p6, QUAL##7 p7, QUAL##8 p8, QUAL##9 p9, QUAL##10 p10, QUAL##11 p11, QUAL##12 p12, QUAL##13 p13) const { \
-+    return (FEXP)(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13); \
-+  } \
-+  R operator()(QUAL##1 p1, QUAL##2 p2, QUAL##3 p3, QUAL##4 p4, QUAL##5 p5, QUAL##6 p6, QUAL##7 p7, QUAL##8 p8, QUAL##9 p9, QUAL##10 p10, QUAL##11 p11, QUAL##12 p12, QUAL##13 p13, QUAL##14 p14) const { \
-+    return (FEXP)(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14); \
-+  } \
-+  R operator()(QUAL##1 p1, QUAL##2 p2, QUAL##3 p3, QUAL##4 p4, QUAL##5 p5, QUAL##6 p6, QUAL##7 p7, QUAL##8 p8, QUAL##9 p9, QUAL##10 p10, QUAL##11 p11, QUAL##12 p12, QUAL##13 p13, QUAL##14 p14, QUAL##15 p15) const { \
-+    return (FEXP)(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15); \
-+  }
-+// [[[end]]]
++template <class ParentFunctor, typename Callable>
++class CallableHandler;
++
++template <class ParentFunctor, typename Method>
++class MethodHandler;
 +
 +
 +template <typename R, class Params>
@@ -468,14 +296,11 @@ new file mode 100644
 +  typedef FunctorImpl<R, Params> ImplType;
 +  typedef R ResultType;
 +  typedef Params ParamList;
-+  // [[[cog
-+  // for i in range(MAX_FUNCTOR_ARITY):
-+  //   cog.out(r"""
-+  // typedef typename tlist::TypeAtNS<Params, %(i)d>::type P%(i+1)d;""" % {
-+  //     "i": i, "i+1": i+1
-+  //   })
-+  // ]]]
 +
++  // [[[cog
++  // s = "typedef typename tlist::TypeAtNS<Params, %(i)d>::type P%(j)d;"
++  // cog.out("\n".join(s % locals() for (i, j) in ijs))
++  // ]]]
 +  typedef typename tlist::TypeAtNS<Params, 0>::type P1;
 +  typedef typename tlist::TypeAtNS<Params, 1>::type P2;
 +  typedef typename tlist::TypeAtNS<Params, 2>::type P3;
@@ -501,48 +326,186 @@ new file mode 100644
 +public:
 + ~Functor() {}
 +  Functor(const Functor& fun) : mImpl(fun.mImpl) {}
-+  explicit Functor(ImplType* impl) : mImpl(impl) {}
++  Functor(ImplType* impl)     : mImpl(impl) {}
 +
-+  template <class Fun>
-+  Functor(const Fun&);
++  template <typename Callable>
++  static Functor callable(Callable c) {
++    return Functor(new CallableHandler<Functor, Callable>(c));
++  }
 +
-+  template <typename ObjPtr,
-+            typename MethodPtr>
-+  Functor(const ObjPtr& objPtr,
-+          MethodPtr methodPtr);
++  template <typename Method>
++  static Functor method(Method m) {
++    return Functor(new MethodHandler<Functor, Method>(m));
++  }
 +
-+  GEN_CALL_OPERATORS(R, *mImpl, P)
++  // [[[cog
++  // for i in rng:
++  //   Pps = tlist("P p", i)
++  //   ps = tlist("p", i)
++  //   cog.out("""
++  // ResultType operator()(%(Pps)s) {
++  //   return (*mImpl)(%(ps)s);
++  // }""" % locals())
++  // ]]]
++
++  ResultType operator()() {
++    return (*mImpl)();
++  }
++  ResultType operator()(P1 p1) {
++    return (*mImpl)(p1);
++  }
++  ResultType operator()(P1 p1, P2 p2) {
++    return (*mImpl)(p1, p2);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3) {
++    return (*mImpl)(p1, p2, p3);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4) {
++    return (*mImpl)(p1, p2, p3, p4);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5) {
++    return (*mImpl)(p1, p2, p3, p4, p5);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6) {
++    return (*mImpl)(p1, p2, p3, p4, p5, p6);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7) {
++    return (*mImpl)(p1, p2, p3, p4, p5, p6, p7);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
++    return (*mImpl)(p1, p2, p3, p4, p5, p6, p7, p8);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
++    return (*mImpl)(p1, p2, p3, p4, p5, p6, p7, p8, p9);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10) {
++    return (*mImpl)(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11) {
++    return (*mImpl)(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12) {
++    return (*mImpl)(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13) {
++    return (*mImpl)(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13, P14 p14) {
++    return (*mImpl)(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13, P14 p14, P15 p15) {
++    return (*mImpl)(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15);
++  }
++  // [[[end]]]
 +
 +private:
 +  nsRefPtr<ImplType> mImpl;
 +};
 +
-+// XXX Should the parameter types of the method itself determine the types
-+// of the bound values?  Or should the argument types of the values themselves
-+// determine the type.  More flexibility in the latter approach, but both
-+// approaches assume the Binder<Fun> technique.
++
++// For brevity of FunctorImpl::operator() signatures:
++// [[[cog
++// cog.out("#define COOPT_PARAM_TYPEDEFS(CLASS) \\\n")
++// cog.out(tlist("  typedef typename CLASS::P P;",
++//               MAX_FUNCTOR_ARITY, sep=" \\\n"))
++// ]]]
++#define COOPT_PARAM_TYPEDEFS(CLASS) \
++  typedef typename CLASS::P1 P1; \
++  typedef typename CLASS::P2 P2; \
++  typedef typename CLASS::P3 P3; \
++  typedef typename CLASS::P4 P4; \
++  typedef typename CLASS::P5 P5; \
++  typedef typename CLASS::P6 P6; \
++  typedef typename CLASS::P7 P7; \
++  typedef typename CLASS::P8 P8; \
++  typedef typename CLASS::P9 P9; \
++  typedef typename CLASS::P10 P10; \
++  typedef typename CLASS::P11 P11; \
++  typedef typename CLASS::P12 P12; \
++  typedef typename CLASS::P13 P13; \
++  typedef typename CLASS::P14 P14; \
++  typedef typename CLASS::P15 P15;
++// [[[end]]]
 +
 +
-+template <class ParentFunctor, typename Fun>
-+class FunctorHandler
++template <class ParentFunctor, typename Callable>
++class CallableHandler
 +  : public FunctorImpl<
 +      typename ParentFunctor::ResultType,
 +      typename ParentFunctor::ParamList>
 +{
 +public:
 +  typedef typename ParentFunctor::ResultType ResultType;
++  COOPT_PARAM_TYPEDEFS(ParentFunctor)
 +
-+  FunctorHandler(const Fun& fun) : mFun(fun) {}
++  CallableHandler(Callable c) : mCallable(c) {}
 +
-+  GEN_CALL_OPERATORS(ResultType, *(Fun*)(&mFun), typename ParentFunctor::P)
++  // [[[cog
++  // for i in rng:
++  //   Pps = tlist("P p", i)
++  //   ps = tlist("p", i)
++  //   cog.out("""
++  // ResultType operator()(%(Pps)s) {
++  //   return mCallable(%(ps)s);
++  // }""" % locals())
++  // ]]]
++
++  ResultType operator()() {
++    return mCallable();
++  }
++  ResultType operator()(P1 p1) {
++    return mCallable(p1);
++  }
++  ResultType operator()(P1 p1, P2 p2) {
++    return mCallable(p1, p2);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3) {
++    return mCallable(p1, p2, p3);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4) {
++    return mCallable(p1, p2, p3, p4);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5) {
++    return mCallable(p1, p2, p3, p4, p5);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6) {
++    return mCallable(p1, p2, p3, p4, p5, p6);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7) {
++    return mCallable(p1, p2, p3, p4, p5, p6, p7);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
++    return mCallable(p1, p2, p3, p4, p5, p6, p7, p8);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
++    return mCallable(p1, p2, p3, p4, p5, p6, p7, p8, p9);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10) {
++    return mCallable(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11) {
++    return mCallable(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12) {
++    return mCallable(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13) {
++    return mCallable(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13, P14 p14) {
++    return mCallable(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13, P14 p14, P15 p15) {
++    return mCallable(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15);
++  }
++  // [[[end]]]
 +
 +private:
-+  Fun mFun;
++  Callable mCallable;
 +};
 +
 +
-+template <class ParentFunctor,
-+          typename ObjPtr, typename MethodPtr>
++template <class ParentFunctor, typename Method>
 +class MethodHandler
 +  : public FunctorImpl<
 +      typename ParentFunctor::ResultType,
@@ -550,145 +513,245 @@ new file mode 100644
 +{
 +public:
 +  typedef typename ParentFunctor::ResultType ResultType;
++  COOPT_PARAM_TYPEDEFS(ParentFunctor)
 +
-+  MethodHandler(const ObjPtr& objPtr, MethodPtr methodPtr)
-+    : mObjPtr(objPtr)
-+    , mMethodPtr(methodPtr)
-+  {}
++  MethodHandler(Method m) : mMethod(m) {}
 +
-+  GEN_CALL_OPERATORS(ResultType,
-+    (*mObjPtr).*mMethodPtr,
-+    typename ParentFunctor::P)
++  // [[[cog
++  // for i in rng[1:]:
++  //   Pps = tlist("P p", i)
++  //   ps2 = tlist("p", rfirst=2, rlast=i)
++  //   cog.out("""
++  // ResultType operator()(%(Pps)s) {
++  //   return (p1.*mMethod)(%(ps2)s);
++  // }""" % locals())
++  // ]]]
++
++  ResultType operator()(P1 p1) {
++    return (p1.*mMethod)();
++  }
++  ResultType operator()(P1 p1, P2 p2) {
++    return (p1.*mMethod)(p2);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3) {
++    return (p1.*mMethod)(p2, p3);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4) {
++    return (p1.*mMethod)(p2, p3, p4);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5) {
++    return (p1.*mMethod)(p2, p3, p4, p5);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6) {
++    return (p1.*mMethod)(p2, p3, p4, p5, p6);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7) {
++    return (p1.*mMethod)(p2, p3, p4, p5, p6, p7);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
++    return (p1.*mMethod)(p2, p3, p4, p5, p6, p7, p8);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
++    return (p1.*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10) {
++    return (p1.*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9, p10);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11) {
++    return (p1.*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9, p10, p11);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12) {
++    return (p1.*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13) {
++    return (p1.*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13, P14 p14) {
++    return (p1.*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14);
++  }
++  ResultType operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13, P14 p14, P15 p15) {
++    return (p1.*mMethod)(p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15);
++  }
++  // [[[end]]]
 +
 +private:
-+  ObjPtr mObjPtr;
-+  MethodPtr mMethodPtr;
++  Method mMethod;
 +};
 +
-+#undef GEN_CALL_OPERATORS
 +
-+template <typename R, class Params>
-+template <class Fun>
-+Functor<R, Params>::Functor(const Fun& fun)
-+  : mImpl(new FunctorHandler<Functor, Fun>(fun))
-+{}
++/**
++ * To explain all this preprocessing...
++ *
++ * tPsN expands to
++ *
++ *   , typename P1, typename P2, ..., typename PN
++ *
++ * Note the initial comma! PsN expands to
++ *
++ *   P1, P2, ..., PN
++ *
++ * Note that tPs0 and Ps0 both expand to nothing.
++ */
 +
-+template <typename R, class Params>
-+template <typename ObjPtr, typename MethodPtr>
-+Functor<R, Params>::Functor(const ObjPtr& objPtr,
-+                            MethodPtr methodPtr)
-+  : mImpl(new MethodHandler<Functor, ObjPtr, MethodPtr>(objPtr, methodPtr))
-+{}
-+
-+
-+#define IMPL_GLOBAL_FUNCTOR_METHOD(N, TYPES)                                  \
-+  Functor<Result, TLIST##N TYPES>                                             \
-+  functor(Class* obj, Result (Class::*method)TYPES) {                         \
-+    return Functor<Result, TLIST##N TYPES>                                    \
-+                  (nsRefPtr<Class>(obj), method);                             \
-+  }
-+
-+#define IMPL_GLOBAL_FUNCTOR_FUNCTION(N, TYPES)                                \
-+  Functor<Result, TLIST##N TYPES>                                             \
-+  functor(Result (*function)TYPES) {                                          \
-+    return Functor<Result, TLIST##N TYPES>                                    \
-+                  (function);                                                 \
-+  }
++// Base cases for the pseudo-recursion:
++#define tPs0
++#define Ps0
++#define Ps1 P1
 +
 +// [[[cog
-+// for i in range(MAX_FUNCTOR_ARITY+1):
-+//   typenames = tlist(", typename T", i, sep="")
-+//   Tts = tlist("T t", i)
-+//   Ts = tlist("T", i)
-+//   ts = tlist("t", i)
-+//   TLIST = "TLIST%d(%s)" % (i, Ts)
-+//   cog.out(r"""
-+// template <typename Result, class Class%(typenames)s>
-+// IMPL_GLOBAL_FUNCTOR_METHOD(%(i)d, (%(Ts)s))
-+// template <typename Result%(typenames)s>
-+// IMPL_GLOBAL_FUNCTOR_FUNCTION(%(i)d, (%(Ts)s))
++// cog.out("\n".join("#define tPs%(j)d tPs%(i)d, typename P%(j)d"
++//                   % locals() for (i, j) in ijs))
++// cog.out("\n\n")
++// cog.out("\n".join("#define Ps%(j)d Ps%(i)d, P%(j)d"
++//                   % locals() for (i, j) in ijs[1:]))
++// ]]]
++#define tPs1 tPs0, typename P1
++#define tPs2 tPs1, typename P2
++#define tPs3 tPs2, typename P3
++#define tPs4 tPs3, typename P4
++#define tPs5 tPs4, typename P5
++#define tPs6 tPs5, typename P6
++#define tPs7 tPs6, typename P7
++#define tPs8 tPs7, typename P8
++#define tPs9 tPs8, typename P9
++#define tPs10 tPs9, typename P10
++#define tPs11 tPs10, typename P11
++#define tPs12 tPs11, typename P12
++#define tPs13 tPs12, typename P13
++#define tPs14 tPs13, typename P14
++#define tPs15 tPs14, typename P15
++
++#define Ps2 Ps1, P2
++#define Ps3 Ps2, P3
++#define Ps4 Ps3, P4
++#define Ps5 Ps4, P5
++#define Ps6 Ps5, P6
++#define Ps7 Ps6, P7
++#define Ps8 Ps7, P8
++#define Ps9 Ps8, P9
++#define Ps10 Ps9, P10
++#define Ps11 Ps10, P11
++#define Ps12 Ps11, P12
++#define Ps13 Ps12, P13
++#define Ps14 Ps13, P14
++#define Ps15 Ps14, P15
++// [[[end]]]
++
++// Being able to declare the const version at the same time as the non-const
++// version makes all of this macro abstraction worthwhile.
++#define DECL_GLOBAL_METHOD_ADAPTERS(TLIST, CPs, N)                            \
++  template <typename R, class C tPs##N>                                       \
++  Functor<R, TLIST CPs> functor(R (C::*m)(Ps##N)) {                           \
++    return Functor<R, TLIST CPs>::method(m);                                  \
++  }                                                                           \
++  template <typename R, class C tPs##N>                                       \
++  Functor<R, TLIST CPs> functor(R (C::*m)(Ps##N) const) {                     \
++    return Functor<R, TLIST CPs>::method(m);                                  \
++  }
++
++#define DECL_GLOBAL_FUNCTION_ADAPTER(TLIST, Ps, N)                            \
++  template <typename R tPs##N>                                                \
++  Functor<R, TLIST Ps> functor(R (*f)Ps) {                                    \
++    return Functor<R, TLIST Ps>::callable(f);                                 \
++  }
++
++// Special-casing these makes the following generator code a bit simpler:
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST1, (C), 0)
++DECL_GLOBAL_FUNCTION_ADAPTER(TLIST0, (), 0)
++
++// [[[cog
++// for (i, j) in ijs[1:]:
++//   cog.out("""
++// DECL_GLOBAL_METHOD_ADAPTERS(TLIST%(j)d, (C, Ps%(i)d), %(i)d)
++// DECL_GLOBAL_FUNCTION_ADAPTER(TLIST%(i)d, (Ps%(i)d), %(i)d)
 +// """ % locals())
 +// ]]]
 +
-+template <typename Result, class Class>
-+IMPL_GLOBAL_FUNCTOR_METHOD(0, ())
-+template <typename Result>
-+IMPL_GLOBAL_FUNCTOR_FUNCTION(0, ())
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST2, (C, Ps1), 1)
++DECL_GLOBAL_FUNCTION_ADAPTER(TLIST1, (Ps1), 1)
 +
-+template <typename Result, class Class, typename T1>
-+IMPL_GLOBAL_FUNCTOR_METHOD(1, (T1))
-+template <typename Result, typename T1>
-+IMPL_GLOBAL_FUNCTOR_FUNCTION(1, (T1))
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST3, (C, Ps2), 2)
++DECL_GLOBAL_FUNCTION_ADAPTER(TLIST2, (Ps2), 2)
 +
-+template <typename Result, class Class, typename T1, typename T2>
-+IMPL_GLOBAL_FUNCTOR_METHOD(2, (T1, T2))
-+template <typename Result, typename T1, typename T2>
-+IMPL_GLOBAL_FUNCTOR_FUNCTION(2, (T1, T2))
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST4, (C, Ps3), 3)
++DECL_GLOBAL_FUNCTION_ADAPTER(TLIST3, (Ps3), 3)
 +
-+template <typename Result, class Class, typename T1, typename T2, typename T3>
-+IMPL_GLOBAL_FUNCTOR_METHOD(3, (T1, T2, T3))
-+template <typename Result, typename T1, typename T2, typename T3>
-+IMPL_GLOBAL_FUNCTOR_FUNCTION(3, (T1, T2, T3))
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST5, (C, Ps4), 4)
++DECL_GLOBAL_FUNCTION_ADAPTER(TLIST4, (Ps4), 4)
 +
-+template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4>
-+IMPL_GLOBAL_FUNCTOR_METHOD(4, (T1, T2, T3, T4))
-+template <typename Result, typename T1, typename T2, typename T3, typename T4>
-+IMPL_GLOBAL_FUNCTOR_FUNCTION(4, (T1, T2, T3, T4))
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST6, (C, Ps5), 5)
++DECL_GLOBAL_FUNCTION_ADAPTER(TLIST5, (Ps5), 5)
 +
-+template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5>
-+IMPL_GLOBAL_FUNCTOR_METHOD(5, (T1, T2, T3, T4, T5))
-+template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5>
-+IMPL_GLOBAL_FUNCTOR_FUNCTION(5, (T1, T2, T3, T4, T5))
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST7, (C, Ps6), 6)
++DECL_GLOBAL_FUNCTION_ADAPTER(TLIST6, (Ps6), 6)
 +
-+template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6>
-+IMPL_GLOBAL_FUNCTOR_METHOD(6, (T1, T2, T3, T4, T5, T6))
-+template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6>
-+IMPL_GLOBAL_FUNCTOR_FUNCTION(6, (T1, T2, T3, T4, T5, T6))
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST8, (C, Ps7), 7)
++DECL_GLOBAL_FUNCTION_ADAPTER(TLIST7, (Ps7), 7)
 +
-+template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7>
-+IMPL_GLOBAL_FUNCTOR_METHOD(7, (T1, T2, T3, T4, T5, T6, T7))
-+template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7>
-+IMPL_GLOBAL_FUNCTOR_FUNCTION(7, (T1, T2, T3, T4, T5, T6, T7))
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST9, (C, Ps8), 8)
++DECL_GLOBAL_FUNCTION_ADAPTER(TLIST8, (Ps8), 8)
 +
-+template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8>
-+IMPL_GLOBAL_FUNCTOR_METHOD(8, (T1, T2, T3, T4, T5, T6, T7, T8))
-+template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8>
-+IMPL_GLOBAL_FUNCTOR_FUNCTION(8, (T1, T2, T3, T4, T5, T6, T7, T8))
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST10, (C, Ps9), 9)
++DECL_GLOBAL_FUNCTION_ADAPTER(TLIST9, (Ps9), 9)
 +
-+template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9>
-+IMPL_GLOBAL_FUNCTOR_METHOD(9, (T1, T2, T3, T4, T5, T6, T7, T8, T9))
-+template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9>
-+IMPL_GLOBAL_FUNCTOR_FUNCTION(9, (T1, T2, T3, T4, T5, T6, T7, T8, T9))
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST11, (C, Ps10), 10)
++DECL_GLOBAL_FUNCTION_ADAPTER(TLIST10, (Ps10), 10)
 +
-+template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10>
-+IMPL_GLOBAL_FUNCTOR_METHOD(10, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10))
-+template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10>
-+IMPL_GLOBAL_FUNCTOR_FUNCTION(10, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10))
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST12, (C, Ps11), 11)
++DECL_GLOBAL_FUNCTION_ADAPTER(TLIST11, (Ps11), 11)
 +
-+template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10, typename T11>
-+IMPL_GLOBAL_FUNCTOR_METHOD(11, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11))
-+template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10, typename T11>
-+IMPL_GLOBAL_FUNCTOR_FUNCTION(11, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11))
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST13, (C, Ps12), 12)
++DECL_GLOBAL_FUNCTION_ADAPTER(TLIST12, (Ps12), 12)
 +
-+template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10, typename T11, typename T12>
-+IMPL_GLOBAL_FUNCTOR_METHOD(12, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12))
-+template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10, typename T11, typename T12>
-+IMPL_GLOBAL_FUNCTOR_FUNCTION(12, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12))
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST14, (C, Ps13), 13)
++DECL_GLOBAL_FUNCTION_ADAPTER(TLIST13, (Ps13), 13)
 +
-+template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10, typename T11, typename T12, typename T13>
-+IMPL_GLOBAL_FUNCTOR_METHOD(13, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13))
-+template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10, typename T11, typename T12, typename T13>
-+IMPL_GLOBAL_FUNCTOR_FUNCTION(13, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13))
++DECL_GLOBAL_METHOD_ADAPTERS(TLIST15, (C, Ps14), 14)
++DECL_GLOBAL_FUNCTION_ADAPTER(TLIST14, (Ps14), 14)
++// [[[end]]]
 +
-+template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10, typename T11, typename T12, typename T13, typename T14>
-+IMPL_GLOBAL_FUNCTOR_METHOD(14, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14))
-+template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10, typename T11, typename T12, typename T13, typename T14>
-+IMPL_GLOBAL_FUNCTOR_FUNCTION(14, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14))
++// Sayonara, macro scum!
 +
-+template <typename Result, class Class, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10, typename T11, typename T12, typename T13, typename T14, typename T15>
-+IMPL_GLOBAL_FUNCTOR_METHOD(15, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15))
-+template <typename Result, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9, typename T10, typename T11, typename T12, typename T13, typename T14, typename T15>
-+IMPL_GLOBAL_FUNCTOR_FUNCTION(15, (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15))
++#undef DECL_GLOBAL_FUNCTION_ADAPTERS
++#undef DECL_GLOBAL_METHOD_ADAPTER
++
++// [[[cog
++// cog.out("\n".join("#undef %(topt)sPs%(i)d" % locals()
++//                   for topt in ["t", ""]
++//                   for i in rng))
++// ]]]
++#undef tPs0
++#undef tPs1
++#undef tPs2
++#undef tPs3
++#undef tPs4
++#undef tPs5
++#undef tPs6
++#undef tPs7
++#undef tPs8
++#undef tPs9
++#undef tPs10
++#undef tPs11
++#undef tPs12
++#undef tPs13
++#undef tPs14
++#undef tPs15
++#undef Ps0
++#undef Ps1
++#undef Ps2
++#undef Ps3
++#undef Ps4
++#undef Ps5
++#undef Ps6
++#undef Ps7
++#undef Ps8
++#undef Ps9
++#undef Ps10
++#undef Ps11
++#undef Ps12
++#undef Ps13
++#undef Ps14
++#undef Ps15
 +// [[[end]]]
 +
 +#endif
@@ -733,6 +796,20 @@ diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
  
  # we don't want the shared lib, but we want to force the creation of a static lib.
  FORCE_STATIC_LIB = 1
+@@ -145,11 +149,13 @@ include $(topsrcdir)/config/rules.mk
+ 
+ ifdef _MSC_VER
+ # Don't include directives about which CRT to use
+ OS_COMPILE_CXXFLAGS += -Zl
+ OS_COMPILE_CFLAGS += -Zl
+ DEFINES += -D_USE_ANSI_CPP
+ endif
+ 
++DEFINES += -save-temps
++
+ ifdef TARGET_XPCOM_ABI
+ DEFINES += -DTARGET_XPCOM_ABI=\"$(TARGET_XPCOM_ABI)\"
+ endif
 diff --git a/xpcom/glue/TList.h b/xpcom/glue/TList.h
 new file mode 100644
 --- /dev/null
@@ -886,83 +963,11 @@ new file mode 100644
 +                           npat.sub("%u" % i, tmpl))
 +                  for i in range(rfirst, rlast+1))
 +
-diff --git a/xpcom/glue/nsThreadUtils.h b/xpcom/glue/nsThreadUtils.h
---- a/xpcom/glue/nsThreadUtils.h
-+++ b/xpcom/glue/nsThreadUtils.h
-@@ -41,16 +41,17 @@
- 
- #include "prthread.h"
- #include "prinrval.h"
- #include "nsIThreadManager.h"
- #include "nsIThread.h"
- #include "nsIRunnable.h"
- #include "nsStringGlue.h"
- #include "nsCOMPtr.h"
-+#include "Functor.h"
- 
- // This is needed on some systems to prevent collisions between the symbols
- // appearing in xpcom_core and xpcomglue.  It may be unnecessary in the future
- // with better toolchain support.
- #ifdef MOZILLA_INTERNAL_API
- # define NS_NewThread NS_NewThread_P
- # define NS_GetCurrentThread NS_GetCurrentThread_P
- # define NS_GetMainThread NS_GetMainThread_P
-@@ -249,38 +250,34 @@ protected:
- // with nsRevocableEventPtr.
- template <class T>
- class nsRunnableMethod : public nsRunnable
- {
- public:
-   typedef void (T::*Method)();
- 
-   nsRunnableMethod(T *obj, Method method)
--    : mObj(obj), mMethod(method) {
--    NS_ADDREF(mObj);
-+    : mRevoked(PR_FALSE)
-+    , mFun(nsRefPtr<T>(obj), method)
-+  {}
-+
-+  NS_IMETHOD Run() {
-+    if (!mRevoked)
-+      mFun();
-+    return NS_OK;
-   }
- 
--  NS_IMETHOD Run() {
--    if (!mObj)
--      return NS_OK;
--    (mObj->*mMethod)();
--    return NS_OK;
--  }
--  
-   void Revoke() {
--    NS_IF_RELEASE(mObj);
-+    mRevoked = PR_TRUE;
-   }
- 
- private:
--  virtual ~nsRunnableMethod() {
--    NS_IF_RELEASE(mObj);
--  }
--
--  T      *mObj;
--  Method  mMethod;
-+  virtual ~nsRunnableMethod() {}
-+  PRBool mRevoked;
-+  Functor<void, TLIST0()> mFun;
- };
- 
- // Use this helper macro like so:
- //
- //   nsCOMPtr<nsIRunnable> event =
- //       NS_NEW_RUNNABLE_METHOD(MyClass, myObject, HandleEvent);
- //   NS_DispatchToCurrentThread(event);
- //
 diff --git a/xpcom/glue/test.cpp b/xpcom/glue/test.cpp
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/test.cpp
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,86 @@
 +#include <iostream>
 +#include "Functor.h"
 +#include "Bind.h"
@@ -974,7 +979,7 @@ new file mode 100644
 +struct Pred
 +{
 +  int operator()(int n) {
-+    return n + 1;
++    return n - 1;
 +  }
 +};
 +
@@ -983,8 +988,8 @@ new file mode 100644
 +  int Sub(int a, int b) {
 +    return a - b;
 +  }
-+  static int Add3(int a, int b, int c) {
-+    return a + b + c;
++  static int Add2(int a, int b) {
++    return a + b;
 +  }
 +};
 +
@@ -995,40 +1000,53 @@ new file mode 100644
 +
 +void example()
 +{
-+  Functor<int, TLIST1(int)> s(&Succ);
-+  Pred pred;
-+  Functor<int, TLIST1(int)> p(pred);
-+  Functor<int, TLIST2(int, int)> ds(
-+    new DiffStruct, &DiffStruct::Sub);
-+  Functor<int, TLIST3(int, int, int)> a3(&DiffStruct::Add3);
++  // Functor<int, TLIST1(int)> s =
++  //   Functor<int, TLIST1(int)>::callable(&Succ);
++  // 
++  // Pred pred;
++  // Functor<int, TLIST1(int)> p =
++  //   Functor<int, TLIST1(int)>::callable(pred);
++  // 
++  // Functor<int, TLIST3(DiffStruct, int, int)> ds =
++  //   Functor<int, TLIST3(DiffStruct, int, int)>::method(&DiffStruct::Sub);
++  // 
++  // Functor<int, TLIST2(int, int)> a2 =
++  //   Functor<int, TLIST2(int, int)>::callable(&DiffStruct::Add2);
++  // 
++  // int a = 1, b = 5;
++  // is(s(a), a + 1);
++  // is(p(b), b - 1);
++  // is(ds(DiffStruct(), s(a), p(b)), a - b + 2);
 +
-+  int a = 1, b = 5;
++  // is(std::bind1st(ds, 6)(4), 2);
++  // is(std::bind2nd(ds, 6)(4), -2);
 +
-+  is(s(a), a + 1);
-+  is(p(b), b - 1);
-+  is(ds(s(a), p(b)), a - b + 2);
-+  is(std::bind1st(ds, 6)(4), 2);
-+  is(std::bind2nd(ds, 6)(4), -2);
-+  is(a3(1, 2, 3), 6);
++  // is(a2(2, 3), 5);
 +}
 +
 +void test_bind()
 +{
-+  Functor<int, TLIST3(int, int, int)> a3(&DiffStruct::Add3);
-+  is(BIND1(a3, 1)(2, 3), 6);
-+  is(BIND2(a3, 1, 2)(3), 6);
-+  is(BIND3(a3, 1, 2, 3)(), 6);
-+  is(BIND2(BIND1(a3, 1), 2, 3)(), 6);
++  // Interesting (near-)equivalences:
++  // is(Pred()(2), 1);
++  // is((Pred().*(&Pred::operator()))(2), 1);
++  // is(Pred().operator()(2), 1);
++  // is(BIND1(&Pred::operator(), Pred())(2), 1);
 +
-+  double x = 5, y = 3;
-+  DiffStruct ds;
-+  Functor<int, TLIST2(int, int)> sub(
-+    &ds, &DiffStruct::Sub);
-+  Functor<int, TLIST1(int)> f = BIND1(sub, x);
-+  is(sub(x, y), x - y);
-+  is(sub(y, x), y - x);
-+  is(f(x), 0);
-+  is(f(y), x - y);
++//   Functor<int, TLIST3(int, int, int)> a3(&DiffStruct::Add3);
++//   is(BIND1(a3, 1)(2, 3), 6);
++//   is(BIND2(a3, 1, 2)(3), 6);
++//   is(BIND3(a3, 1, 2, 3)(), 6);
++//   is(BIND2(BIND1(a3, 1), 2, 3)(), 6);
++// 
++//   double x = 5, y = 3;
++//   DiffStruct ds;
++//   Functor<int, TLIST2(int, int)> sub(
++//     &ds, &DiffStruct::Sub);
++//   Functor<int, TLIST1(int)> f = BIND1(sub, x);
++//   is(sub(x, y), x - y);
++//   is(sub(y, x), y - x);
++//   is(f(x), 0);
++//   is(f(y), x - y);
 +}
 +
 +int main() {
