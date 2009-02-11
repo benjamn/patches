@@ -11,8 +11,9 @@ new file mode 100644
 +#include "Functor.h"
 +
 +// [[[cog
-+// from cogutil import tlist
-+// MAX_FUNCTOR_ARITY = 15
++// from cogutil import tlist, MAX_FUNCTOR_ARITY
++// rng = range(MAX_FUNCTOR_ARITY+1)
++// ijs = zip(rng, rng[1:])
 +// ]]]
 +// [[[end]]]
 +
@@ -35,7 +36,7 @@ new file mode 100644
 +  // [[[cog
 +  // prefix = "ResultType operator()("
 +  // indent = " " * len(prefix)
-+  // for i in range(MAX_FUNCTOR_ARITY+1):
++  // for i in rng:
 +  //   Pps = tlist("P p", i)
 +  //   ps = tlist(", p", i, sep="")
 +  //   cog.out(r"""
@@ -114,14 +115,13 @@ new file mode 100644
 +
 +// [[[cog
 +// slash = "\\"
-+// for i in range(2, MAX_FUNCTOR_ARITY+1):
-+//   prev = i - 1
-+//   alist = tlist("A", i)
-+//   ainit = tlist("A", i-1)
-+//   alast = "A%d" % i;
++// for (i, j) in ijs[1:]:
++//   alist = tlist("A", j)
++//   ainit = tlist("A", i)
++//   alast = "A%d" % j;
 +//   cog.out(r"""
-+// #define BIND%(i)d(F, %(alist)s) %(slash)s
-+//    bind(BIND%(prev)d(F, %(ainit)s), %(alast)s)
++// #define BIND%(j)d(F, %(alist)s) %(slash)s
++//    bind(BIND%(i)d(F, %(ainit)s), %(alast)s)
 +// """ % locals())
 +// ]]]
 +
@@ -174,7 +174,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Functor.h
-@@ -0,0 +1,583 @@
+@@ -0,0 +1,582 @@
 +#ifndef __functor_h__
 +#define __functor_h__
 +
@@ -200,8 +200,7 @@ new file mode 100644
 +
 +
 +// [[[cog
-+// from cogutil import tlist
-+// MAX_FUNCTOR_ARITY = 15
++// from cogutil import tlist, MAX_FUNCTOR_ARITY
 +// rng = range(MAX_FUNCTOR_ARITY+1)
 +// ijs = zip(rng, rng[1:])
 +// ]]]
@@ -821,7 +820,11 @@ new file mode 100644
 +#ifndef __tlist_h__
 +#define __tlist_h__
 +
-+// [[[cog from cogutil import tlist ]]]
++// [[[cog
++// from cogutil import tlist, MAX_FUNCTOR_ARITY
++// rng = range(MAX_FUNCTOR_ARITY+1)
++// ijs = zip(rng, rng[1:])
++// ]]]
 +// [[[end]]]
 +
 +class NullType {};
@@ -836,18 +839,14 @@ new file mode 100644
 +#define TLIST0() NullType
 +
 +// [[[cog
-+// MAX_TUPLE_ARITY = 15
-+//
-+// for i in range(1, MAX_TUPLE_ARITY+1):
++// for (i, j) in ijs:
++//   Ts = tlist("T", j)
++//   Tcdr = tlist("T", rfirst=2, rlast=j)
++//   slash = "\\"
 +//   cog.out(r"""
-+// #define TLIST%(arity)d(%(tlist)s) %(slash)s
-+//   TList<T1, TLIST%(arity-1)d(%(trest)s)>
-+// """ % {
-+//   "arity": i, "arity-1": i-1,
-+//   "tlist": tlist("T", i),
-+//   "trest": tlist("T", rfirst=2, rlast=i),
-+//   "slash": "\\",
-+// })
++// #define TLIST%(j)d(%(Ts)s) %(slash)s
++//   TList<T1, TLIST%(i)d(%(Tcdr)s)>
++// """ % locals())
 +// ]]]
 +
 +#define TLIST1(T1) \
@@ -953,7 +952,7 @@ diff --git a/xpcom/glue/cogutil.py b/xpcom/glue/cogutil.py
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/cogutil.py
-@@ -0,0 +1,12 @@
+@@ -0,0 +1,14 @@
 +#!/usr/bin/env python
 +
 +import cog
@@ -965,6 +964,8 @@ new file mode 100644
 +  return sep.join(tpat.sub("\g<0>%u" % i,
 +                           npat.sub("%u" % i, tmpl))
 +                  for i in range(rfirst, rlast+1))
++
++MAX_FUNCTOR_ARITY = 15
 +
 diff --git a/xpcom/glue/test.cpp b/xpcom/glue/test.cpp
 new file mode 100644
