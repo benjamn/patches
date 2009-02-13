@@ -5,6 +5,7 @@ bug-475467.diff
 suppress-title-change-events.diff
 dtd-const-mparser.diff
 parser-copy-data.diff
+join.diff
 functor.diff
 parser-msg-functors.diff
 bug-470356.diff

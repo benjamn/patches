@@ -760,26 +760,7 @@ new file mode 100644
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
-@@ -66,16 +66,17 @@ CSRCS		= \
- CSRCS		= \
- 		$(XPCOM_GLUE_SRC_LCSRCS) \
- 		$(NULL)  
- 
- CPPSRCS		= \
- 		$(XPCOM_GLUE_SRC_LCPPSRCS) \
- 		$(XPCOM_GLUENS_SRC_LCPPSRCS) \
- 		nsStringAPI.cpp \
-+		test.cpp \
- 		$(NULL)
- 
- SDK_HEADERS = \
- 		pldhash.h \
- 		nsArrayEnumerator.h \
- 		nsArrayUtils.h \
- 		nsAutoLock.h \
- 		nsBaseHashtable.h \
-@@ -119,16 +120,19 @@ SDK_HEADERS = \
- 		nsCycleCollectionParticipant.h \
+@@ -120,16 +120,19 @@ SDK_HEADERS = \
  		nsDeque.h \
  		$(NULL)
  
@@ -787,8 +768,9 @@ diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
  		nsThreadUtils.h \
  		nsProxyRelease.h \
  		nsXPTCUtils.h \
-+		Functor.h \
+ 		Join.h \
 +		TList.h \
++		Functor.h \
 +		Bind.h \
  		$(NULL)
  
@@ -798,20 +780,6 @@ diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
  
  # we don't want the shared lib, but we want to force the creation of a static lib.
  FORCE_STATIC_LIB = 1
-@@ -145,11 +149,13 @@ include $(topsrcdir)/config/rules.mk
- 
- ifdef _MSC_VER
- # Don't include directives about which CRT to use
- OS_COMPILE_CXXFLAGS += -Zl
- OS_COMPILE_CFLAGS += -Zl
- DEFINES += -D_USE_ANSI_CPP
- endif
- 
-+DEFINES += -save-temps
-+
- ifdef TARGET_XPCOM_ABI
- DEFINES += -DTARGET_XPCOM_ABI=\"$(TARGET_XPCOM_ABI)\"
- endif
 diff --git a/xpcom/glue/TList.h b/xpcom/glue/TList.h
 new file mode 100644
 --- /dev/null

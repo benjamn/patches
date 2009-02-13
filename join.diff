@@ -1,0 +1,69 @@
+diff --git a/xpcom/glue/Join.h b/xpcom/glue/Join.h
+new file mode 100644
+--- /dev/null
++++ b/xpcom/glue/Join.h
+@@ -0,0 +1,42 @@
++#ifndef __join_h__
++#define __join_h__
++
++#define JOIN0(PRED,SEP)
++#define JOIN1(PRED,SEP) PRED(0)
++// [[[cog
++// rng = range(20+1)
++// ijs = zip(rng, rng[1:])
++// template = "#define JOIN%(j)d(PRED,SEP) JOIN%(i)d(PRED,SEP) SEP() PRED(%(i)d)"
++// cog.out("\n".join(template % locals() for (i, j) in ijs[1:]))
++// ]]]
++#define JOIN2(PRED,SEP) JOIN1(PRED,SEP) SEP() PRED(1)
++#define JOIN3(PRED,SEP) JOIN2(PRED,SEP) SEP() PRED(2)
++#define JOIN4(PRED,SEP) JOIN3(PRED,SEP) SEP() PRED(3)
++#define JOIN5(PRED,SEP) JOIN4(PRED,SEP) SEP() PRED(4)
++#define JOIN6(PRED,SEP) JOIN5(PRED,SEP) SEP() PRED(5)
++#define JOIN7(PRED,SEP) JOIN6(PRED,SEP) SEP() PRED(6)
++#define JOIN8(PRED,SEP) JOIN7(PRED,SEP) SEP() PRED(7)
++#define JOIN9(PRED,SEP) JOIN8(PRED,SEP) SEP() PRED(8)
++#define JOIN10(PRED,SEP) JOIN9(PRED,SEP) SEP() PRED(9)
++#define JOIN11(PRED,SEP) JOIN10(PRED,SEP) SEP() PRED(10)
++#define JOIN12(PRED,SEP) JOIN11(PRED,SEP) SEP() PRED(11)
++#define JOIN13(PRED,SEP) JOIN12(PRED,SEP) SEP() PRED(12)
++#define JOIN14(PRED,SEP) JOIN13(PRED,SEP) SEP() PRED(13)
++#define JOIN15(PRED,SEP) JOIN14(PRED,SEP) SEP() PRED(14)
++#define JOIN16(PRED,SEP) JOIN15(PRED,SEP) SEP() PRED(15)
++#define JOIN17(PRED,SEP) JOIN16(PRED,SEP) SEP() PRED(16)
++#define JOIN18(PRED,SEP) JOIN17(PRED,SEP) SEP() PRED(17)
++#define JOIN19(PRED,SEP) JOIN18(PRED,SEP) SEP() PRED(18)
++#define JOIN20(PRED,SEP) JOIN19(PRED,SEP) SEP() PRED(19)
++// [[[end]]]
++
++#define COMMA() ,
++#define SEMI()  ;
++#define EMPTY()
++
++#define tnT(N) typename T##N
++#define ctnT(N) , tnT(N)
++#define Tt(N) T##N t##N
++#define cTt(N) , Tt(N)
++
++#endif
+\ No newline at end of file
+diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
+--- a/xpcom/glue/Makefile.in
++++ b/xpcom/glue/Makefile.in
+@@ -119,16 +119,17 @@ SDK_HEADERS = \
+ 		nsCycleCollectionParticipant.h \
+ 		nsDeque.h \
+ 		$(NULL)
+ 
+ EXPORTS = \
+ 		nsThreadUtils.h \
+ 		nsProxyRelease.h \
+ 		nsXPTCUtils.h \
++		Join.h \
+ 		$(NULL)
+ 
+ SDK_LIBRARY     =                        \
+ 		$(LIB_PREFIX)xpcomglue_s.$(LIB_SUFFIX) \
+ 		$(NULL)
+ 
+ # we don't want the shared lib, but we want to force the creation of a static lib.
+ FORCE_STATIC_LIB = 1
