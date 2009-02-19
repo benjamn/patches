@@ -1,0 +1,586 @@
+diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/document/src/nsHTMLContentSink.cpp
+--- a/content/html/document/src/nsHTMLContentSink.cpp
++++ b/content/html/document/src/nsHTMLContentSink.cpp
+@@ -119,16 +119,18 @@
+ #include "nsIDocShellTreeItem.h"
+ 
+ #include "nsEscape.h"
+ #include "nsIElementObserver.h"
+ #include "nsNodeInfoManager.h"
+ #include "nsContentCreatorFunctions.h"
+ #include "mozAutoDocUpdate.h"
+ 
++#include "Bind.h"
++
+ #ifdef NS_DEBUG
+ static PRLogModuleInfo* gSinkLogModuleInfo;
+ 
+ #define SINK_TRACE_NODE(_bit, _msg, _tag, _sp, _obj) \
+   _obj->SinkTraceNode(_bit, _msg, _tag, _sp, this)
+ 
+ #else
+ #define SINK_TRACE_NODE(_bit, _msg, _tag, _sp, _obj)
+@@ -155,17 +157,17 @@ static const contentCreatorCallback sCon
+   NS_NewHTMLUnknownElement
+ };
+ 
+ class SinkContext;
+ class HTMLContentSink;
+ 
+ static void MaybeSetForm(nsGenericHTMLElement*, nsHTMLTag, HTMLContentSink*);
+ 
+-class HTMLContentSink : public nsContentSink,
++class HTMLContentSink : private nsContentSink,
+ #ifdef DEBUG
+                         public nsIDebugDumpContent,
+ #endif
+                         public nsIHTMLContentSink
+ {
+ public:
+   friend class SinkContext;
+   friend void MaybeSetForm(nsGenericHTMLElement*, nsHTMLTag, HTMLContentSink*);
+@@ -176,45 +178,60 @@ public:
+   NS_DECL_AND_IMPL_ZEROING_OPERATOR_NEW
+ 
+   nsresult Init(nsIDocument* aDoc, nsIURI* aURI, nsISupports* aContainer,
+                 nsIChannel* aChannel);
+ 
+   // nsISupports
+   NS_DECL_ISUPPORTS_INHERITED
+ 
++  #define DECL_PROXY_PAIR(RTYPE, METHOD, PARAMS, HPARAMS)                     \
++  public:                                                                     \
++    RTYPE METHOD PARAMS;                                                      \
++  private:                                                                    \
++    RTYPE Handle##METHOD HPARAMS
++
++  #define DPP(RTYPE, METHOD, PARAMS)                                          \
++    DECL_PROXY_PAIR(RTYPE, METHOD, PARAMS, PARAMS)
++
++  #define DPP_PARSERNODE(RTYPE, METHOD)                                       \
++    DECL_PROXY_PAIR(RTYPE, METHOD,                                            \
++      (const nsIParserNode& aNode),                                           \
++      (const nsIParserNode* aNodePtr))
++
+   // nsIContentSink
+-  NS_IMETHOD WillParse(void);
+-  NS_IMETHOD WillBuildModel(void);
+-  NS_IMETHOD DidBuildModel(void);
+-  virtual PRBool ReadyToCallDidBuildModel(PRBool aTerminated);
+-  NS_IMETHOD WillInterrupt(void);
+-  NS_IMETHOD WillResume(void);
+-  NS_IMETHOD SetParser(nsIParser* aParser);
+-  virtual void FlushPendingNotifications(mozFlushType aType);
+-  NS_IMETHOD SetDocumentCharset(nsACString& aCharset);
+-  virtual nsISupports *GetTarget();
++  DPP(NS_IMETHOD, WillParse, ());
++  DPP(NS_IMETHOD, WillBuildModel, ());
++  DPP(NS_IMETHOD, DidBuildModel, ());
++  DPP(virtual PRBool, ReadyToCallDidBuildModel, (PRBool aTerminated));
++  DPP(NS_IMETHOD, WillInterrupt, ());
++  DPP(NS_IMETHOD, WillResume, ());
++  DPP(NS_IMETHOD, SetParser, (nsIParser* aParser));
++  DPP(virtual void, FlushPendingNotifications, (mozFlushType aType));
++  DPP(NS_IMETHOD, SetDocumentCharset, (nsACString& aCharset));
++  DPP(virtual nsISupports*, GetTarget, ());
+ 
+   // nsIHTMLContentSink
+-  NS_IMETHOD OpenContainer(const nsIParserNode& aNode);
+-  NS_IMETHOD CloseContainer(const nsHTMLTag aTag);
+-  NS_IMETHOD CloseMalformedContainer(const nsHTMLTag aTag);
+-  NS_IMETHOD AddLeaf(const nsIParserNode& aNode);
+-  NS_IMETHOD AddComment(const nsIParserNode& aNode);
+-  NS_IMETHOD AddProcessingInstruction(const nsIParserNode& aNode);
+-  NS_IMETHOD AddDocTypeDecl(const nsIParserNode& aNode);
+-  NS_IMETHOD DidProcessTokens(void);
+-  NS_IMETHOD WillProcessAToken(void);
+-  NS_IMETHOD DidProcessAToken(void);
+-  NS_IMETHOD NotifyTagObservers(nsIParserNode* aNode);
+-  NS_IMETHOD BeginContext(PRInt32 aID);
+-  NS_IMETHOD EndContext(PRInt32 aID);
+-  NS_IMETHOD OpenHead();
+-  NS_IMETHOD IsEnabled(PRInt32 aTag, PRBool* aReturn);
+-  NS_IMETHOD_(PRBool) IsFormOnStack();
++  DPP_PARSERNODE(NS_IMETHOD, OpenContainer);
++  DPP_PARSERNODE(NS_IMETHOD, AddLeaf);
++  DPP_PARSERNODE(NS_IMETHOD, AddComment);
++  DPP_PARSERNODE(NS_IMETHOD, AddProcessingInstruction);
++  DPP_PARSERNODE(NS_IMETHOD, AddDocTypeDecl);
++
++  DPP(NS_IMETHOD, CloseContainer, (const nsHTMLTag aTag));
++  DPP(NS_IMETHOD, CloseMalformedContainer, (const nsHTMLTag aTag));
++  DPP(NS_IMETHOD, DidProcessTokens, ());
++  DPP(NS_IMETHOD, WillProcessAToken, ());
++  DPP(NS_IMETHOD, DidProcessAToken, ());
++  DPP(NS_IMETHOD, NotifyTagObservers, (nsIParserNode* aNode));
++  DPP(NS_IMETHOD, BeginContext, (PRInt32 aID));
++  DPP(NS_IMETHOD, EndContext, (PRInt32 aID));
++  DPP(NS_IMETHOD, OpenHead, ());
++  DPP(NS_IMETHOD, IsEnabled, (PRInt32 aTag, PRBool* aReturn));
++  DPP(NS_IMETHOD_(PRBool), IsFormOnStack, ());
+ 
+   virtual nsresult ProcessMETATag(nsIContent* aContent);
+ 
+ #ifdef DEBUG
+   // nsIDebugDumpContent
+   NS_IMETHOD DumpContentModel();
+ #endif
+ 
+@@ -1736,24 +1753,38 @@ HTMLContentSink::Init(nsIDocument* aDoc,
+ #endif
+ 
+   MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::Init()\n"));
+   MOZ_TIMER_STOP(mWatch);
+ 
+   return NS_OK;
+ }
+ 
+-NS_IMETHODIMP
+-HTMLContentSink::WillParse(void)
++#define IMPL_SIMPLE_PROXY_PAIR(RTYPE, METHOD)                                 \
++  RTYPE HTMLContentSink::METHOD() {                                           \
++    return BIND1(&HTMLContentSink::Handle##METHOD,                            \
++                 nsRefPtr<HTMLContentSink>(this))();                          \
++    return NS_OK;                                                             \
++  }                                                                           \
++  RTYPE HTMLContentSink::Handle##METHOD()
++
++#define IMPL_PARSERNODE_PROXY_PAIR(RTYPE, METHOD)                             \
++  RTYPE HTMLContentSink::METHOD(const nsIParserNode& aNode) {                 \
++    return BIND2(&HTMLContentSink::Handle##METHOD,                            \
++                 nsRefPtr<HTMLContentSink>(this), &aNode)();                  \
++    return NS_OK;                                                             \
++  }                                                                           \
++  RTYPE HTMLContentSink::Handle##METHOD(const nsIParserNode* aNodePtr)
++
++IMPL_SIMPLE_PROXY_PAIR(NS_IMETHODIMP, WillParse)
+ {
+   return WillParseImpl();
+ }
+ 
+-NS_IMETHODIMP
+-HTMLContentSink::WillBuildModel(void)
++IMPL_SIMPLE_PROXY_PAIR(NS_IMETHODIMP, WillBuildModel)
+ {
+   WillBuildModelImpl();
+   if (mHTMLDocument) {
+     NS_ASSERTION(mParser, "no parser");
+     nsCompatibility mode = eCompatibility_NavQuirks;
+     if (mParser) {
+       nsDTDMode dtdMode = mParser->GetParseMode();
+       switch (dtdMode) {
+@@ -1775,18 +1806,17 @@ HTMLContentSink::WillBuildModel(void)
+   }
+ 
+   // Notify document that the load is beginning
+   mDocument->BeginLoad();
+ 
+   return NS_OK;
+ }
+ 
+-NS_IMETHODIMP
+-HTMLContentSink::DidBuildModel(void)
++IMPL_SIMPLE_PROXY_PAIR(NS_IMETHODIMP, DidBuildModel)
+ {
+   // NRA Dump stopwatch stop info here
+ #ifdef MOZ_PERF_METRICS
+   MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::DidBuildModel(), this=%p\n",
+                       this));
+   MOZ_TIMER_STOP(mWatch);
+   MOZ_TIMER_LOG(("Content creation time (this=%p): ", this));
+   MOZ_TIMER_PRINT(mWatch);
+@@ -1836,35 +1866,54 @@ HTMLContentSink::DidBuildModel(void)
+   DropParserAndPerfHint();
+ 
+   return NS_OK;
+ }
+ 
+ PRBool
+ HTMLContentSink::ReadyToCallDidBuildModel(PRBool aTerminated)
+ {
++  return BIND2(&HTMLContentSink::HandleReadyToCallDidBuildModel,
++               nsRefPtr<HTMLContentSink>(this), aTerminated)();
++}
++PRBool
++HTMLContentSink::HandleReadyToCallDidBuildModel(PRBool aTerminated)
++{
+   return ReadyToCallDidBuildModelImpl(aTerminated);
+ }
+ 
+ NS_IMETHODIMP
+ HTMLContentSink::SetParser(nsIParser* aParser)
+ {
++  return BIND2(&HTMLContentSink::HandleSetParser,
++               nsRefPtr<HTMLContentSink>(this),
++               aParser)();
++}
++nsresult
++HTMLContentSink::HandleSetParser(nsIParser* aParser)
++{
+   NS_PRECONDITION(aParser, "Should have a parser here!");
+   mParser = aParser;
+   return NS_OK;
+ }
+ 
+-NS_IMETHODIMP_(PRBool)
+-HTMLContentSink::IsFormOnStack()
++IMPL_SIMPLE_PROXY_PAIR(NS_IMETHODIMP_(PRBool), IsFormOnStack)
+ {
+   return mFormOnStack;
+ }
+ 
+ NS_IMETHODIMP
+ HTMLContentSink::BeginContext(PRInt32 aPosition)
++{
++  return BIND2(&HTMLContentSink::HandleBeginContext,
++               nsRefPtr<HTMLContentSink>(this),
++               aPosition)();
++}
++NS_IMETHODIMP
++HTMLContentSink::HandleBeginContext(PRInt32 aPosition)
+ {
+   MOZ_TIMER_DEBUGLOG(("Start: nsHTMLContentSink::BeginContext()\n"));
+   MOZ_TIMER_START(mWatch);
+   NS_PRECONDITION(aPosition > -1, "out of bounds");
+ 
+   // Create new context
+   SinkContext* sc = new SinkContext(this);
+   if (!sc) {
+@@ -1913,16 +1962,23 @@ HTMLContentSink::BeginContext(PRInt32 aP
+   MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::BeginContext()\n"));
+   MOZ_TIMER_STOP(mWatch);
+ 
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ HTMLContentSink::EndContext(PRInt32 aPosition)
++{
++  return BIND2(&HTMLContentSink::HandleEndContext,
++               nsRefPtr<HTMLContentSink>(this),
++               aPosition)();
++}
++NS_IMETHODIMP
++HTMLContentSink::HandleEndContext(PRInt32 aPosition)
+ {
+   MOZ_TIMER_DEBUGLOG(("Start: nsHTMLContentSink::EndContext()\n"));
+   MOZ_TIMER_START(mWatch);
+   NS_PRECONDITION(mCurrentContext && aPosition > -1, "non-existing context");
+ 
+   PRInt32 n = mContextStack.Count() - 1;
+   SinkContext* sc = (SinkContext*) mContextStack.ElementAt(n);
+ 
+@@ -2001,18 +2057,17 @@ HTMLContentSink::CloseHTML()
+   }
+ 
+   MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::CloseHTML()\n"));
+   MOZ_TIMER_STOP(mWatch);
+ 
+   return NS_OK;
+ }
+ 
+-nsresult
+-HTMLContentSink::OpenHead()
++IMPL_SIMPLE_PROXY_PAIR(NS_IMETHODIMP, OpenHead)
+ {
+   MOZ_TIMER_DEBUGLOG(("Start: nsHTMLContentSink::OpenHead()\n"));
+   MOZ_TIMER_START(mWatch);
+ 
+   nsresult rv = OpenHeadContext();
+ 
+   MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::OpenHead()\n"));
+   MOZ_TIMER_STOP(mWatch);
+@@ -2296,32 +2351,40 @@ HTMLContentSink::CloseFrameset()
+   }
+ 
+   return rv;
+ }
+ 
+ NS_IMETHODIMP
+ HTMLContentSink::IsEnabled(PRInt32 aTag, PRBool* aReturn)
+ {
++  return BIND3(&HTMLContentSink::HandleIsEnabled,
++               nsRefPtr<HTMLContentSink>(this),
++               aTag, aReturn)();
++}
++NS_IMETHODIMP
++HTMLContentSink::HandleIsEnabled(PRInt32 aTag, PRBool* aReturn)
++{
+   nsHTMLTag theHTMLTag = nsHTMLTag(aTag);
+ 
+   if (theHTMLTag == eHTMLTag_script) {
+     *aReturn = mScriptEnabled;
+   } else if (theHTMLTag == eHTMLTag_frameset) {
+     *aReturn = mFramesEnabled;
+   } else {
+     *aReturn = PR_FALSE;
+   }
+ 
+   return NS_OK;
+ }
+ 
+-NS_IMETHODIMP
+-HTMLContentSink::OpenContainer(const nsIParserNode& aNode)
++IMPL_PARSERNODE_PROXY_PAIR(NS_IMETHODIMP, OpenContainer)
+ {
++  const nsIParserNode& aNode = *aNodePtr;
++  
+   MOZ_TIMER_DEBUGLOG(("Start: nsHTMLContentSink::OpenContainer()\n"));
+   MOZ_TIMER_START(mWatch);
+ 
+   nsresult rv = NS_OK;
+ 
+   switch (aNode.GetNodeType()) {
+     case eHTMLTag_frameset:
+       rv = OpenFrameset(aNode);
+@@ -2359,16 +2422,23 @@ HTMLContentSink::OpenContainer(const nsI
+   MOZ_TIMER_STOP(mWatch);
+ 
+   return rv;
+ }
+ 
+ NS_IMETHODIMP
+ HTMLContentSink::CloseContainer(const eHTMLTags aTag)
+ {
++  return BIND2(&HTMLContentSink::HandleCloseContainer,
++               nsRefPtr<HTMLContentSink>(this),
++               aTag)();
++}
++NS_IMETHODIMP
++HTMLContentSink::HandleCloseContainer(const eHTMLTags aTag)
++{
+   MOZ_TIMER_DEBUGLOG(("Start: nsHTMLContentSink::CloseContainer()\n"));
+   MOZ_TIMER_START(mWatch);
+ 
+   nsresult rv = NS_OK;
+ 
+   switch (aTag) {
+     case eHTMLTag_frameset:
+       rv = CloseFrameset();
+@@ -2394,22 +2464,29 @@ HTMLContentSink::CloseContainer(const eH
+   MOZ_TIMER_STOP(mWatch);
+ 
+   return rv;
+ }
+ 
+ NS_IMETHODIMP
+ HTMLContentSink::CloseMalformedContainer(const eHTMLTags aTag)
+ {
++  return BIND2(&HTMLContentSink::HandleCloseMalformedContainer,
++               nsRefPtr<HTMLContentSink>(this), aTag)();
++}
++NS_IMETHODIMP
++HTMLContentSink::HandleCloseMalformedContainer(const eHTMLTags aTag)
++{
+   return mCurrentContext->CloseContainer(aTag, PR_TRUE);
+ }
+ 
+-NS_IMETHODIMP
+-HTMLContentSink::AddLeaf(const nsIParserNode& aNode)
++IMPL_PARSERNODE_PROXY_PAIR(NS_IMETHODIMP, AddLeaf)
+ {
++  const nsIParserNode& aNode = *aNodePtr;
++
+   MOZ_TIMER_DEBUGLOG(("Start: nsHTMLContentSink::AddLeaf()\n"));
+   MOZ_TIMER_START(mWatch);
+ 
+   nsresult rv;
+ 
+   nsHTMLTag nodeType = nsHTMLTag(aNode.GetNodeType());
+   switch (nodeType) {
+   case eHTMLTag_link:
+@@ -2430,19 +2507,20 @@ HTMLContentSink::AddLeaf(const nsIParser
+ }
+ 
+ /**
+  * This gets called by the parsing system when we find a comment
+  * @update	gess11/9/98
+  * @param   aNode contains a comment token
+  * @return  error code
+  */
+-nsresult
+-HTMLContentSink::AddComment(const nsIParserNode& aNode)
++IMPL_PARSERNODE_PROXY_PAIR(NS_IMETHODIMP, AddComment)
+ {
++  const nsIParserNode& aNode = *aNodePtr;
++
+   MOZ_TIMER_DEBUGLOG(("Start: nsHTMLContentSink::AddComment()\n"));
+   MOZ_TIMER_START(mWatch);
+ 
+   nsresult rv = mCurrentContext->AddComment(aNode);
+ 
+   MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::AddComment()\n"));
+   MOZ_TIMER_STOP(mWatch);
+ 
+@@ -2450,37 +2528,38 @@ HTMLContentSink::AddComment(const nsIPar
+ }
+ 
+ /**
+  * This gets called by the parsing system when we find a PI
+  * @update	gess11/9/98
+  * @param   aNode contains a comment token
+  * @return  error code
+  */
+-nsresult
+-HTMLContentSink::AddProcessingInstruction(const nsIParserNode& aNode)
++IMPL_PARSERNODE_PROXY_PAIR(NS_IMETHODIMP, AddProcessingInstruction)
+ {
++  const nsIParserNode& aNode = *aNodePtr;
++
+   nsresult result = NS_OK;
+ 
+   MOZ_TIMER_START(mWatch);
+   // Implementation of AddProcessingInstruction() should start here
+ 
+   MOZ_TIMER_STOP(mWatch);
+ 
+   return result;
+ }
+ 
+ /**
+  *  This gets called by the parser when it encounters
+  *  a DOCTYPE declaration in the HTML document.
+  */
++IMPL_PARSERNODE_PROXY_PAIR(NS_IMETHODIMP, AddDocTypeDecl)
++{
++  const nsIParserNode& aNode = *aNodePtr;
+ 
+-NS_IMETHODIMP
+-HTMLContentSink::AddDocTypeDecl(const nsIParserNode& aNode)
+-{
+   MOZ_TIMER_DEBUGLOG(("Start: nsHTMLContentSink::AddDocTypeDecl()\n"));
+   MOZ_TIMER_START(mWatch);
+ 
+   nsAutoString docTypeStr(aNode.GetText());
+   nsresult rv = NS_OK;
+ 
+   PRInt32 publicStart = docTypeStr.Find("PUBLIC", PR_TRUE);
+   PRInt32 systemStart = docTypeStr.Find("SYSTEM", PR_TRUE);
+@@ -2700,48 +2779,50 @@ HTMLContentSink::AddDocTypeDecl(const ns
+   }
+ 
+   MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::AddDocTypeDecl()\n"));
+   MOZ_TIMER_STOP(mWatch);
+ 
+   return rv;
+ }
+ 
+-NS_IMETHODIMP
+-HTMLContentSink::DidProcessTokens(void)
++IMPL_SIMPLE_PROXY_PAIR(NS_IMETHODIMP, DidProcessTokens)
+ {
+   return NS_OK;
+ }
+ 
+-NS_IMETHODIMP
+-HTMLContentSink::WillProcessAToken(void)
++IMPL_SIMPLE_PROXY_PAIR(NS_IMETHODIMP, WillProcessAToken)
+ {
+   return NS_OK;
+ }
+ 
+-NS_IMETHODIMP
+-HTMLContentSink::DidProcessAToken(void)
++IMPL_SIMPLE_PROXY_PAIR(NS_IMETHODIMP, DidProcessAToken)
+ {
+   return DidProcessATokenImpl();
+ }
+ 
+-NS_IMETHODIMP
+-HTMLContentSink::WillInterrupt()
++IMPL_SIMPLE_PROXY_PAIR(NS_IMETHODIMP, WillInterrupt)
+ {
+   return WillInterruptImpl();
+ }
+ 
+-NS_IMETHODIMP
+-HTMLContentSink::WillResume()
++IMPL_SIMPLE_PROXY_PAIR(NS_IMETHODIMP, WillResume)
+ {
+   return WillResumeImpl();
+ }
+ 
+ NS_IMETHODIMP
+ HTMLContentSink::NotifyTagObservers(nsIParserNode* aNode)
++{
++  return BIND2(&HTMLContentSink::HandleNotifyTagObservers,
++               nsRefPtr<HTMLContentSink>(this),
++               aNode)();
++}
++NS_IMETHODIMP
++HTMLContentSink::HandleNotifyTagObservers(nsIParserNode* aNode)
+ {
+   // Bug 125317
+   // Inform observers that we're handling a document.write().
+   // This information is necessary for the charset observer, atleast,
+   // to make a decision whether a new charset loading is required or not.
+ 
+   if (!mObservers) {
+     return NS_OK;
+@@ -3184,16 +3265,22 @@ HTMLContentSink::ProcessSTYLEEndTag(nsGe
+   }
+ 
+   return rv;
+ }
+ 
+ void
+ HTMLContentSink::FlushPendingNotifications(mozFlushType aType)
+ {
++  BIND2(&HTMLContentSink::HandleFlushPendingNotifications,
++        nsRefPtr<HTMLContentSink>(this), aType)();
++}
++void
++HTMLContentSink::HandleFlushPendingNotifications(mozFlushType aType)
++{
+   // Only flush tags if we're not doing the notification ourselves
+   // (since we aren't reentrant)
+   if (!mInNotification) {
+     if (aType >= Flush_ContentAndNotify) {
+       FlushTags();
+     }
+     else if (mCurrentContext) {
+       mCurrentContext->FlushText();
+@@ -3214,16 +3301,23 @@ HTMLContentSink::FlushTags()
+     return NS_OK;
+   }
+   
+   return mCurrentContext ? mCurrentContext->FlushTags() : NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ HTMLContentSink::SetDocumentCharset(nsACString& aCharset)
++{
++  return BIND2(&HTMLContentSink::HandleSetDocumentCharset,
++               nsRefPtr<HTMLContentSink>(this),
++               nsCString(aCharset))();
++}
++nsresult
++HTMLContentSink::HandleSetDocumentCharset(nsACString& aCharset)
+ {
+   if (mDocShell) {
+     // the following logic to get muCV is copied from
+     // nsHTMLDocument::StartDocumentLoad
+     // We need to call muCV->SetPrevDocCharacterSet here in case
+     // the charset is detected by parser DetectMetaTag
+     nsCOMPtr<nsIMarkupDocumentViewer> muCV;
+     nsCOMPtr<nsIContentViewer> cv;
+@@ -3260,18 +3354,17 @@ HTMLContentSink::SetDocumentCharset(nsAC
+ 
+   if (mDocument) {
+     mDocument->SetDocumentCharacterSet(aCharset);
+   }
+ 
+   return NS_OK;
+ }
+ 
+-nsISupports *
+-HTMLContentSink::GetTarget()
++IMPL_SIMPLE_PROXY_PAIR(nsISupports*, GetTarget)
+ {
+   return mDocument;
+ }
+ 
+ #ifdef DEBUG
+ /**
+  *  This will dump content model into the output file.
+  *

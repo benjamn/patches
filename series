@@ -7,7 +7,9 @@ dtd-const-mparser.diff
 parser-copy-data.diff
 join.diff
 functor.diff
+join-trick.diff
 parser-msg-functors.diff
+sink-msg-functors.diff
 bug-470356.diff
 parser-msg-queue.diff
 proxy-queue-refactor.diff
