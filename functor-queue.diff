@@ -2,7 +2,7 @@ diff --git a/xpcom/glue/FunctorQueue.h b/xpcom/glue/FunctorQueue.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/FunctorQueue.h
-@@ -0,0 +1,112 @@
+@@ -0,0 +1,113 @@
 +#ifndef __functorqueue_h__
 +#define __functorqueue_h__
 +
@@ -79,6 +79,7 @@ new file mode 100644
 +  virtual ~FunctorQueue()
 +  {
 +    NS_ASSERTION(mQueue.size() == 0, "Deleting non-empty FunctorQueue");
++    nsAutoLock::DestroyLock(mLock);
 +  }
 +
 +  void Flush()
