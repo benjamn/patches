@@ -126,7 +126,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    NS_IMETHOD DumpContentModel();
  #endif
  
-@@ -1736,24 +1753,38 @@ HTMLContentSink::Init(nsIDocument* aDoc,
+@@ -1736,24 +1753,39 @@ HTMLContentSink::Init(nsIDocument* aDoc,
  #endif
  
    MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::Init()\n"));
@@ -137,19 +137,20 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  
 -NS_IMETHODIMP
 -HTMLContentSink::WillParse(void)
++#define RET_BOUND(BOUND) return BOUND()
++#define RET_BOUND_OK(BOUND) return (BOUND(), NS_OK)
++
 +#define IMPL_SIMPLE_PROXY_PAIR(RTYPE, METHOD)                                 \
 +  RTYPE HTMLContentSink::METHOD() {                                           \
-+    return BIND1(&HTMLContentSink::Handle##METHOD,                            \
-+                 nsRefPtr<HTMLContentSink>(this))();                          \
-+    return NS_OK;                                                             \
++    RET_BOUND(BIND1(&HTMLContentSink::Handle##METHOD,                         \
++                    nsRefPtr<HTMLContentSink>(this)));                        \
 +  }                                                                           \
 +  RTYPE HTMLContentSink::Handle##METHOD()
 +
 +#define IMPL_PARSERNODE_PROXY_PAIR(RTYPE, METHOD)                             \
 +  RTYPE HTMLContentSink::METHOD(const nsIParserNode& aNode) {                 \
-+    return BIND2(&HTMLContentSink::Handle##METHOD,                            \
-+                 nsRefPtr<HTMLContentSink>(this), &aNode)();                  \
-+    return NS_OK;                                                             \
++    RET_BOUND_OK(BIND2(&HTMLContentSink::Handle##METHOD,                      \
++                       nsRefPtr<HTMLContentSink>(this), &aNode));             \
 +  }                                                                           \
 +  RTYPE HTMLContentSink::Handle##METHOD(const nsIParserNode* aNodePtr)
 +
@@ -169,7 +170,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
      if (mParser) {
        nsDTDMode dtdMode = mParser->GetParseMode();
        switch (dtdMode) {
-@@ -1775,18 +1806,17 @@ HTMLContentSink::WillBuildModel(void)
+@@ -1775,18 +1807,17 @@ HTMLContentSink::WillBuildModel(void)
    }
  
    // Notify document that the load is beginning
@@ -189,7 +190,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    MOZ_TIMER_STOP(mWatch);
    MOZ_TIMER_LOG(("Content creation time (this=%p): ", this));
    MOZ_TIMER_PRINT(mWatch);
-@@ -1836,35 +1866,54 @@ HTMLContentSink::DidBuildModel(void)
+@@ -1836,35 +1867,56 @@ HTMLContentSink::DidBuildModel(void)
    DropParserAndPerfHint();
  
    return NS_OK;
@@ -198,8 +199,8 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  PRBool
  HTMLContentSink::ReadyToCallDidBuildModel(PRBool aTerminated)
  {
-+  return BIND2(&HTMLContentSink::HandleReadyToCallDidBuildModel,
-+               nsRefPtr<HTMLContentSink>(this), aTerminated)();
++  RET_BOUND(BIND2(&HTMLContentSink::HandleReadyToCallDidBuildModel,
++                  nsRefPtr<HTMLContentSink>(this), aTerminated));
 +}
 +PRBool
 +HTMLContentSink::HandleReadyToCallDidBuildModel(PRBool aTerminated)
@@ -210,9 +211,10 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  NS_IMETHODIMP
  HTMLContentSink::SetParser(nsIParser* aParser)
  {
-+  return BIND2(&HTMLContentSink::HandleSetParser,
-+               nsRefPtr<HTMLContentSink>(this),
-+               aParser)();
++  RET_BOUND_OK(BIND2(
++    &HTMLContentSink::HandleSetParser,
++    nsRefPtr<HTMLContentSink>(this),
++    aParser));
 +}
 +nsresult
 +HTMLContentSink::HandleSetParser(nsIParser* aParser)
@@ -232,9 +234,10 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  NS_IMETHODIMP
  HTMLContentSink::BeginContext(PRInt32 aPosition)
 +{
-+  return BIND2(&HTMLContentSink::HandleBeginContext,
-+               nsRefPtr<HTMLContentSink>(this),
-+               aPosition)();
++  RET_BOUND_OK(BIND2(
++    &HTMLContentSink::HandleBeginContext,
++    nsRefPtr<HTMLContentSink>(this),
++    aPosition));
 +}
 +NS_IMETHODIMP
 +HTMLContentSink::HandleBeginContext(PRInt32 aPosition)
@@ -246,7 +249,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    // Create new context
    SinkContext* sc = new SinkContext(this);
    if (!sc) {
-@@ -1913,16 +1962,23 @@ HTMLContentSink::BeginContext(PRInt32 aP
+@@ -1913,16 +1965,24 @@ HTMLContentSink::BeginContext(PRInt32 aP
    MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::BeginContext()\n"));
    MOZ_TIMER_STOP(mWatch);
  
@@ -256,9 +259,10 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  NS_IMETHODIMP
  HTMLContentSink::EndContext(PRInt32 aPosition)
 +{
-+  return BIND2(&HTMLContentSink::HandleEndContext,
-+               nsRefPtr<HTMLContentSink>(this),
-+               aPosition)();
++  RET_BOUND_OK(BIND2(
++    &HTMLContentSink::HandleEndContext,
++    nsRefPtr<HTMLContentSink>(this),
++    aPosition));
 +}
 +NS_IMETHODIMP
 +HTMLContentSink::HandleEndContext(PRInt32 aPosition)
@@ -270,7 +274,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    PRInt32 n = mContextStack.Count() - 1;
    SinkContext* sc = (SinkContext*) mContextStack.ElementAt(n);
  
-@@ -2001,18 +2057,17 @@ HTMLContentSink::CloseHTML()
+@@ -2001,18 +2061,17 @@ HTMLContentSink::CloseHTML()
    }
  
    MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::CloseHTML()\n"));
@@ -290,7 +294,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  
    MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::OpenHead()\n"));
    MOZ_TIMER_STOP(mWatch);
-@@ -2296,32 +2351,40 @@ HTMLContentSink::CloseFrameset()
+@@ -2296,32 +2355,40 @@ HTMLContentSink::CloseFrameset()
    }
  
    return rv;
@@ -299,9 +303,9 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  NS_IMETHODIMP
  HTMLContentSink::IsEnabled(PRInt32 aTag, PRBool* aReturn)
  {
-+  return BIND3(&HTMLContentSink::HandleIsEnabled,
-+               nsRefPtr<HTMLContentSink>(this),
-+               aTag, aReturn)();
++  RET_BOUND(BIND3(&HTMLContentSink::HandleIsEnabled,
++                  nsRefPtr<HTMLContentSink>(this),
++                  aTag, aReturn));
 +}
 +NS_IMETHODIMP
 +HTMLContentSink::HandleIsEnabled(PRInt32 aTag, PRBool* aReturn)
@@ -333,7 +337,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    switch (aNode.GetNodeType()) {
      case eHTMLTag_frameset:
        rv = OpenFrameset(aNode);
-@@ -2359,16 +2422,23 @@ HTMLContentSink::OpenContainer(const nsI
+@@ -2359,16 +2426,23 @@ HTMLContentSink::OpenContainer(const nsI
    MOZ_TIMER_STOP(mWatch);
  
    return rv;
@@ -342,9 +346,9 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  NS_IMETHODIMP
  HTMLContentSink::CloseContainer(const eHTMLTags aTag)
  {
-+  return BIND2(&HTMLContentSink::HandleCloseContainer,
-+               nsRefPtr<HTMLContentSink>(this),
-+               aTag)();
++  RET_BOUND(BIND2(&HTMLContentSink::HandleCloseContainer,
++                  nsRefPtr<HTMLContentSink>(this),
++                  aTag));
 +}
 +NS_IMETHODIMP
 +HTMLContentSink::HandleCloseContainer(const eHTMLTags aTag)
@@ -357,7 +361,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    switch (aTag) {
      case eHTMLTag_frameset:
        rv = CloseFrameset();
-@@ -2394,22 +2464,29 @@ HTMLContentSink::CloseContainer(const eH
+@@ -2394,22 +2468,29 @@ HTMLContentSink::CloseContainer(const eH
    MOZ_TIMER_STOP(mWatch);
  
    return rv;
@@ -366,8 +370,8 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  NS_IMETHODIMP
  HTMLContentSink::CloseMalformedContainer(const eHTMLTags aTag)
  {
-+  return BIND2(&HTMLContentSink::HandleCloseMalformedContainer,
-+               nsRefPtr<HTMLContentSink>(this), aTag)();
++  RET_BOUND(BIND2(&HTMLContentSink::HandleCloseMalformedContainer,
++                  nsRefPtr<HTMLContentSink>(this), aTag));
 +}
 +NS_IMETHODIMP
 +HTMLContentSink::HandleCloseMalformedContainer(const eHTMLTags aTag)
@@ -389,7 +393,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    nsHTMLTag nodeType = nsHTMLTag(aNode.GetNodeType());
    switch (nodeType) {
    case eHTMLTag_link:
-@@ -2430,19 +2507,20 @@ HTMLContentSink::AddLeaf(const nsIParser
+@@ -2430,19 +2511,20 @@ HTMLContentSink::AddLeaf(const nsIParser
  }
  
  /**
@@ -412,7 +416,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::AddComment()\n"));
    MOZ_TIMER_STOP(mWatch);
  
-@@ -2450,37 +2528,38 @@ HTMLContentSink::AddComment(const nsIPar
+@@ -2450,37 +2532,38 @@ HTMLContentSink::AddComment(const nsIPar
  }
  
  /**
@@ -456,7 +460,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  
    PRInt32 publicStart = docTypeStr.Find("PUBLIC", PR_TRUE);
    PRInt32 systemStart = docTypeStr.Find("SYSTEM", PR_TRUE);
-@@ -2700,48 +2779,50 @@ HTMLContentSink::AddDocTypeDecl(const ns
+@@ -2700,48 +2783,51 @@ HTMLContentSink::AddDocTypeDecl(const ns
    }
  
    MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::AddDocTypeDecl()\n"));
@@ -503,9 +507,10 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  NS_IMETHODIMP
  HTMLContentSink::NotifyTagObservers(nsIParserNode* aNode)
 +{
-+  return BIND2(&HTMLContentSink::HandleNotifyTagObservers,
-+               nsRefPtr<HTMLContentSink>(this),
-+               aNode)();
++  RET_BOUND_OK(BIND2(
++    &HTMLContentSink::HandleNotifyTagObservers,
++    nsRefPtr<HTMLContentSink>(this),
++    aNode));
 +}
 +NS_IMETHODIMP
 +HTMLContentSink::HandleNotifyTagObservers(nsIParserNode* aNode)
@@ -517,7 +522,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  
    if (!mObservers) {
      return NS_OK;
-@@ -3184,16 +3265,22 @@ HTMLContentSink::ProcessSTYLEEndTag(nsGe
+@@ -3184,16 +3270,22 @@ HTMLContentSink::ProcessSTYLEEndTag(nsGe
    }
  
    return rv;
@@ -527,7 +532,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  HTMLContentSink::FlushPendingNotifications(mozFlushType aType)
  {
 +  BIND2(&HTMLContentSink::HandleFlushPendingNotifications,
-+        nsRefPtr<HTMLContentSink>(this), aType)();
++        nsRefPtr<HTMLContentSink>(this), aType);
 +}
 +void
 +HTMLContentSink::HandleFlushPendingNotifications(mozFlushType aType)
@@ -540,7 +545,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
      }
      else if (mCurrentContext) {
        mCurrentContext->FlushText();
-@@ -3214,16 +3301,23 @@ HTMLContentSink::FlushTags()
+@@ -3214,16 +3306,24 @@ HTMLContentSink::FlushTags()
      return NS_OK;
    }
    
@@ -550,9 +555,10 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  NS_IMETHODIMP
  HTMLContentSink::SetDocumentCharset(nsACString& aCharset)
 +{
-+  return BIND2(&HTMLContentSink::HandleSetDocumentCharset,
-+               nsRefPtr<HTMLContentSink>(this),
-+               nsCString(aCharset))();
++  RET_BOUND_OK(BIND2(
++    &HTMLContentSink::HandleSetDocumentCharset,
++    nsRefPtr<HTMLContentSink>(this),
++    nsCString(aCharset)));
 +}
 +nsresult
 +HTMLContentSink::HandleSetDocumentCharset(nsACString& aCharset)
@@ -564,7 +570,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
      // the charset is detected by parser DetectMetaTag
      nsCOMPtr<nsIMarkupDocumentViewer> muCV;
      nsCOMPtr<nsIContentViewer> cv;
-@@ -3260,18 +3354,17 @@ HTMLContentSink::SetDocumentCharset(nsAC
+@@ -3260,18 +3360,17 @@ HTMLContentSink::SetDocumentCharset(nsAC
  
    if (mDocument) {
      mDocument->SetDocumentCharacterSet(aCharset);

@@ -1,0 +1,139 @@
+diff --git a/xpcom/glue/FunctorQueue.h b/xpcom/glue/FunctorQueue.h
+new file mode 100644
+--- /dev/null
++++ b/xpcom/glue/FunctorQueue.h
+@@ -0,0 +1,112 @@
++#ifndef __functorqueue_h__
++#define __functorqueue_h__
++
++#include <queue>
++#include "nsAutoLock.h"
++#include "Functor.h"
++
++class PayloadBase
++{
++  friend class FunctorQueue;
++public:
++  virtual nsresult Wait()
++  {
++    NS_ASSERTION(!mMon, "Trying to Wait more than once!");
++    mMon = nsAutoMonitor::NewMonitor("FunctorQueue::PayloadBase");
++    return nsAutoMonitor(mMon).Wait();
++  }
++  virtual ~PayloadBase()
++  {
++    if (!mMon) return;
++    nsAutoMonitor::DestroyMonitor(mMon);
++    mMon = nsnull;
++  }
++protected:
++  PRMonitor* mMon;
++  virtual void Deliver() = 0;
++  virtual nsresult Notify()
++  {
++    return mMon ? nsAutoMonitor(mMon).Notify() : NS_OK;
++  }
++};
++
++template <typename Result>
++class Payload : public PayloadBase
++{
++  Result mResult;
++  typedef Functor<Result, TLIST0()> functor_type;
++  functor_type mFun;
++public:
++  Payload(functor_type fun) : mFun(fun) {}
++  operator Result()
++  {
++    Wait();
++    return mResult;
++  }
++protected:
++  void Deliver() { mResult = mFun(); }
++};
++
++template <>
++class Payload<void> : public PayloadBase
++{
++  typedef Functor<void, TLIST0()> functor_type;
++  functor_type mFun;
++public:
++  Payload(functor_type fun) : mFun(fun) {}
++protected:
++  void Deliver() { mFun(); }
++};
++
++class FunctorQueue
++{
++  typedef std::queue<PayloadBase*> queue_type;
++
++  PRLock* mLock;
++  queue_type mQueue;
++
++public:
++
++  FunctorQueue()
++    : mLock(nsAutoLock::NewLock("FunctorQueue"))
++  {}
++
++  virtual ~FunctorQueue()
++  {
++    NS_ASSERTION(mQueue.size() == 0, "Deleting non-empty FunctorQueue");
++  }
++
++  void Flush()
++  {
++    queue_type temp;
++
++    if (mQueue.size()) {
++      nsAutoLock sync(mLock);
++      while (mQueue.size()) {
++        temp.push(mQueue.front());
++        mQueue.pop();
++      }
++    }
++
++    while (temp.size()) {
++      temp.front()->Deliver();
++      Flush();
++      temp.front()->Notify();
++      delete temp.front();
++      temp.pop();
++    }
++  }
++
++  template <typename Result>
++  Payload<Result>&
++  Enqueue(Functor<Result, TLIST0()> f)
++  {
++    Payload<Result>* payload = new Payload<Result>(f);
++    nsAutoLock sync(mLock);
++    mQueue.push(payload);
++    return *payload;
++  }
++
++};
++
++#endif
+\ No newline at end of file
+diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
+--- a/xpcom/glue/Makefile.in
++++ b/xpcom/glue/Makefile.in
+@@ -124,16 +124,17 @@ EXPORTS = \
+ EXPORTS = \
+ 		nsThreadUtils.h \
+ 		nsProxyRelease.h \
+ 		nsXPTCUtils.h \
+ 		Join.h \
+ 		TList.h \
+ 		Functor.h \
+ 		Bind.h \
++		FunctorQueue.h \
+ 		$(NULL)
+ 
+ SDK_LIBRARY     =                        \
+ 		$(LIB_PREFIX)xpcomglue_s.$(LIB_SUFFIX) \
+ 		$(NULL)
+ 
+ # we don't want the shared lib, but we want to force the creation of a static lib.
+ FORCE_STATIC_LIB = 1
