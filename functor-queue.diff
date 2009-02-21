@@ -2,7 +2,7 @@ diff --git a/xpcom/glue/FunctorQueue.h b/xpcom/glue/FunctorQueue.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/FunctorQueue.h
-@@ -0,0 +1,242 @@
+@@ -0,0 +1,213 @@
 +#ifndef __functorqueue_h__
 +#define __functorqueue_h__
 +
@@ -13,7 +13,7 @@ new file mode 100644
 +#include "nsThreadUtils.h"
 +#include "Functor.h"
 +
-+#include <queue>
++#include <vector>
 +
 +
 +class PayloadBase
@@ -21,13 +21,14 @@ new file mode 100644
 +  friend class FunctorQueue;
 +
 +  nsAutoRefCnt mRefCnt;
-+  PRMonitor* mMon;
++  PRMonitor* const mMon;
++  PRBool mDelivered;
 +
 +public:
 +
 +  PayloadBase()
-+    : mMon(nsnull)
-+    , mNotified(PR_FALSE)
++    : mMon(nsAutoMonitor::NewMonitor("PayloadBase"))
++    , mDelivered(PR_FALSE)
 +  {}
 +
 +  NS_IMPL_THREADSAFE_ADDREF(PayloadBase)
@@ -36,48 +37,24 @@ new file mode 100644
 +
 +  void Wait()
 +  {
-+    // If we've Notified, then we've Delivered, and if we've Delivered then
-+    // there's no need to Wait.
-+    if (mNotified)
-+      return;
-+    if (!mMon)
-+      mMon = nsAutoMonitor::NewMonitor("FunctorQueue::PayloadBase");
-+    else
-+      NS_WARNING("Trying to Wait more than once without Notifying!");
-+    nsAutoMonitor(mMon).Wait();
++    nsAutoMonitor mon(mMon);
++    if (!mDelivered)
++      mon.Wait();
 +  }
 +
 +  virtual ~PayloadBase()
 +  {
-+    if (!mMon) return;
 +    nsAutoMonitor::DestroyMonitor(mMon);
-+    mMon = nsnull;
 +  }
 +
 +protected:
 +
 +  virtual void Deliver() = 0;
-+
-+  PRBool mNotified;
-+  nsresult Notify()
++  void PostDelivery()
 +  {
-+    // This assignment must come first because, if it came after the
-+    // Notification, Wait could see mNotified == PR_FALSE after Notification
-+    // and never wake up. The assignment may safely come first provided that
-+    // Notification never precedes Delivery (there's nothing to Wait for once
-+    // Delivery has occurred).
-+    mNotified = PR_TRUE;
-+
-+    // The use of NotifyAll intead of Notify should theoretically make it safe
-+    // for multiple threads to Wait on this monitor, but I can't imagine a
-+    // scenario where that could happen deliberately, so the NS_WARNING in
-+    // PayloadBase::Wait remains.
-+    nsresult rv = NS_OK;
-+    if (mMon) {
-+      rv = nsAutoMonitor(mMon).NotifyAll();
-+      mMon = nsnull;
-+    }
-+    return rv;
++    nsAutoMonitor mon(mMon);
++    mDelivered = PR_TRUE;
++    mon.NotifyAll();
 +  }
 +
 +};
@@ -103,8 +80,8 @@ new file mode 100644
 +protected:
 +
 +  void Deliver() {
-+    NS_ASSERTION(!mNotified, "Notification must never precede Delivery!");
 +    mResult = mFun();
++    PostDelivery();
 +  }
 +
 +};
@@ -123,8 +100,8 @@ new file mode 100644
 +protected:
 +
 +  void Deliver() {
-+    NS_ASSERTION(!mNotified, "Notification must never precede Delivery!");
 +    mFun();
++    PostDelivery();
 +  }
 +
 +};
@@ -132,7 +109,7 @@ new file mode 100644
 +
 +class FunctorQueue
 +{
-+  typedef std::queue<PayloadBase*> queue_type;
++  typedef std::vector<PayloadBase*> queue_type;
 +
 +  PRLock* mLock;
 +  queue_type mQueue;
@@ -158,30 +135,23 @@ new file mode 100644
 +  {
 +    queue_type temp;
 +
-+    if (mQueue.size()) {
-+      nsAutoLock sync(mLock);
-+      while (mQueue.size()) {
-+        temp.push(mQueue.front());
-+        mQueue.pop();
-+      }
-+    } else {
-+      return;
-+    }
++    { nsAutoLock sync(mLock);
++      temp = mQueue;
++      mQueue.clear(); }
 +
 +    PRBool isMainThread = NS_IsMainThread();
 +
-+    while (temp.size()) {
-+      temp.front()->Deliver();
-+      Flush();
-+      temp.front()->Notify();
++    queue_type::const_iterator end = temp.end();
++    for (queue_type::iterator it = temp.begin(); end != it; ++it)
++    {
++      PayloadBase* const pl = *it;
++      pl->Deliver();
 +
 +      if (isMainThread)
-+        temp.front()->Release();
-+      else // Proxy the Release to the main thread:
++        pl->Release();
++      else // Proxy Release to the main thread:
 +        NS_DispatchToMainThread(NS_NEW_RUNNABLE_METHOD(
-+          PayloadBase, temp.front(), VoidRelease));
-+
-+      temp.pop();
++          PayloadBase, pl, VoidRelease));
 +    }
 +  }
 +
@@ -196,12 +166,13 @@ new file mode 100644
 +      pl(new Payload<Result>(f));
 +    NS_ENSURE_TRUE(pl, 0);
 +
-+    { nsAutoLock sync(mLock);
-+      mQueue.push(pl); }
-+
 +    // This AddRef balances the Release call in Flush
 +    // TODO could use the unsafe AddRef implementation
 +    pl->AddRef();
++
++    { nsAutoLock sync(mLock);
++      mQueue.push_back(pl); }
++
 +    AsyncFlush();
 +
 +    // pl's refcnt still >= 1, even if already Flushed
@@ -249,12 +220,7 @@ new file mode 100644
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
-@@ -124,16 +124,17 @@ EXPORTS = \
- EXPORTS = \
- 		nsThreadUtils.h \
- 		nsProxyRelease.h \
- 		nsXPTCUtils.h \
- 		Join.h \
+@@ -129,6 +129,7 @@
  		TList.h \
  		Functor.h \
  		Bind.h \
@@ -262,8 +228,3 @@ diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
  		$(NULL)
  
  SDK_LIBRARY     =                        \
- 		$(LIB_PREFIX)xpcomglue_s.$(LIB_SUFFIX) \
- 		$(NULL)
- 
- # we don't want the shared lib, but we want to force the creation of a static lib.
- FORCE_STATIC_LIB = 1
