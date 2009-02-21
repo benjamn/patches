@@ -795,7 +795,25 @@ new file mode 100644
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
-@@ -120,16 +120,19 @@ SDK_HEADERS = \
+@@ -66,16 +66,17 @@ CSRCS		= \
+ CSRCS		= \
+ 		$(XPCOM_GLUE_SRC_LCSRCS) \
+ 		$(NULL)  
+ 
+ CPPSRCS		= \
+ 		$(XPCOM_GLUE_SRC_LCPPSRCS) \
+ 		$(XPCOM_GLUENS_SRC_LCPPSRCS) \
+ 		nsStringAPI.cpp \
++		test.cpp \
+ 		$(NULL)
+ 
+ SDK_HEADERS = \
+ 		pldhash.h \
+ 		nsArrayEnumerator.h \
+ 		nsArrayUtils.h \
+ 		nsAutoLock.h \
+ 		nsBaseHashtable.h \
+@@ -120,16 +121,19 @@ SDK_HEADERS = \
  		nsDeque.h \
  		$(NULL)
  

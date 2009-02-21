@@ -2,39 +2,86 @@ diff --git a/xpcom/glue/FunctorQueue.h b/xpcom/glue/FunctorQueue.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/FunctorQueue.h
-@@ -0,0 +1,114 @@
+@@ -0,0 +1,238 @@
 +#ifndef __functorqueue_h__
 +#define __functorqueue_h__
 +
-+#include <queue>
++#include "nsISupports.h"
++#include "nsAutoPtr.h"
 +#include "nsAutoLock.h"
++#include "nsIEventTarget.h"
++#include "nsThreadUtils.h"
 +#include "Functor.h"
++
++#include <queue>
++
 +
 +class PayloadBase
 +{
 +  friend class FunctorQueue;
++
++  nsAutoRefCnt mRefCnt;
++  PRMonitor* mMon;
++
 +public:
-+  PayloadBase() : mMon(nsnull) {}
-+  virtual nsresult Wait()
++
++  PayloadBase()
++    : mMon(nsnull)
++    , mNotified(PR_FALSE)
++  {}
++
++  NS_IMPL_THREADSAFE_ADDREF(PayloadBase)
++  NS_IMPL_THREADSAFE_RELEASE(PayloadBase)
++  void VoidRelease() { Release(); }
++
++  void Wait()
 +  {
-+    NS_ASSERTION(!mMon, "Trying to Wait more than once!");
-+    mMon = nsAutoMonitor::NewMonitor("FunctorQueue::PayloadBase");
-+    return nsAutoMonitor(mMon).Wait();
++    // If we've Notified, then we've Delivered, and if we've Delivered then
++    // there's no need to Wait.
++    if (mNotified)
++      return;
++    if (!mMon)
++      mMon = nsAutoMonitor::NewMonitor("FunctorQueue::PayloadBase");
++    else
++      NS_WARNING("Trying to Wait more than once without Notifying!");
++    nsAutoMonitor(mMon).Wait();
 +  }
++
 +  virtual ~PayloadBase()
 +  {
 +    if (!mMon) return;
 +    nsAutoMonitor::DestroyMonitor(mMon);
 +    mMon = nsnull;
 +  }
++
 +protected:
-+  PRMonitor* mMon;
++
 +  virtual void Deliver() = 0;
-+  virtual nsresult Notify()
++
++  PRBool mNotified;
++  nsresult Notify()
 +  {
-+    return mMon ? nsAutoMonitor(mMon).Notify() : NS_OK;
++    // This assignment must come first because, if it came after the
++    // Notification, Wait could see mNotified == PR_FALSE after Notification
++    // and never wake up. The assignment may safely come first provided that
++    // Notification never precedes Delivery (there's nothing to Wait for once
++    // Delivery has occurred).
++    mNotified = PR_TRUE;
++
++    // The use of NotifyAll intead of Notify should theoretically make it safe
++    // for multiple threads to Wait on this monitor, but I can't imagine a
++    // scenario where that could happen deliberately, so the NS_WARNING in
++    // PayloadBase::Wait remains.
++    nsresult rv = NS_OK;
++    if (mMon) {
++      rv = nsAutoMonitor(mMon).NotifyAll();
++      mMon = nsnull;
++    }
++    return rv;
 +  }
++
 +};
++
 +
 +template <typename Result>
 +class Payload : public PayloadBase
@@ -42,27 +89,46 @@ new file mode 100644
 +  Result mResult;
 +  typedef Functor<Result, TLIST0()> functor_type;
 +  functor_type mFun;
++
 +public:
++
 +  Payload(functor_type fun) : mFun(fun) {}
-+  operator Result()
++
++  Result& Wait()
 +  {
-+    Wait();
++    PayloadBase::Wait();
 +    return mResult;
 +  }
++
 +protected:
-+  void Deliver() { mResult = mFun(); }
++
++  void Deliver() {
++    NS_ASSERTION(!mNotified, "Notification must never precede Delivery!");
++    mResult = mFun();
++  }
++
 +};
++
 +
 +template <>
 +class Payload<void> : public PayloadBase
 +{
 +  typedef Functor<void, TLIST0()> functor_type;
 +  functor_type mFun;
++
 +public:
++
 +  Payload(functor_type fun) : mFun(fun) {}
++
 +protected:
-+  void Deliver() { mFun(); }
++
++  void Deliver() {
++    NS_ASSERTION(!mNotified, "Notification must never precede Delivery!");
++    mFun();
++  }
++
 +};
++
 +
 +class FunctorQueue
 +{
@@ -71,11 +137,16 @@ new file mode 100644
 +  PRLock* mLock;
 +  queue_type mQueue;
 +
++  nsAutoRefCnt mRefCnt;
++
 +public:
 +
 +  FunctorQueue()
 +    : mLock(nsAutoLock::NewLock("FunctorQueue"))
 +  {}
++
++  NS_IMPL_THREADSAFE_ADDREF(FunctorQueue)
++  NS_IMPL_THREADSAFE_RELEASE(FunctorQueue)
 +
 +  virtual ~FunctorQueue()
 +  {
@@ -83,7 +154,7 @@ new file mode 100644
 +    nsAutoLock::DestroyLock(mLock);
 +  }
 +
-+  void Flush()
++  virtual void Flush()
 +  {
 +    queue_type temp;
 +
@@ -99,19 +170,72 @@ new file mode 100644
 +      temp.front()->Deliver();
 +      Flush();
 +      temp.front()->Notify();
-+      delete temp.front();
++
++      if (NS_IsMainThread())
++        temp.front()->Release();
++      else // Proxy the Release to the main thread:
++        NS_DispatchToMainThread(NS_NEW_RUNNABLE_METHOD(
++          PayloadBase, temp.front(), VoidRelease));
++
 +      temp.pop();
 +    }
 +  }
 +
++  // Despite the name, subclasses may implement AsyncFlush synchronously:
++  virtual void AsyncFlush() = 0;
++
 +  template <typename Result>
-+  Payload<Result>&
++  nsRefPtr<Payload<Result> >
 +  Enqueue(Functor<Result, TLIST0()> f)
 +  {
-+    Payload<Result>* payload = new Payload<Result>(f);
-+    nsAutoLock sync(mLock);
-+    mQueue.push(payload);
-+    return *payload;
++    nsRefPtr<Payload<Result> >
++      pl(new Payload<Result>(f));
++    NS_ENSURE_TRUE(pl, 0);
++
++    { nsAutoLock sync(mLock);
++      mQueue.push(pl); }
++
++    // This AddRef balances the Release call in Flush
++    // TODO could use the unsafe AddRef implementation
++    pl->AddRef();
++    AsyncFlush();
++
++    // pl's refcnt still >= 1, even if already Flushed
++    return pl;
++  }
++
++};
++
++class nsFunctorQueue
++  : public FunctorQueue
++{
++  nsRefPtr<nsIEventTarget> mTarget;
++  nsIRunnable* mPendingEvent;
++
++public:
++
++  nsFunctorQueue(nsIEventTarget* target)
++    : mTarget(target)
++    , mPendingEvent(nsnull)
++  {}
++
++  void Flush() {
++    mPendingEvent = nsnull;
++    FunctorQueue::Flush();
++  }
++
++  void AsyncFlush()
++  {
++    PRBool sameThread;
++    // TODO IsOnCurrentThread not safe for threadpools!!!
++    if (NS_SUCCEEDED(mTarget->IsOnCurrentThread(&sameThread)) && !sameThread) {
++      if (mPendingEvent)
++        return;
++      mPendingEvent = NS_NEW_RUNNABLE_METHOD(nsFunctorQueue, this, Flush);
++      mTarget->Dispatch(mPendingEvent, NS_DISPATCH_NORMAL);
++    } else {
++      Flush();
++    }
 +  }
 +
 +};

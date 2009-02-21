@@ -1,25 +1,3 @@
-diff --git a/nsprpub/configure b/nsprpub/configure
---- a/nsprpub/configure
-+++ b/nsprpub/configure
-@@ -6066,17 +6066,17 @@ trap 'rm -f $CONFIG_STATUS conftest*; ex
- # Protect against Makefile macro expansion.
- cat > conftest.defs <<\EOF
- s%#define \([A-Za-z_][A-Za-z0-9_]*\) *\(.*\)%-D\1=\2%g
- s%[ 	`~#$^&*(){}\\|;'"<>?]%\\&%g
- s%\[%\\&%g
- s%\]%\\&%g
- s%\$%$$%g
- EOF
--DEFS=`sed -f conftest.defs confdefs.h | tr '\012' ' ' | tr '\015' ' '`
-+DEFS=`sed -f conftest.defs confdefs.h | tr '\012' ' '`
- rm -f conftest.defs
- 
- 
- # Without the "./", some shells look in PATH for config.status.
- : ${CONFIG_STATUS=./config.status}
- 
- echo creating $CONFIG_STATUS
- rm -f $CONFIG_STATUS
 diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
 --- a/xpcom/glue/Bind.h
 +++ b/xpcom/glue/Bind.h
@@ -841,24 +819,3 @@ diff --git a/xpcom/glue/Join.h b/xpcom/glue/Join.h
  
  #endif
 \ No newline at end of file
-diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
---- a/xpcom/glue/Makefile.in
-+++ b/xpcom/glue/Makefile.in
-@@ -66,16 +66,17 @@ CSRCS		= \
- CSRCS		= \
- 		$(XPCOM_GLUE_SRC_LCSRCS) \
- 		$(NULL)  
- 
- CPPSRCS		= \
- 		$(XPCOM_GLUE_SRC_LCPPSRCS) \
- 		$(XPCOM_GLUENS_SRC_LCPPSRCS) \
- 		nsStringAPI.cpp \
-+		test.cpp \
- 		$(NULL)
- 
- SDK_HEADERS = \
- 		pldhash.h \
- 		nsArrayEnumerator.h \
- 		nsArrayUtils.h \
- 		nsAutoLock.h \
- 		nsBaseHashtable.h \
