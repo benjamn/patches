@@ -174,11 +174,12 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Functor.h
-@@ -0,0 +1,582 @@
+@@ -0,0 +1,617 @@
 +#ifndef __functor_h__
 +#define __functor_h__
 +
 +#include "nsISupports.h"
++#include "nsIRunnable.h"
 +#include "TList.h"
 +#include "nsAutoPtr.h"
 +
@@ -284,9 +285,39 @@ new file mode 100644
 +template <class ParentFunctor, typename Method>
 +class MethodHandler;
 +
++// Only implement nsIRunnable if functor has zero paramters:
++template <typename Params> class nsMaybeRunnable {};
++template <> class nsMaybeRunnable<TLIST0()> : public nsIRunnable {
++  NS_IMPL_THREADSAFE_ISUPPORTS1(nsMaybeRunnable, nsIRunnable)
++protected:
++  virtual ~nsMaybeRunnable() {}
++  nsAutoRefCnt mRefCnt;
++  NS_DECL_OWNINGTHREAD
++};
++
++template <typename Ensured, typename Impl> struct ensurer;
++template <typename Ensured>
++struct ensurer<Ensured, FunctorImpl<Ensured, TLIST0()> > {
++  static Ensured ensure(FunctorImpl<Ensured, TLIST0()>* impl) { return (*impl)(); }
++  static Ensured ensure(FunctorImpl<Ensured, TLIST0()>* impl, Ensured) { return (*impl)(); }
++};
++template <typename Ensured, typename Given>
++struct ensurer<Ensured, FunctorImpl<Given, TLIST0()> > {
++  static Ensured ensure(FunctorImpl<Given, TLIST0()>* impl) {
++    (*impl)();
++    return Ensured();
++  }
++  static Ensured
++  ensure(FunctorImpl<Given, TLIST0()>* impl,
++         Ensured default_result)
++  {
++    (*impl)();
++    return default_result;
++  }
++};
 +
 +template <typename R, class Params>
-+class Functor
++class Functor : public nsMaybeRunnable<Params>
 +{
 +public:
 +  typedef FunctorImpl<R, Params> ImplType;
@@ -323,6 +354,10 @@ new file mode 100644
 + ~Functor() {}
 +  Functor(const Functor& fun) : mImpl(fun.mImpl) {}
 +  Functor(ImplType* impl)     : mImpl(impl) {}
++
++  NS_IMETHODIMP Run() {
++    return ensurer<NS_IMETHODIMP, ImplType>::ensure(mImpl, NS_OK);
++  }
 +
 +  template <typename Callable>
 +  static Functor callable(Callable c) {

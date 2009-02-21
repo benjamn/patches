@@ -124,13 +124,15 @@ diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
 diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 --- a/xpcom/glue/Functor.h
 +++ b/xpcom/glue/Functor.h
-@@ -1,15 +1,15 @@
+@@ -1,16 +1,16 @@
  #ifndef __functor_h__
  #define __functor_h__
  
  #include "nsISupports.h"
+ #include "nsIRunnable.h"
++#include "nsAutoPtr.h"
  #include "TList.h"
- #include "nsAutoPtr.h"
+-#include "nsAutoPtr.h"
 -
 +#include "Join.h"
  
@@ -141,7 +143,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
    // the method prototypes for AddRef, Release, and QueryInterface provided by
    // NS_DECL_ISUPPORTS are not needed, but the nsAutoRefCnt and
    // NS_DECL_OWNINGTHREAD members (also provided by NS_DECL_ISUPPORTS)
-@@ -28,82 +28,31 @@ protected:
+@@ -29,82 +29,31 @@ protected:
  // ijs = zip(rng, rng[1:])
  // ]]]
  // [[[end]]]
@@ -236,9 +238,9 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
  template <class ParentFunctor, typename Method>
  class MethodHandler;
  
-@@ -111,36 +60,20 @@ template <typename R, class Params>
+@@ -142,36 +91,20 @@ template <typename R, class Params>
  template <typename R, class Params>
- class Functor
+ class Functor : public nsMaybeRunnable<Params>
  {
  public:
    typedef FunctorImpl<R, Params> ImplType;
@@ -277,7 +279,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
  
  public:
   ~Functor() {}
-@@ -152,431 +85,207 @@ public:
+@@ -187,431 +120,207 @@ public:
      return Functor(new CallableHandler<Functor, Callable>(c));
    }
  
