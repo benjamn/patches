@@ -2,7 +2,7 @@ diff --git a/xpcom/glue/FunctorQueue.h b/xpcom/glue/FunctorQueue.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/FunctorQueue.h
-@@ -0,0 +1,213 @@
+@@ -0,0 +1,214 @@
 +#ifndef __functorqueue_h__
 +#define __functorqueue_h__
 +
@@ -127,7 +127,7 @@ new file mode 100644
 +
 +  virtual ~FunctorQueue()
 +  {
-+    NS_ASSERTION(mQueue.size() == 0, "Deleting non-empty FunctorQueue");
++    NS_ASSERTION(mQueue.empty(), "Deleting non-empty FunctorQueue");
 +    nsAutoLock::DestroyLock(mLock);
 +  }
 +
@@ -185,7 +185,7 @@ new file mode 100644
 +  : public FunctorQueue
 +{
 +  nsRefPtr<nsIEventTarget> mTarget;
-+  nsIRunnable* mPendingEvent;
++  const void* mPendingEvent;
 +
 +public:
 +
@@ -206,8 +206,9 @@ new file mode 100644
 +    if (NS_SUCCEEDED(mTarget->IsOnCurrentThread(&sameThread)) && !sameThread) {
 +      if (mPendingEvent)
 +        return;
-+      mPendingEvent = NS_NEW_RUNNABLE_METHOD(nsFunctorQueue, this, Flush);
-+      mTarget->Dispatch(mPendingEvent, NS_DISPATCH_NORMAL);
++      nsIRunnable* event = NS_NEW_RUNNABLE_METHOD(nsFunctorQueue, this, Flush);
++      mTarget->Dispatch(event, NS_DISPATCH_NORMAL);
++      mPendingEvent = event;
 +    } else {
 +      Flush();
 +    }
