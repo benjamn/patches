@@ -2,7 +2,7 @@ diff --git a/xpcom/glue/FunctorQueue.h b/xpcom/glue/FunctorQueue.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/FunctorQueue.h
-@@ -0,0 +1,214 @@
+@@ -0,0 +1,223 @@
 +#ifndef __functorqueue_h__
 +#define __functorqueue_h__
 +
@@ -16,11 +16,21 @@ new file mode 100644
 +#include <vector>
 +
 +
-+class PayloadBase
++class PayloadSupport
++{
++  nsAutoRefCnt mRefCnt;
++  NS_DECL_OWNINGTHREAD
++public:
++  NS_IMPL_ADDREF(PayloadSupport)
++  NS_IMPL_RELEASE(PayloadSupport)
++protected:
++  virtual ~PayloadSupport() {}
++};
++
++class PayloadBase : private PayloadSupport
 +{
 +  friend class FunctorQueue;
 +
-+  nsAutoRefCnt mRefCnt;
 +  PRMonitor* const mMon;
 +  PRBool mDelivered;
 +
@@ -31,15 +41,14 @@ new file mode 100644
 +    , mDelivered(PR_FALSE)
 +  {}
 +
-+  NS_IMPL_THREADSAFE_ADDREF(PayloadBase)
-+  NS_IMPL_THREADSAFE_RELEASE(PayloadBase)
-+
-+  void ReleaseOnMainThread() { ReleaseOnMainThread(NS_IsMainThread()); }
-+  void ReleaseOnMainThread(PRBool isMainThread) {
++  void AddRef() { PayloadSupport::AddRef(); }
++  void Release() { Release(NS_IsMainThread()); }
++  void Release(PRBool isMainThread) {
 +    if (isMainThread)
-+      Release();
++      PayloadSupport::Release();
 +    else
-+      NS_DispatchToMainThread(NS_NEW_RUNNABLE_METHOD(PayloadBase, this, Release));
++      NS_DispatchToMainThread(NS_NEW_RUNNABLE_METHOD(PayloadSupport,
++        static_cast<PayloadSupport*>(this), Release));
 +  }
 +
 +  void Wait()
@@ -153,7 +162,7 @@ new file mode 100644
 +    {
 +      PayloadBase* const pl = *it;
 +      pl->Deliver();
-+      pl->ReleaseOnMainThread(isMainThread);
++      pl->Release(isMainThread);
 +    }
 +  }
 +
