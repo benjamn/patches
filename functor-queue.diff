@@ -33,7 +33,14 @@ new file mode 100644
 +
 +  NS_IMPL_THREADSAFE_ADDREF(PayloadBase)
 +  NS_IMPL_THREADSAFE_RELEASE(PayloadBase)
-+  void VoidRelease() { Release(); }
++
++  void ReleaseOnMainThread() { ReleaseOnMainThread(NS_IsMainThread()); }
++  void ReleaseOnMainThread(PRBool isMainThread) {
++    if (isMainThread)
++      Release();
++    else
++      NS_DispatchToMainThread(NS_NEW_RUNNABLE_METHOD(PayloadBase, this, Release));
++  }
 +
 +  void Wait()
 +  {
@@ -146,12 +153,7 @@ new file mode 100644
 +    {
 +      PayloadBase* const pl = *it;
 +      pl->Deliver();
-+
-+      if (isMainThread)
-+        pl->Release();
-+      else // Proxy Release to the main thread:
-+        NS_DispatchToMainThread(NS_NEW_RUNNABLE_METHOD(
-+          PayloadBase, pl, VoidRelease));
++      pl->ReleaseOnMainThread(isMainThread);
 +    }
 +  }
 +
@@ -166,9 +168,7 @@ new file mode 100644
 +      pl(new Payload<Result>(f));
 +    NS_ENSURE_TRUE(pl, 0);
 +
-+    // This AddRef balances the Release call in Flush
-+    // TODO could use the unsafe AddRef implementation
-+    pl->AddRef();
++    pl->AddRef(); // balances the Release call in Flush
 +
 +    { nsAutoLock sync(mLock);
 +      mQueue.push_back(pl); }

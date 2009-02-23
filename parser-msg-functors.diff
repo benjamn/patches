@@ -1,51 +1,26 @@
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -66,16 +66,19 @@
- #include "nsStreamUtils.h"
- #include "nsHTMLTokenizer.h"
- #include "nsIDocument.h"
- #include "nsNetUtil.h"
- #include "nsScriptLoader.h"
- #include "nsDataHashtable.h"
+@@ -72,6 +72,9 @@
  #include "nsIThreadPool.h"
  #include "nsXPCOMCIDInternal.h"
-+
+ 
 +#include "Functor.h"
 +#include "Bind.h"
- 
++
  #ifdef MOZ_VIEW_SOURCE
  #include "nsViewSourceHTML.h"
  #endif
- 
- #define NS_PARSER_FLAG_PARSER_ENABLED         0x00000002
- #define NS_PARSER_FLAG_OBSERVERS_ENABLED      0x00000004
- #define NS_PARSER_FLAG_PENDING_CONTINUE_EVENT 0x00000008
-@@ -804,16 +807,18 @@ nsParser::Initialize(PRBool aConstructor
-   mCharset.AssignLiteral("ISO-8859-1");
-   mInternalState = NS_OK;
-   mStreamStatus = 0;
-   mCommand = eViewNormal;
-   mFlags = NS_PARSER_FLAG_OBSERVERS_ENABLED |
-            NS_PARSER_FLAG_PARSER_ENABLED |
+@@ -811,6 +814,8 @@
             NS_PARSER_FLAG_CAN_TOKENIZE;
    mScriptsExecuting = 0;
-+
-+  mQueue = new nsFunctorQueue(do_GetMainThread().get());
  
++  mQueue = new nsFunctorQueue(do_GetMainThread().get());
++
    MOZ_TIMER_DEBUGLOG(("Reset: Parse Time: nsParser::nsParser(), this=%p\n", this));
    MOZ_TIMER_RESET(mParseTime);
    MOZ_TIMER_RESET(mDTDTime);
-   MOZ_TIMER_RESET(mTokenizeTime);
- }
- 
- void
-@@ -1632,23 +1637,32 @@ nsParser::GetRootContextKey()
- 
-   while (pc->mPrevContext) {
-     pc = pc->mPrevContext;
-   }
- 
+@@ -1638,13 +1643,22 @@
    return pc->mKey;
  }
  
@@ -70,17 +45,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  {
    // We should only call DidBuildModel once, so don't do anything if this is
    // the second time that Terminate has been called.
-   if (mInternalState == NS_ERROR_HTMLPARSER_STOPPARSING) {
-     return NS_OK;
-   }
- 
-   nsresult result = NS_OK;
-@@ -1689,31 +1703,30 @@ nsParser::Terminate(void)
-     // got any data).  Manually break the reference cycle with the sink.
-     result = mSink->DidBuildModel();
-     NS_ENSURE_SUCCESS(result, result);
-   }
- 
+@@ -1695,8 +1709,8 @@
    return NS_OK;
  }
  
@@ -91,11 +56,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  {
    if (mFlags & NS_PARSER_FLAG_PARSER_ENABLED) {
      NS_WARNING("Trying to continue parsing on a unblocked parser.");
-     return NS_OK;
-   }
- 
-   mFlags |= NS_PARSER_FLAG_PARSER_ENABLED;
- 
+@@ -1708,8 +1722,7 @@
    return ContinueInterruptedParsing();
  }
  
@@ -105,17 +66,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  {
    // If there are scripts executing, then the content sink is jumping the gun
    // (probably due to a synchronous XMLHttpRequest) and will re-enable us
-   // later, see bug 460706.
-   if (mScriptsExecuting) {
-     return NS_OK;
-   }
- 
-@@ -1748,32 +1761,30 @@ nsParser::ContinueInterruptedParsing()
- 
-   return result;
- }
- 
- /**
+@@ -1754,8 +1767,7 @@
   *  Stops parsing temporarily. That's it will prevent the
   *  parser from building up content model.
   */
@@ -125,12 +76,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  {
    mFlags &= ~NS_PARSER_FLAG_PARSER_ENABLED;
    MOZ_TIMER_DEBUGLOG(("Stop: Parse Time: nsParser::BlockParser(), this=%p\n", this));
-   MOZ_TIMER_STOP(mParseTime);
- }
- 
- /**
-  *  Open up the parser for tokenization, building up content
-  *  model..etc. However, this method does not resume parsing
+@@ -1768,8 +1780,7 @@
   *  automatically. It's the callers' responsibility to restart
   *  the parsing engine.
   */
@@ -140,17 +86,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  {
    if (!(mFlags & NS_PARSER_FLAG_PARSER_ENABLED)) {
      mFlags |= NS_PARSER_FLAG_PARSER_ENABLED;
-     MOZ_TIMER_DEBUGLOG(("Start: Parse Time: nsParser::UnblockParser(), this=%p\n", this));
-     MOZ_TIMER_START(mParseTime);
-   } else {
-     NS_WARNING("Trying to unblock an unblocked parser.");
-   }
-@@ -1877,52 +1888,65 @@ nsParser::SetCanInterrupt(PRBool aCanInt
-  *  of this method.
-  */
- NS_IMETHODIMP
- nsParser::Parse(nsIURI* aURL,
-                 nsIRequestObserver* aListener,
+@@ -1883,42 +1894,57 @@
                  void* aKey,
                  nsDTDMode aMode)
  {
@@ -165,9 +101,11 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +  }
 +  NS_ConvertUTF8toUTF16 theName(spec);
 +
-+  return mQueue->Enqueue(BIND5(&nsParser::HandleParseUrl,
++  mQueue->Enqueue(BIND5(&nsParser::HandleParseUrl,
 +    nsRefPtr<nsParser>(this),
-+    theName, aListener, aKey, aMode))->Wait();
++    theName, aListener, aKey, aMode));
++
++  return NS_OK;
 +}
 +
 +nsresult
@@ -233,21 +171,10 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    return result;
  }
  
- /**
-  * Call this method if all you want to do is parse 1 string full of HTML text.
-  * In particular, this method should be called by the DOM when it has an HTML
-  * string to feed to the parser in real-time.
-  *
-@@ -1930,16 +1954,27 @@ nsParser::Parse(nsIURI* aURL,
-  * @param   aMimeType tells us what type of content to expect in the given string
-  */
- NS_IMETHODIMP
- nsParser::Parse(const nsAString& aSourceBuffer,
-                 void* aKey,
-                 const nsACString& aMimeType,
+@@ -1937,6 +1963,17 @@
                  PRBool aLastCall,
                  nsDTDMode aMode)
-+{
+ {
 +  return BIND6(&nsParser::HandleParseBuffer, nsRefPtr<nsParser>(this),
 +               nsString(aSourceBuffer), aKey, nsCString(aMimeType), aLastCall, aMode)();
 +}
@@ -258,20 +185,11 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +                            const nsACString& aMimeType,
 +                            PRBool aLastCall,
 +                            nsDTDMode aMode)
- {
++{
    nsresult result = NS_OK;
  
    // Don't bother if we're never going to parse this.
-   if (mInternalState == NS_ERROR_HTMLPARSER_STOPPARSING) {
-     return result;
-   }
- 
-@@ -2055,23 +2090,37 @@ nsParser::Parse(const nsAString& aSource
-         }
-       }
-     }
-   }
- 
+@@ -2061,6 +2098,7 @@
    return result;
  }
  
@@ -279,11 +197,10 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  NS_IMETHODIMP
  nsParser::ParseFragment(const nsAString& aSourceBuffer,
                          void* aKey,
-                         nsTArray<nsString>& aTagStack,
-                         PRBool aXMLMode,
+@@ -2069,6 +2107,19 @@
                          const nsACString& aMimeType,
                          nsDTDMode aMode)
-+{
+ {
 +  return BIND7(&nsParser::HandleParseFragment, nsRefPtr<nsParser>(this),
 +               nsString(aSourceBuffer), aKey, aTagStack, aXMLMode,
 +               nsCString(aMimeType), aMode)();
@@ -296,44 +213,27 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +                              PRBool aXMLMode,
 +                              const nsACString& aMimeType,
 +                              nsDTDMode aMode)
- {
++{
    nsresult result = NS_OK;
    nsAutoString  theContext;
    PRUint32 theCount = aTagStack.Length();
-   PRUint32 theIndex = 0;
- 
-   // Disable observers for fragments
-   mFlags &= ~NS_PARSER_FLAG_OBSERVERS_ENABLED;
-@@ -2390,16 +2439,23 @@ nsParser::BuildModel()
- }
- 
- /*******************************************************************
-   These methods are used to talk to the netlib system...
-  *******************************************************************/
- 
+@@ -2397,6 +2448,15 @@
  nsresult
  nsParser::OnStartRequest(nsIRequest *request, nsISupports* aContext)
-+{
-+  return BIND3(&nsParser::HandleStartRequest, nsRefPtr<nsParser>(this),
-+               request, aContext)();
+ {
++  mQueue->Enqueue(BIND3(&nsParser::HandleStartRequest,
++    nsRefPtr<nsParser>(this),
++    request, aContext));
++  return NS_OK;
 +}
 +
 +nsresult
 +nsParser::HandleStartRequest(nsIRequest *request, nsISupports* aContext)
- {
++{
    NS_PRECONDITION(eNone == mParserContext->mStreamListenerState,
                    "Parser's nsIStreamListener API was not setup "
                    "correctly in constructor.");
-   if (mObserver) {
-     mObserver->OnStartRequest(request, aContext);
-   }
-   mParserContext->mStreamListenerState = eOnStart;
-@@ -2813,32 +2869,43 @@ CheckCharset(const char* aBytes,
-   }
- }
- 
- nsresult
- nsParser::OnDataAvailable(nsIRequest *request, nsISupports* aContext,
+@@ -2819,23 +2879,37 @@
                            nsIInputStream *pIStream, PRUint32 sourceOffset,
                            PRUint32 aLength)
  {
@@ -354,9 +254,12 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      return rv;
    }
    data[aLength] = 0;
+ 
++  mQueue->Enqueue(BIND5(&nsParser::HandleDataAvailable,
++    nsRefPtr<nsParser>(this),
++    request, data, totalRead, sourceOffset));
 +
-+  return BIND5(&nsParser::HandleDataAvailable, nsRefPtr<nsParser>(this),
-+               request, data, totalRead, sourceOffset)();
++  return NS_OK;
 +}
 +
 +nsresult
@@ -370,67 +273,39 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +            "Error: OnStartRequest() must be called before OnDataAvailable()");
 +
 +  nsresult rv = NS_OK;
- 
++
    CParserContext *theContext = mParserContext;
  
    while (theContext && theContext->mRequest != request) {
-     theContext = theContext->mPrevContext;
-   }
- 
-   if (theContext) {
-@@ -2884,16 +2951,24 @@ nsParser::OnDataAvailable(nsIRequest *re
- 
- /**
-  *  This is called by the networking library once the last block of data
-  *  has been collected from the net.
-  */
- nsresult
+@@ -2891,6 +2965,15 @@
  nsParser::OnStopRequest(nsIRequest *request, nsISupports* aContext,
                          nsresult status)
-+{
-+  return BIND4(&nsParser::HandleStopRequest, nsRefPtr<nsParser>(this),
-+               request, aContext, status)();
+ {
++  return mQueue->Enqueue(BIND4(&nsParser::HandleStopRequest,
++    nsRefPtr<nsParser>(this),
++    request, aContext, status))->Wait();
 +}
 +
 +nsresult
 +nsParser::HandleStopRequest(nsIRequest *request, nsISupports* aContext,
 +                            nsresult status)
- {
++{
    nsresult rv = NS_OK;
  
    if (mSpeculativeScriptThread) {
-     mSpeculativeScriptThread->StopParsing(PR_FALSE);
-   }
- 
-   CParserContext *pc = mParserContext;
 diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
 --- a/parser/htmlparser/src/nsParser.h
 +++ b/parser/htmlparser/src/nsParser.h
-@@ -84,16 +84,18 @@
- #include "nsDTDUtils.h"
- #include "nsTimer.h"
- #include "nsThreadUtils.h"
- #include "nsIContentSink.h"
- #include "nsIParserFilter.h"
- #include "nsCOMArray.h"
+@@ -90,6 +90,8 @@
  #include "nsIUnicharStreamListener.h"
  #include "nsCycleCollectionParticipant.h"
-+
-+#include "FunctorQueue.h"
  
++#include "FunctorQueue.h"
++
  class nsICharsetConverterManager;
  class nsICharsetAlias;
  class nsIDTD;
- class nsScanner;
- class nsSpeculativeScriptThread;
- class nsIThreadPool;
- 
-@@ -399,17 +401,17 @@ class nsParser : public nsIParser,
-     virtual void ScriptExecuting();
- 
-     /**
-      * Tells the parser that the script is done executing. We should now
-      * continue the regular parsing process.
+@@ -404,7 +406,7 @@
       */
      virtual void ScriptDidExecute();
  
@@ -439,21 +314,10 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
  
      void Initialize(PRBool aConstructor = PR_FALSE);
      void Cleanup();
- 
-     /**
-      * 
-      * @update	gess5/18/98
-      * @param 
-@@ -421,16 +423,66 @@ class nsParser : public nsIParser,
-      * 
-      * @update	gess5/18/98
-      * @param 
-      * @return
-      */
-     nsresult DidBuildModel(nsresult anErrorCode);
+@@ -427,6 +429,56 @@
  
      void SpeculativelyParse();
-+
+ 
 +    // TODO move these handlers nearer to their counterparts
 +
 +    nsresult HandleTerminate();
@@ -503,20 +367,11 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
 +      PRBool aXMLMode,
 +      const nsACString& aMimeType,
 +      nsDTDMode aMode);
- 
++
  private:
  
      /*******************************************
-       These are the tokenization methods...
-      *******************************************/
- 
-     /**
-@@ -465,18 +517,19 @@ private:
-      *  @return  TRUE if all went well
-      */
-     PRBool DidTokenize(PRBool aIsFinalChunk = PR_FALSE);
- 
- protected:
+@@ -470,8 +522,9 @@
      //*********************************************
      // And now, some data members...
      //*********************************************
@@ -528,8 +383,3 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
      CParserContext*              mParserContext;
      nsCOMPtr<nsIRequestObserver> mObserver;
      nsCOMPtr<nsIContentSink>     mSink;
-     nsIRunnable*                 mContinueEvent;  // weak ref
-     nsRefPtr<nsSpeculativeScriptThread> mSpeculativeScriptThread;
-    
-     nsCOMPtr<nsIParserFilter> mParserFilter;
-     nsTokenAllocator          mTokenAllocator;
