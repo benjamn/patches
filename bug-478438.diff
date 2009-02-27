@@ -1,0 +1,309 @@
+diff --git a/js/src/xpconnect/src/XPCCrossOriginWrapper.cpp b/js/src/xpconnect/src/XPCCrossOriginWrapper.cpp
+--- a/js/src/xpconnect/src/XPCCrossOriginWrapper.cpp
++++ b/js/src/xpconnect/src/XPCCrossOriginWrapper.cpp
+@@ -434,21 +434,24 @@ XPC_XOW_WrapFunction(JSContext *cx, JSOb
+                    JS_GetFunctionArity(wrappedFun), 0,
+                    JS_GetGlobalForObject(cx, outerObj),
+                    JS_GetFunctionName(wrappedFun));
+   if (!funWrapper) {
+     return JS_FALSE;
+   }
+ 
+   JSObject *funWrapperObj = JS_GetFunctionObject(funWrapper);
+-  if (!JS_SetReservedSlot(cx, funWrapperObj, 0, funobjVal)) {
++  *rval = OBJECT_TO_JSVAL(funWrapperObj);
++
++  if (!JS_SetReservedSlot(cx, funWrapperObj, XPCWrapper::eXOWWrappedFunctionSlot, funobjVal) ||
++      !JS_SetReservedSlot(cx, funWrapperObj, XPCWrapper::eAllAccessSlot, JSVAL_FALSE)) {
++    NS_NOTREACHED("Blake Kaplan owes Ben Newman $5.");
+     return JS_FALSE;
+   }
+ 
+-  *rval = OBJECT_TO_JSVAL(funWrapperObj);
+   return JS_TRUE;
+ }
+ 
+ JSBool
+ XPC_XOW_RewrapIfNeeded(JSContext *cx, JSObject *outerObj, jsval *vp)
+ {
+   // Don't need to wrap primitive values.
+   if (JSVAL_IS_PRIMITIVE(*vp)) {
+diff --git a/js/src/xpconnect/src/XPCNativeWrapper.cpp b/js/src/xpconnect/src/XPCNativeWrapper.cpp
+--- a/js/src/xpconnect/src/XPCNativeWrapper.cpp
++++ b/js/src/xpconnect/src/XPCNativeWrapper.cpp
+@@ -188,17 +188,18 @@ ThrowException(nsresult ex, JSContext *c
+ {
+   XPCThrower::Throw(ex, cx);
+ 
+   return JS_FALSE;
+ }
+ 
+ static inline
+ JSBool
+-EnsureLegalActivity(JSContext *cx, JSObject *obj)
++EnsureLegalActivity(JSContext *cx, JSObject *obj,
++                    jsval id=JSVAL_VOID, PRUint32 accessType=0)
+ {
+   nsIScriptSecurityManager *ssm = XPCWrapper::GetSecurityManager();
+   if (!ssm) {
+     // If there's no security manager, then we're not running in a browser
+     // context: allow access.
+     return JS_TRUE;
+   }
+ 
+@@ -222,16 +223,28 @@ EnsureLegalActivity(JSContext *cx, JSObj
+   // We're in unprivileged code, ensure that we're allowed to access the
+   // underlying object.
+   XPCWrappedNative *wn = XPCNativeWrapper::SafeGetWrappedNative(obj);
+   if (wn) {
+     nsIPrincipal *objectPrincipal = wn->GetScope()->GetPrincipal();
+     PRBool subsumes;
+     if (NS_FAILED(subjectPrincipal->Subsumes(objectPrincipal, &subsumes)) ||
+         !subsumes) {
++
++      JSObject* flatObj;
++      if (!JSVAL_IS_VOID(id) &&
++          (accessType & (nsIXPCSecurityManager::ACCESS_GET_PROPERTY |
++                         nsIXPCSecurityManager::ACCESS_SET_PROPERTY)) &&
++          (flatObj = wn->GetFlatJSObject()) &&
++          NS_SUCCEEDED(ssm->CheckPropertyAccess(cx, flatObj,
++            STOBJ_GET_CLASS(flatObj)->name, id, accessType)))
++      {
++        return JS_TRUE;
++      }
++
+       return ThrowException(NS_ERROR_XPC_SECURITY_MANAGER_VETO, cx);
+     }
+   }
+ 
+   // The underlying object is accessible, but this might be the wrong
+   // type of wrapper to access it through.
+   // TODO This should just be an assertion now.
+   jsval flags;
+@@ -331,16 +344,19 @@ XPC_NW_WrapFunction(JSContext* cx, JSObj
+                      "XPCNativeWrapper function wrapper");
+   if (!funWrapper) {
+     return JS_FALSE;
+   }
+ 
+   JSObject* funWrapperObj = ::JS_GetFunctionObject(funWrapper);
+   ::JS_SetParent(cx, funWrapperObj, funobj);
+   *rval = OBJECT_TO_JSVAL(funWrapperObj);
++
++  JS_SetReservedSlot(cx, funWrapperObj, XPCWrapper::eAllAccessSlot, JSVAL_FALSE);
++
+   return JS_TRUE;
+ }
+ 
+ static JSBool
+ XPC_NW_AddProperty(JSContext *cx, JSObject *obj, jsval id, jsval *vp)
+ {
+   JSProperty *prop;
+   JSObject *pobj;
+@@ -493,21 +509,29 @@ XPC_NW_FunctionWrapper(JSContext *cx, JS
+ 
+   if (!obj) {
+     return ThrowException(NS_ERROR_UNEXPECTED, cx);
+   }
+ 
+   // The real method we're going to call is the parent of this
+   // function's JSObject.
+   JSObject *methodToCallObj = STOBJ_GET_PARENT(funObj);
+-  XPCWrappedNative *wrappedNative;
++  XPCWrappedNative* wrappedNative = nsnull;
+ 
+-  if (!XPCNativeWrapper::GetWrappedNative(cx, obj, &wrappedNative) ||
+-      !::JS_ObjectIsFunction(cx, methodToCallObj) ||
+-      !wrappedNative) {
++  jsval isAllAccess;
++  if (::JS_GetReservedSlot(cx, funObj,
++                           XPCWrapper::eAllAccessSlot,
++                           &isAllAccess) &&
++      JSVAL_TO_BOOLEAN(isAllAccess)) {
++    wrappedNative = XPCNativeWrapper::SafeGetWrappedNative(obj);
++  } else if (!XPCNativeWrapper::GetWrappedNative(cx, obj, &wrappedNative)) {
++    wrappedNative = nsnull;
++  }
++
++  if (!wrappedNative || !::JS_ObjectIsFunction(cx, methodToCallObj)) {
+     return ThrowException(NS_ERROR_UNEXPECTED, cx);
+   }
+ 
+   jsval v;
+   if (!::JS_CallFunctionValue(cx, wrappedNative->GetFlatJSObject(),
+                               OBJECT_TO_JSVAL(methodToCallObj), argc, argv,
+                               &v)) {
+     return JS_FALSE;
+@@ -533,17 +557,20 @@ XPC_NW_GetOrSetProperty(JSContext *cx, J
+ 
+   while (!XPCNativeWrapper::IsNativeWrapper(obj)) {
+     obj = STOBJ_GET_PROTO(obj);
+     if (!obj) {
+       return ThrowException(NS_ERROR_UNEXPECTED, cx);
+     }
+   }
+ 
+-  if (!EnsureLegalActivity(cx, obj)) {
++  PRUint32 accessType =
++    aIsSet ? (PRUint32)nsIXPCSecurityManager::ACCESS_SET_PROPERTY
++           : (PRUint32)nsIXPCSecurityManager::ACCESS_GET_PROPERTY;
++  if (!EnsureLegalActivity(cx, obj, id, accessType)) {
+     return JS_FALSE;
+   }
+ 
+   // Protected by EnsureLegalActivity.
+   XPCWrappedNative *wrappedNative = XPCNativeWrapper::SafeGetWrappedNative(obj);
+ 
+   if (!wrappedNative) {
+     return ThrowException(NS_ERROR_INVALID_ARG, cx);
+@@ -644,17 +671,18 @@ XPC_NW_NewResolve(JSContext *cx, JSObjec
+   }
+ 
+   if (id == GetRTStringByIndex(cx, XPCJSRuntime::IDX_TO_STRING)) {
+     *objp = obj;
+     return JS_DefineFunction(cx, obj, "toString",
+                              XPC_NW_toString, 0, 0) != nsnull;
+   }
+ 
+-  if (!EnsureLegalActivity(cx, obj)) {
++  if (!EnsureLegalActivity(cx, obj, id, nsIXPCSecurityManager::ACCESS_GET_PROPERTY) &&
++      !EnsureLegalActivity(cx, obj, id, nsIXPCSecurityManager::ACCESS_SET_PROPERTY)) {
+     return JS_FALSE;
+   }
+ 
+   // We can't use XPC_NW_BYPASS here, because we need to do a full
+   // OBJ_LOOKUP_PROPERTY on the wrapped native's object, in order to
+   // trigger reflection along the wrapped native prototype chain.
+   // All we need to do is define the property in obj if it exists in
+   // the wrapped native's object.
+diff --git a/js/src/xpconnect/src/XPCWrapper.cpp b/js/src/xpconnect/src/XPCWrapper.cpp
+--- a/js/src/xpconnect/src/XPCWrapper.cpp
++++ b/js/src/xpconnect/src/XPCWrapper.cpp
+@@ -542,16 +542,18 @@ XPCWrapper::ResolveNativeProperty(JSCont
+     printf("Wrapping function object for %s\n",
+            ::JS_GetStringBytes(JSVAL_TO_STRING(id)));
+ #endif
+ 
+     if (!WrapFunction(cx, wrapperObj, JSVAL_TO_OBJECT(funval), &v,
+                       isNativeWrapper)) {
+       return JS_FALSE;
+     }
++
++    JS_SetReservedSlot(cx, JSVAL_TO_OBJECT(v), eAllAccessSlot, JSVAL_TRUE);
+   }
+ 
+   // Make sure v doesn't go away while we mess with it.
+   AUTO_MARK_JSVAL(ccx, v);
+ 
+   // XPCNativeWrapper doesn't need to do this.
+   jsval oldFlags;
+   if (!isNativeWrapper &&
+diff --git a/js/src/xpconnect/src/XPCWrapper.h b/js/src/xpconnect/src/XPCWrapper.h
+--- a/js/src/xpconnect/src/XPCWrapper.h
++++ b/js/src/xpconnect/src/XPCWrapper.h
+@@ -136,16 +136,21 @@ public:
+    */
+   static const PRUint32 sNumSlots;
+ 
+   /**
+    * Cross origin wrappers and safe JSObject wrappers both need to know
+    * which native is 'eval' for various purposes.
+    */
+   static JSNative sEvalNative;
++
++  typedef enum FunctionObjectSlot {
++    eXOWWrappedFunctionSlot = 0,
++    eAllAccessSlot
++  };
+ 
+   /**
+    * Given a context and a global object, fill our eval native.
+    */
+   static JSBool FindEval(XPCCallContext &ccx, JSObject *obj) {
+     if (sEvalNative) {
+       return JS_TRUE;
+     }
+diff --git a/js/src/xpconnect/tests/mochitest/Makefile.in b/js/src/xpconnect/tests/mochitest/Makefile.in
+--- a/js/src/xpconnect/tests/mochitest/Makefile.in
++++ b/js/src/xpconnect/tests/mochitest/Makefile.in
+@@ -49,12 +49,13 @@ _TEST_FILES =	inner.html \
+ 		test_bug390488.html \
+ 		test_bug393269.html \
+ 		test_bug396851.html \
+ 		test_bug428021.html \
+ 		test_bug448587.html \
+ 		test_wrappers.html \
+ 		test_bug446584.html \
+ 		test_bug462428.html \
++		test_bug478438.html \
+ 		$(NULL)
+ 
+ libs:: $(_TEST_FILES)
+ 	$(INSTALL) $^ $(DEPTH)/_tests/testing/mochitest/tests/$(relativesrcdir)
+diff --git a/js/src/xpconnect/tests/mochitest/test_bug478438.html b/js/src/xpconnect/tests/mochitest/test_bug478438.html
+new file mode 100644
+--- /dev/null
++++ b/js/src/xpconnect/tests/mochitest/test_bug478438.html
+@@ -0,0 +1,62 @@
++<!DOCTYPE HTML>
++<html>
++<!--
++https://bugzilla.mozilla.org/show_bug.cgi?id=478438
++-->
++<head>
++  <title>Test for Bug 478438</title>
++  <script type="application/javascript" src="/MochiKit/MochiKit.js"></script>
++  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
++  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
++  <script type="application/javascript;version=1.8">
++    function fail(s) { ok(false, s) }
++    function pass(s) { ok(true, s) }
++    (pass.opposite = fail).opposite = pass;
++
++    function test() {
++      var iwin = (new XPCNativeWrapper(document)).getElementById("f").contentWindow;
++
++      function testOne(fn, onAllow, infinitive) {
++        try { fn(); onAllow("able " + infinitive) }
++        catch (e) { onAllow.opposite("unable " + infinitive + ": " + e) }
++      }
++
++      testOne(function() iwin.focus, pass,
++              "to resolve/get allAccess property iwin.focus");
++
++      testOne(function() iwin.focus(), pass,
++              "to call allAccess method iwin.focus");
++
++      testOne(function() iwin.alert, fail,
++              "to resolve/get restricted property iwin.alert");
++
++      testOne(function() iwin.alert(), fail,
++              "to call restricted method iwin.alert");
++
++      testOne(function() iwin.location, fail,
++              "to resolve/get restricted property iwin.location");
++
++      testOne(function() { iwin.location = "about:blank" }, fail,
++              "to set restricted property iwin.location");
++
++      SimpleTest.finish();
++    }
++  </script>
++</head>
++<body>
++<a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=478438">Mozilla Bug 478438</a>
++<p id="display"></p>
++<div id="content">
++  <iframe id="f" src="http://www.mozilla.com/en-US/" onload="test()"></iframe>
++</div>
++<pre id="test">
++<script type="application/javascript">
++
++/** Test for Bug 478438 **/
++
++SimpleTest.waitForExplicitFinish();
++
++</script>
++</pre>
++</body>
++</html>

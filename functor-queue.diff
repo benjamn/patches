@@ -2,7 +2,7 @@ diff --git a/xpcom/glue/FunctorQueue.h b/xpcom/glue/FunctorQueue.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/FunctorQueue.h
-@@ -0,0 +1,223 @@
+@@ -0,0 +1,228 @@
 +#ifndef __functorqueue_h__
 +#define __functorqueue_h__
 +
@@ -15,22 +15,36 @@ new file mode 100644
 +
 +#include <vector>
 +
-+
-+class PayloadSupport
++// This class guarantees the atomicity of AddRef and Release, but it cannot
++// guarantee another vital invariant: that Release always happens on the main
++// thread.  For that, see the macro INHERIT_MAIN_THREAD_RELEASE below.
++class ThreadSafeReferent
 +{
 +  nsAutoRefCnt mRefCnt;
-+  NS_DECL_OWNINGTHREAD
 +public:
-+  NS_IMPL_ADDREF(PayloadSupport)
-+  NS_IMPL_RELEASE(PayloadSupport)
++  NS_IMPL_THREADSAFE_RELEASE(ThreadSafeReferent)
++  NS_IMPL_THREADSAFE_ADDREF(ThreadSafeReferent)
 +protected:
-+  virtual ~PayloadSupport() {}
++  virtual ~ThreadSafeReferent() {}
 +};
 +
-+class PayloadBase : private PayloadSupport
-+{
-+  friend class FunctorQueue;
++// Use this macro to to guarantee that Release always happens on the main
++// thread.  Note that AddRef may happen on any thread, but must happen
++// synchronously.  It would be a bug to let AddRef and Release both happen
++// asynchronously, as the order of NS_Dispatch*ed execution is not guaranteed
++// to be FIFO.
++#define INHERIT_MAIN_THREAD_RELEASE(BASE)                                     \
++  void Release() { Release(NS_IsMainThread()); }                              \
++  void Release(PRBool isMainThread) {                                         \
++    if (isMainThread)                                                         \
++      BASE::Release();                                                        \
++    else                                                                      \
++      NS_DispatchToMainThread(NS_NEW_RUNNABLE_METHOD(                         \
++        BASE, static_cast<BASE*>(this), Release));                            \
++  }
 +
++class PayloadBase : public ThreadSafeReferent
++{
 +  PRMonitor* const mMon;
 +  PRBool mDelivered;
 +
@@ -41,15 +55,7 @@ new file mode 100644
 +    , mDelivered(PR_FALSE)
 +  {}
 +
-+  void AddRef() { PayloadSupport::AddRef(); }
-+  void Release() { Release(NS_IsMainThread()); }
-+  void Release(PRBool isMainThread) {
-+    if (isMainThread)
-+      PayloadSupport::Release();
-+    else
-+      NS_DispatchToMainThread(NS_NEW_RUNNABLE_METHOD(PayloadSupport,
-+        static_cast<PayloadSupport*>(this), Release));
-+  }
++  INHERIT_MAIN_THREAD_RELEASE(ThreadSafeReferent)
 +
 +  void Wait()
 +  {
@@ -58,14 +64,15 @@ new file mode 100644
 +      mon.Wait();
 +  }
 +
-+  virtual ~PayloadBase()
++  virtual void Deliver() = 0;
++
++protected:
++
++  ~PayloadBase()
 +  {
 +    nsAutoMonitor::DestroyMonitor(mMon);
 +  }
 +
-+protected:
-+
-+  virtual void Deliver() = 0;
 +  void PostDelivery()
 +  {
 +    nsAutoMonitor mon(mMon);
@@ -93,8 +100,6 @@ new file mode 100644
 +    return mResult;
 +  }
 +
-+protected:
-+
 +  void Deliver() {
 +    mResult = mFun();
 +    PostDelivery();
@@ -113,8 +118,6 @@ new file mode 100644
 +
 +  Payload(functor_type fun) : mFun(fun) {}
 +
-+protected:
-+
 +  void Deliver() {
 +    mFun();
 +    PostDelivery();
@@ -124,6 +127,7 @@ new file mode 100644
 +
 +
 +class FunctorQueue
++  : public ThreadSafeReferent
 +{
 +  typedef std::vector<PayloadBase*> queue_type;
 +
@@ -138,8 +142,7 @@ new file mode 100644
 +    : mLock(nsAutoLock::NewLock("FunctorQueue"))
 +  {}
 +
-+  NS_IMPL_THREADSAFE_ADDREF(FunctorQueue)
-+  NS_IMPL_THREADSAFE_RELEASE(FunctorQueue)
++  INHERIT_MAIN_THREAD_RELEASE(ThreadSafeReferent)
 +
 +  virtual ~FunctorQueue()
 +  {
@@ -203,6 +206,8 @@ new file mode 100644
 +    , mPendingEvent(nsnull)
 +  {}
 +
++  const nsIEventTarget* GetTarget() const { return mTarget; }
++
 +  void Flush() {
 +    mPendingEvent = nsnull;
 +    FunctorQueue::Flush();
@@ -230,7 +235,12 @@ new file mode 100644
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
-@@ -129,6 +129,7 @@
+@@ -124,16 +124,17 @@ EXPORTS = \
+ EXPORTS = \
+ 		nsThreadUtils.h \
+ 		nsProxyRelease.h \
+ 		nsXPTCUtils.h \
+ 		Join.h \
  		TList.h \
  		Functor.h \
  		Bind.h \
@@ -238,3 +248,8 @@ diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
  		$(NULL)
  
  SDK_LIBRARY     =                        \
+ 		$(LIB_PREFIX)xpcomglue_s.$(LIB_SUFFIX) \
+ 		$(NULL)
+ 
+ # we don't want the shared lib, but we want to force the creation of a static lib.
+ FORCE_STATIC_LIB = 1

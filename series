@@ -3,12 +3,14 @@ safe-suspect-forget.diff
 hdst-index-bound.diff
 bug-475467.diff
 suppress-title-change-events.diff
+bug-478438.diff
 dtd-const-mparser.diff
 parser-copy-data.diff
 join.diff
 functor.diff
 join-trick.diff
 functor-queue.diff
+parser-functor-barriers.diff
 parser-msg-functors.diff
 sink-msg-functors.diff
 bug-470356.diff
