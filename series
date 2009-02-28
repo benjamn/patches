@@ -10,7 +10,6 @@ join.diff
 functor.diff
 join-trick.diff
 functor-queue.diff
-parser-functor-barriers.diff
 parser-msg-functors.diff
 sink-msg-functors.diff
 bug-470356.diff
