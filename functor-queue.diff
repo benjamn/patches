@@ -2,7 +2,7 @@ diff --git a/xpcom/glue/FunctorQueue.h b/xpcom/glue/FunctorQueue.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/FunctorQueue.h
-@@ -0,0 +1,228 @@
+@@ -0,0 +1,222 @@
 +#ifndef __functorqueue_h__
 +#define __functorqueue_h__
 +
@@ -215,17 +215,11 @@ new file mode 100644
 +
 +  void AsyncFlush()
 +  {
-+    PRBool sameThread;
-+    // TODO IsOnCurrentThread not safe for threadpools!!!
-+    if (NS_SUCCEEDED(mTarget->IsOnCurrentThread(&sameThread)) && !sameThread) {
-+      if (mPendingEvent)
-+        return;
-+      nsIRunnable* event = NS_NEW_RUNNABLE_METHOD(nsFunctorQueue, this, Flush);
-+      mTarget->Dispatch(event, NS_DISPATCH_NORMAL);
-+      mPendingEvent = event;
-+    } else {
-+      Flush();
-+    }
++    if (mPendingEvent)
++      return;
++    nsIRunnable* event = NS_NEW_RUNNABLE_METHOD(nsFunctorQueue, this, Flush);
++    mTarget->Dispatch(event, NS_DISPATCH_NORMAL);
++    mPendingEvent = event;
 +  }
 +
 +};

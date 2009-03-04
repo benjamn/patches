@@ -1,0 +1,579 @@
+diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
+--- a/parser/htmlparser/src/nsParser.cpp
++++ b/parser/htmlparser/src/nsParser.cpp
+@@ -67,30 +67,51 @@
+ #include "nsHTMLTokenizer.h"
+ #include "nsIDocument.h"
+ #include "nsNetUtil.h"
+ #include "nsScriptLoader.h"
+ #include "nsDataHashtable.h"
+ #include "nsIThreadPool.h"
+ #include "nsXPCOMCIDInternal.h"
+ 
++#include "Bind.h"
++#include "FunctorQueue.h"
++
+ #ifdef MOZ_VIEW_SOURCE
+ #include "nsViewSourceHTML.h"
+ #endif
+ 
+ #define NS_PARSER_FLAG_PARSER_ENABLED         0x00000002
+ #define NS_PARSER_FLAG_OBSERVERS_ENABLED      0x00000004
+ #define NS_PARSER_FLAG_PENDING_CONTINUE_EVENT 0x00000008
+ #define NS_PARSER_FLAG_CAN_INTERRUPT          0x00000010
+ #define NS_PARSER_FLAG_FLUSH_TOKENS           0x00000020
+ #define NS_PARSER_FLAG_CAN_TOKENIZE           0x00000040
+ 
+ static NS_DEFINE_IID(kISupportsIID, NS_ISUPPORTS_IID);
+ static NS_DEFINE_CID(kCParserCID, NS_PARSER_CID);
+ static NS_DEFINE_IID(kIParserIID, NS_IPARSER_IID);
++
++#define PROXY_SYNC(BOUND)                                                     \
++  PR_BEGIN_MACRO                                                              \
++    if (NS_GetCurrentThread() != mQueue->GetTarget())                         \
++      return mQueue->Enqueue(BOUND)->Wait();                                  \
++  PR_END_MACRO
++
++#define TRIVIAL_PROXY_SYNC(METHOD)                                            \
++  PROXY_SYNC(BIND1(&nsParser::METHOD,                                         \
++                   nsRefPtr<nsParser>(const_cast<nsParser*>(this))))
++
++#define PROXY_ASYNC(BOUND, RESULT)                                            \
++  PR_BEGIN_MACRO                                                              \
++    if (NS_GetCurrentThread() != mQueue->GetTarget()) {                       \
++      mQueue->Enqueue(BOUND);                                                 \
++      return (RESULT);                                                        \
++    }                                                                         \
++  PR_END_MACRO
+ 
+ //-------------------------------------------------------------------
+ 
+ nsCOMArray<nsIUnicharStreamListener> *nsParser::sParserDataListeners;
+ 
+ //-------------- Begin ParseContinue Event Definition ------------------------
+ /*
+ The parser can be explicitly interrupted by passing a return value of
+@@ -806,16 +827,18 @@ nsParser::Initialize(PRBool aConstructor
+   mInternalState = NS_OK;
+   mStreamStatus = 0;
+   mCommand = eViewNormal;
+   mFlags = NS_PARSER_FLAG_OBSERVERS_ENABLED |
+            NS_PARSER_FLAG_PARSER_ENABLED |
+            NS_PARSER_FLAG_CAN_TOKENIZE;
+   mScriptsExecuting = 0;
+ 
++  mQueue = new nsFunctorQueue(NS_GetCurrentThread());
++
+   MOZ_TIMER_DEBUGLOG(("Reset: Parse Time: nsParser::nsParser(), this=%p\n", this));
+   MOZ_TIMER_RESET(mParseTime);
+   MOZ_TIMER_RESET(mDTDTime);
+   MOZ_TIMER_RESET(mTokenizeTime);
+ }
+ 
+ void
+ nsParser::Cleanup()
+@@ -906,16 +929,19 @@ nsParser::PostContinueEvent()
+     }
+   }
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP_(void)
+ nsParser::SetParserFilter(nsIParserFilter * aFilter)
+ {
++  PROXY_SYNC(BIND2(&nsParser::SetParserFilter,
++                   nsRefPtr<nsParser>(this),
++                   nsRefPtr<nsIParserFilter>(aFilter)));
+   mParserFilter = aFilter;
+ }
+ 
+ NS_IMETHODIMP_(void)
+ nsParser::GetCommand(nsCString& aCommand)
+ {
+   aCommand = mCommandStr;
+ }
+@@ -925,16 +951,22 @@ nsParser::GetCommand(nsCString& aCommand
+  *  about the command which caused the parser to be constructed. For example,
+  *  this allows us to select a DTD which can do, say, view-source.
+  *
+  *  @param   aCommand the command string to set
+  */
+ NS_IMETHODIMP_(void)
+ nsParser::SetCommand(const char* aCommand)
+ {
++  // TODO is aCommand safe? stick with SYNC?
++  typedef void (nsParser::*SetCommandPtr)(const char*);
++  PROXY_SYNC(BIND2(static_cast<SetCommandPtr>(&nsParser::SetCommand),
++                   nsRefPtr<nsParser>(this),
++                   aCommand));
++
+   mCommandStr.Assign(aCommand);
+   if (mCommandStr.Equals(kViewSourceCommand)) {
+     mCommand = eViewSource;
+   } else if (mCommandStr.Equals(kViewFragmentCommand)) {
+     mCommand = eViewFragment;
+   } else {
+     mCommand = eViewNormal;
+   }
+@@ -945,29 +977,39 @@ nsParser::SetCommand(const char* aComman
+  *  about the command which caused the parser to be constructed. For example,
+  *  this allows us to select a DTD which can do, say, view-source.
+  *
+  *  @param   aParserCommand the command to set
+  */
+ NS_IMETHODIMP_(void)
+ nsParser::SetCommand(eParserCommands aParserCommand)
+ {
++  typedef void (nsParser::*SetCommandPtr)(eParserCommands);
++  PROXY_SYNC(BIND2(static_cast<SetCommandPtr>(&nsParser::SetCommand),
++                   nsRefPtr<nsParser>(this),
++                   aParserCommand));
++
+   mCommand = aParserCommand;
+ }
+ 
+ /**
+  *  Call this method once you've created a parser, and want to instruct it
+  *  about what charset to load
+  *
+  *  @param   aCharset- the charset of a document
+  *  @param   aCharsetSource- the source of the charset
+  */
+ NS_IMETHODIMP_(void)
+ nsParser::SetDocumentCharset(const nsACString& aCharset, PRInt32 aCharsetSource)
+ {
++  PROXY_SYNC(BIND3(&nsParser::SetDocumentCharset,
++                   nsRefPtr<nsParser>(this),
++                   nsCString(aCharset),
++                   aCharsetSource));
++
+   mCharset = aCharset;
+   mCharsetSource = aCharsetSource;
+   if (mParserContext && mParserContext->mScanner) {
+      mParserContext->mScanner->SetDocumentCharset(aCharset, aCharsetSource);
+   }
+ }
+ 
+ void
+@@ -983,30 +1025,36 @@ nsParser::SetSinkCharset(nsACString& aCh
+  *  sink for this parser to dump nodes to.
+  *
+  *  @param   nsIContentSink interface for node receiver
+  */
+ NS_IMETHODIMP_(void)
+ nsParser::SetContentSink(nsIContentSink* aSink)
+ {
+   NS_PRECONDITION(aSink, "sink cannot be null!");
++
++  PROXY_SYNC(BIND2(&nsParser::SetContentSink,
++                   nsRefPtr<nsParser>(this),
++                   nsRefPtr<nsIContentSink>(aSink)));
++
+   mSink = aSink;
+ 
+   if (mSink) {
+     mSink->SetParser(this);
+   }
+ }
+ 
+ /**
+  * retrieve the sink set into the parser
+  * @return  current sink
+  */
+ NS_IMETHODIMP_(nsIContentSink*)
+ nsParser::GetContentSink() const
+ {
++  TRIVIAL_PROXY_SYNC(GetContentSink);
+   return mSink;
+ }
+ 
+ /**
+  *  Retrieve parsemode from topmost parser context
+  *
+  *  @return  parsemode
+  */
+@@ -1621,16 +1669,18 @@ nsParser::SetUnusedInput(nsString& aBuff
+ nsParser::SetUnusedInput(nsString& aBuffer)
+ {
+   mUnusedInput = aBuffer;
+ }
+ 
+ NS_IMETHODIMP_(void *)
+ nsParser::GetRootContextKey()
+ {
++  TRIVIAL_PROXY_SYNC(GetRootContextKey);
++
+   CParserContext* pc = mParserContext;
+   if (!pc) {
+     return nsnull;
+   }
+ 
+   while (pc->mPrevContext) {
+     pc = pc->mPrevContext;
+   }
+@@ -1641,16 +1691,18 @@ nsParser::GetRootContextKey()
+ /**
+  *  Call this when you want to *force* the parser to terminate the
+  *  parsing process altogether. This is binary -- so once you terminate
+  *  you can't resume without restarting altogether.
+  */
+ NS_IMETHODIMP
+ nsParser::Terminate(void)
+ {
++  TRIVIAL_PROXY_SYNC(Terminate);
++
+   // We should only call DidBuildModel once, so don't do anything if this is
+   // the second time that Terminate has been called.
+   if (mInternalState == NS_ERROR_HTMLPARSER_STOPPARSING) {
+     return NS_OK;
+   }
+ 
+   nsresult result = NS_OK;
+   // XXX - [ until we figure out a way to break parser-sink circularity ]
+@@ -1878,33 +1930,55 @@ nsParser::SetCanInterrupt(PRBool aCanInt
+  *  of this method.
+  */
+ NS_IMETHODIMP
+ nsParser::Parse(nsIURI* aURL,
+                 nsIRequestObserver* aListener,
+                 void* aKey,
+                 nsDTDMode aMode)
+ {
++  nsresult result = kBadURL;
+ 
+   NS_PRECONDITION(aURL, "Error: Null URL given");
++  NS_ENSURE_TRUE(aURL, result);
++
++  nsCAutoString spec;
++  result = aURL->GetSpec(spec);
++  nsString* utf16p = NS_SUCCEEDED(result)
++    ? new NS_ConvertUTF8toUTF16(spec)
++    : nsnull;
++
++  Functor<nsresult, TLIST0()> handle =
++    BIND5(&nsParser::HandleParseBuffer,
++          nsRefPtr<nsParser>(this),
++          utf16p,
++          nsRefPtr<nsIRequestObserver>(aListener),
++          aKey,
++          aMode);
++
++  PROXY_SYNC(handle);
++
++  return handle();
++}
++
++nsresult
++nsParser::HandleParseBuffer(nsString* theName,
++                            nsIRequestObserver* aListener,
++                            void* aKey,
++                            nsDTDMode aMode)
++{
+   NS_ASSERTION(!mSpeculativeScriptThread, "Can't reuse a parser like this");
+ 
+   nsresult result=kBadURL;
+   mObserver = aListener;
+ 
+-  if (aURL) {
+-    nsCAutoString spec;
+-    nsresult rv = aURL->GetSpec(spec);
+-    if (rv != NS_OK) {
+-      return rv;
+-    }
+-    NS_ConvertUTF8toUTF16 theName(spec);
+-
+-    nsScanner* theScanner = new nsScanner(theName, PR_FALSE, mCharset,
++  if (theName) {
++    nsScanner* theScanner = new nsScanner(*theName, PR_FALSE, mCharset,
+                                           mCharsetSource);
++    delete theName;
+     CParserContext* pc = new CParserContext(theScanner, aKey, mCommand,
+                                             aListener);
+     if (pc && theScanner) {
+       pc->mMultipart = PR_TRUE;
+       pc->mContextType = CParserContext::eCTURL;
+       pc->mDTDMode = aMode;
+       PushContext(*pc);
+ 
+@@ -1925,23 +1999,40 @@ nsParser::Parse(nsIURI* aURL,
+ /**
+  * Call this method if all you want to do is parse 1 string full of HTML text.
+  * In particular, this method should be called by the DOM when it has an HTML
+  * string to feed to the parser in real-time.
+  *
+  * @param   aSourceBuffer contains a string-full of real content
+  * @param   aMimeType tells us what type of content to expect in the given string
+  */
++
++#define PARSE_BUFFER_PARAMS                                                   \
++ (const nsAString& aSourceBuffer,                                             \
++  void* aKey,                                                                 \
++  const nsACString& aMimeType,                                                \
++  PRBool aLastCall,                                                           \
++  nsDTDMode aMode)
++
+ NS_IMETHODIMP
+-nsParser::Parse(const nsAString& aSourceBuffer,
+-                void* aKey,
+-                const nsACString& aMimeType,
+-                PRBool aLastCall,
+-                nsDTDMode aMode)
++nsParser::Parse PARSE_BUFFER_PARAMS
+ {
++  // necessary because nsParser::Parse is overloaded:
++  typedef nsresult (nsParser::*ParseBufferPtr) PARSE_BUFFER_PARAMS;
++  PROXY_SYNC(BIND6(static_cast<ParseBufferPtr>(&nsParser::Parse),
++                   nsRefPtr<nsParser>(this),
++                   nsString(aSourceBuffer),
++                   aKey,
++                   nsCString(aMimeType),
++                   aLastCall,
++                   aMode));
++
++// sayonara, macro scum!
++#undef PARSE_BUFFER_PARAMS
++
+   nsresult result = NS_OK;
+ 
+   // Don't bother if we're never going to parse this.
+   if (mInternalState == NS_ERROR_HTMLPARSER_STOPPARSING) {
+     return result;
+   }
+ 
+   if (!aLastCall && aSourceBuffer.IsEmpty()) {
+@@ -2064,16 +2155,25 @@ NS_IMETHODIMP
+ NS_IMETHODIMP
+ nsParser::ParseFragment(const nsAString& aSourceBuffer,
+                         void* aKey,
+                         nsTArray<nsString>& aTagStack,
+                         PRBool aXMLMode,
+                         const nsACString& aMimeType,
+                         nsDTDMode aMode)
+ {
++  PROXY_SYNC(BIND7(&nsParser::ParseFragment,
++                   nsRefPtr<nsParser>(this),
++                   nsString(aSourceBuffer),
++                   aKey,
++                   nsTArray<nsString>(aTagStack),
++                   aXMLMode,
++                   nsCString(aMimeType),
++                   aMode));
++
+   nsresult result = NS_OK;
+   nsAutoString  theContext;
+   PRUint32 theCount = aTagStack.Length();
+   PRUint32 theIndex = 0;
+ 
+   // Disable observers for fragments
+   mFlags &= ~NS_PARSER_FLAG_OBSERVERS_ENABLED;
+ 
+@@ -2392,16 +2492,21 @@ nsParser::BuildModel()
+ 
+ /*******************************************************************
+   These methods are used to talk to the netlib system...
+  *******************************************************************/
+ 
+ nsresult
+ nsParser::OnStartRequest(nsIRequest *request, nsISupports* aContext)
+ {
++  PROXY_SYNC(BIND3(&nsParser::OnStartRequest,
++                   nsRefPtr<nsParser>(this),
++                   nsRefPtr<nsIRequest>(request),
++                   nsRefPtr<nsISupports>(aContext)));
++
+   NS_PRECONDITION(eNone == mParserContext->mStreamListenerState,
+                   "Parser's nsIStreamListener API was not setup "
+                   "correctly in constructor.");
+   if (mObserver) {
+     mObserver->OnStartRequest(request, aContext);
+   }
+   mParserContext->mStreamListenerState = eOnStart;
+   mParserContext->mAutoDetectStatus = eUnknownDetect;
+@@ -2814,32 +2919,50 @@ CheckCharset(const char* aBytes,
+   }
+ }
+ 
+ nsresult
+ nsParser::OnDataAvailable(nsIRequest *request, nsISupports* aContext,
+                           nsIInputStream *pIStream, PRUint32 sourceOffset,
+                           PRUint32 aLength)
+ {
+-  NS_PRECONDITION((eOnStart == mParserContext->mStreamListenerState ||
+-                   eOnDataAvail == mParserContext->mStreamListenerState),
+-            "Error: OnStartRequest() must be called before OnDataAvailable()");
+   NS_PRECONDITION(NS_InputStreamIsBuffered(pIStream),
+                   "Must have a buffered input stream");
+ 
+-  nsresult rv = NS_OK;
+-
+   char *data = new char[aLength + 1];
+   PRUint32 totalRead;
+-  rv = pIStream->Read(data, aLength, &totalRead);
++  nsresult rv = pIStream->Read(data, aLength, &totalRead);
+   if (NS_FAILED(rv)) {
+     delete[] data;
+     return rv;
+   }
+   data[aLength] = 0;
++
++  Functor<nsresult, TLIST0()> handle =
++    BIND5(&nsParser::HandleDataAvailable,
++          nsRefPtr<nsParser>(this),
++          nsRefPtr<nsIRequest>(request),
++          data, totalRead, sourceOffset);
++
++  PROXY_SYNC(handle);
++
++  return handle();
++}
++
++nsresult
++nsParser::HandleDataAvailable(nsIRequest* request,
++                              char* data,
++                              PRUint32 totalRead,
++                              PRUint32 sourceOffset)
++{
++  NS_PRECONDITION((eOnStart == mParserContext->mStreamListenerState ||
++                   eOnDataAvail == mParserContext->mStreamListenerState),
++            "Error: OnStartRequest() must be called before OnDataAvailable()");
++
++  nsresult rv = NS_OK;
+ 
+   CParserContext *theContext = mParserContext;
+ 
+   while (theContext && theContext->mRequest != request) {
+     theContext = theContext->mPrevContext;
+   }
+ 
+   if (theContext) {
+@@ -2886,16 +3009,22 @@ nsParser::OnDataAvailable(nsIRequest *re
+ /**
+  *  This is called by the networking library once the last block of data
+  *  has been collected from the net.
+  */
+ nsresult
+ nsParser::OnStopRequest(nsIRequest *request, nsISupports* aContext,
+                         nsresult status)
+ {
++  PROXY_SYNC(BIND4(&nsParser::OnStopRequest,
++                   nsRefPtr<nsParser>(this),
++                   nsRefPtr<nsIRequest>(request),
++                   nsRefPtr<nsISupports>(aContext),
++                   status));
++
+   nsresult rv = NS_OK;
+ 
+   if (mSpeculativeScriptThread) {
+     mSpeculativeScriptThread->StopParsing(PR_FALSE);
+   }
+ 
+   CParserContext *pc = mParserContext;
+   while (pc) {
+diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
+--- a/parser/htmlparser/src/nsParser.h
++++ b/parser/htmlparser/src/nsParser.h
+@@ -91,16 +91,17 @@
+ #include "nsCycleCollectionParticipant.h"
+ 
+ class nsICharsetConverterManager;
+ class nsICharsetAlias;
+ class nsIDTD;
+ class nsScanner;
+ class nsSpeculativeScriptThread;
+ class nsIThreadPool;
++class nsFunctorQueue;
+ 
+ #ifdef _MSC_VER
+ #pragma warning( disable : 4275 )
+ #endif
+ 
+ 
+ class nsParser : public nsIParser,
+                  public nsIStreamListener
+@@ -422,16 +423,30 @@ class nsParser : public nsIParser,
+      * @update	gess5/18/98
+      * @param 
+      * @return
+      */
+     nsresult DidBuildModel(nsresult anErrorCode);
+ 
+     void SpeculativelyParse();
+ 
++    nsresult
++    HandleParseBuffer(
++      nsString* theName,
++      nsIRequestObserver* aListener,
++      void* aKey,
++      nsDTDMode aMode);
++
++    nsresult
++    HandleDataAvailable(
++      nsIRequest* request,
++      char* data,
++      PRUint32 totalRead,
++      PRUint32 sourceOffset);
++
+ private:
+ 
+     /*******************************************
+       These are the tokenization methods...
+      *******************************************/
+ 
+     /**
+      *  Part of the code sandwich, this gets called right before
+@@ -466,17 +481,19 @@ private:
+      */
+     PRBool DidTokenize(PRBool aIsFinalChunk = PR_FALSE);
+ 
+ protected:
+     //*********************************************
+     // And now, some data members...
+     //*********************************************
+     
+-      
++
++    nsRefPtr<nsFunctorQueue> mQueue;
++
+     CParserContext*              mParserContext;
+     nsCOMPtr<nsIRequestObserver> mObserver;
+     nsCOMPtr<nsIContentSink>     mSink;
+     nsIRunnable*                 mContinueEvent;  // weak ref
+     nsRefPtr<nsSpeculativeScriptThread> mSpeculativeScriptThread;
+    
+     nsCOMPtr<nsIParserFilter> mParserFilter;
+     nsTokenAllocator          mTokenAllocator;
+diff --git a/xpcom/glue/FunctorQueue.h b/xpcom/glue/FunctorQueue.h
+--- a/xpcom/glue/FunctorQueue.h
++++ b/xpcom/glue/FunctorQueue.h
+@@ -6,29 +6,29 @@
+ #include "nsAutoLock.h"
+ #include "nsIEventTarget.h"
+ #include "nsThreadUtils.h"
+ #include "Functor.h"
+ 
+ #include <vector>
+ 
+ // This class guarantees the atomicity of AddRef and Release, but it cannot
+-// guarantee another vital invariant: that Release always happens on the main
++// guarantee another vital invariant: that Release always happen on the main
+ // thread.  For that, see the macro INHERIT_MAIN_THREAD_RELEASE below.
+ class ThreadSafeReferent
+ {
+   nsAutoRefCnt mRefCnt;
+ public:
+   NS_IMPL_THREADSAFE_RELEASE(ThreadSafeReferent)
+   NS_IMPL_THREADSAFE_ADDREF(ThreadSafeReferent)
+ protected:
+   virtual ~ThreadSafeReferent() {}
+ };
+ 
+-// Use this macro to to guarantee that Release always happens on the main
++// Use this macro to to guarantee that Release always happen on the main
+ // thread.  Note that AddRef may happen on any thread, but must happen
+ // synchronously.  It would be a bug to let AddRef and Release both happen
+ // asynchronously, as the order of NS_Dispatch*ed execution is not guaranteed
+ // to be FIFO.
+ #define INHERIT_MAIN_THREAD_RELEASE(BASE)                                     \
+   void Release() { Release(NS_IsMainThread()); }                              \
+   void Release(PRBool isMainThread) {                                         \
+     if (isMainThread)                                                         \
