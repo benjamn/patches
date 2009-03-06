@@ -1,0 +1,178 @@
+diff --git a/content/base/src/nsContentSink.cpp b/content/base/src/nsContentSink.cpp
+--- a/content/base/src/nsContentSink.cpp
++++ b/content/base/src/nsContentSink.cpp
+@@ -298,6 +298,11 @@
+   mCanInterruptParser =
+     nsContentUtils::GetBoolPref("content.interrupt.parsing", PR_TRUE);
+ 
++  // 200 determined empirically to provide good user response without
++  // sampling the clock too often.
++  mMaxTokensDeflectedInLowFreqMode =
++    nsContentUtils::GetIntPref("content.max.deflected.tokens", 200);
++
+   return NS_OK;
+ 
+ }
+@@ -1538,23 +1543,22 @@
+       // If we can't get the last input time from the widget
+       // then we will get it from the viewmanager.
+       rv = vm->GetLastUserEventTime(eventTime);
+-      NS_ENSURE_SUCCESS(rv , NS_ERROR_FAILURE);
+   }
+ 
+-
+   NS_ENSURE_SUCCESS(rv, NS_ERROR_FAILURE);
+ 
+   if (!mDynamicLowerValue && mLastSampledUserEventTime == eventTime) {
+-    // The magic value of NS_MAX_TOKENS_DEFLECTED_IN_LOW_FREQ_MODE
++    // The default value of mMaxTokensDeflectedInLowFreqMode (200)
+     // was selected by empirical testing. It provides reasonable
+     // user response and prevents us from sampling the clock too
+-    // frequently.
+-    if (mDeflectedCount < NS_MAX_TOKENS_DEFLECTED_IN_LOW_FREQ_MODE) {
++    // frequently.  This value may be decreased if responsiveness is
++    // valued more than end-to-end pageload time (e.g., for mobile).
++    if (mDeflectedCount < mMaxTokensDeflectedInLowFreqMode) {
+       mDeflectedCount++;
+       // return early to prevent sampling the clock. Note: This
+       // prevents us from switching to higher frequency (better UI
+       // responsive) mode, so limit ourselves to doing for no more
+-      // than NS_MAX_TOKENS_DEFLECTED_IN_LOW_FREQ_MODE tokens.
++      // than mMaxTokensDeflectedInLowFreqMode tokens.
+ 
+       return NS_OK;
+     }
+diff --git a/content/base/src/nsContentSink.h b/content/base/src/nsContentSink.h
+--- a/content/base/src/nsContentSink.h
++++ b/content/base/src/nsContentSink.h
+@@ -107,10 +107,6 @@
+ // 1/2 second fudge factor for window creation
+ #define NS_DELAY_FOR_WINDOW_CREATION  500000
+ 
+-// 200 determined empirically to provide good user response without
+-// sampling the clock too often.
+-#define NS_MAX_TOKENS_DEFLECTED_IN_LOW_FREQ_MODE 200
+-
+ class nsContentSink : public nsICSSLoaderObserver,
+                       public nsIScriptLoaderObserver,
+                       public nsSupportsWeakReference,
+@@ -363,6 +359,8 @@
+   // Switch between intervals when time is exceeded
+   PRInt32 mDynamicIntervalSwitchThreshold;
+ 
++  PRInt32 mMaxTokensDeflectedInLowFreqMode;
++
+   PRInt32 mBeginLoadTime;
+ 
+   // Last mouse event or keyboard event time sampled by the content
+diff --git a/parser/htmlparser/tests/mochitest/Makefile.in b/parser/htmlparser/tests/mochitest/Makefile.in
+--- a/parser/htmlparser/tests/mochitest/Makefile.in
++++ b/parser/htmlparser/tests/mochitest/Makefile.in
+@@ -57,6 +57,7 @@
+ 		test_bug396568.html \
+ 		test_bug418464.html \
+ 		test_bug460437.xhtml \
++		test_bug461031.html \
+ 		test_compatmode.html \
+ 		regressions.txt \
+ 		invalidchar.xml \
+diff --git a/parser/htmlparser/tests/mochitest/test_bug461031.html b/parser/htmlparser/tests/mochitest/test_bug461031.html
+new file mode 100644
+--- /dev/null
++++ b/parser/htmlparser/tests/mochitest/test_bug461031.html
+@@ -0,0 +1,95 @@
++<!DOCTYPE HTML>
++<html>
++<!--
++https://bugzilla.mozilla.org/show_bug.cgi?id=461031
++-->
++<head>
++  <title>Test for Bug 461031</title>
++  <script type="application/javascript" src="/MochiKit/MochiKit.js"></script>
++  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
++  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
++  <script>
++    var logdiv = document.createElement("div");
++
++    function log(str) {
++      logdiv.appendChild(document.createElement("div")).innerHTML = str;
++    }
++
++    function wait(ms) {
++      log("<em>inline script</em>");
++      var start = +new Date;
++      while (new Date - start < ms)
++        /* empty */ ;
++    }
++
++    (function(num_fired) {
++      incr = function() { num_fired++ };
++      decr = function() {
++        if (--num_fired == 0) {
++          window.finished = true;
++          if (window.waiting)
++            SimpleTest.finish();
++        }
++      }
++    })(0);
++
++    function fire(ms) {
++      incr();
++      var start = +new Date;
++      setTimeout(function() {
++        var elapsed = new Date - start;
++        log("<b>timeout (" + ms + "ms)</b>");
++        ok(elapsed < ms * 2, "Timer took too long! (" + elapsed + "ms)");
++        decr();
++      }, ms);
++    }
++
++    fire(64);
++    fire(128);
++    fire(256);
++    fire(512);
++    fire(1024);
++  </script>
++  <script>wait(50)</script>
++  <script>wait(50)</script>
++  <script>wait(50)</script>
++  <script>wait(50)</script>
++  <script>wait(50)</script>
++  <script>wait(50)</script>
++  <script>wait(50)</script>
++  <script>wait(50)</script>
++  <script>wait(50)</script>
++  <script>wait(50)</script>
++  <script>wait(50)</script>
++  <script>wait(50)</script>
++  <script>wait(50)</script>
++  <script>wait(50)</script>
++  <script>wait(50)</script>
++  <script>wait(50)</script>
++  <script>wait(50)</script>
++  <script>wait(50)</script>
++  <script>wait(50)</script>
++  <script>wait(50)</script>
++</head>
++<body>
++<a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=461031">Mozilla Bug 461031</a>
++<p id="display"></p>
++<div id="content" style="display: none">
++  
++</div>
++<pre id="test">
++<script type="application/javascript">
++
++/** Test for Bug 461031 **/
++
++document.body.appendChild(logdiv);
++
++if (!window.finished) {
++  SimpleTest.waitForExplicitFinish();
++  window.waiting = true;
++}
++
++</script>
++</pre>
++</body>
++</html>
