@@ -1,4 +1,3 @@
-bug-478438.diff
 kill-jsd_assert.diff
 safe-suspect-forget.diff
 hdst-index-bound.diff
