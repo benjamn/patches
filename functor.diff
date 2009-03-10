@@ -4,7 +4,7 @@ diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Bind.h
-@@ -0,0 +1,164 @@
+@@ -0,0 +1,369 @@
 +#ifndef __bind_h__
 +#define __bind_h__
 +
@@ -101,6 +101,190 @@ new file mode 100644
 +};
 +
 +
++template <typename NewResult, typename Functor>
++class ResultBinder
++  : public FunctorImpl<NewResult, typename Functor::ParamList>
++{
++public:
++  typedef Functor Incoming;
++  typedef NewResult ResultType;
++  typedef Functor<NewResult, typename Functor::ParamList>
++          Outgoing;
++
++  COOPT_PARAM_TYPEDEFS(Outgoing)
++
++  ResultBinder(const Incoming& fun, NewResult bound)
++    : mFun(fun)
++    , mBound(bound)
++  {}
++
++  // [[[cog
++  // prefix = "NewResult operator()("
++  // indent = " " * len(prefix)
++  // for i in rng:
++  //   Pps = tlist("P p", i)
++  //   ps = tlist(", p", i, sep="")
++  //   cog.out(r"""
++  // %(prefix)s%(Pps)s) {
++  //   mFun(mBound%(ps)s);
++  //   return mBound;
++  // }""" % locals())
++  // ]]]
++
++  NewResult operator()() {
++    mFun(mBound);
++    return mBound;
++  }
++  NewResult operator()(P1 p1) {
++    mFun(mBound, p1);
++    return mBound;
++  }
++  NewResult operator()(P1 p1, P2 p2) {
++    mFun(mBound, p1, p2);
++    return mBound;
++  }
++  NewResult operator()(P1 p1, P2 p2, P3 p3) {
++    mFun(mBound, p1, p2, p3);
++    return mBound;
++  }
++  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4) {
++    mFun(mBound, p1, p2, p3, p4);
++    return mBound;
++  }
++  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5) {
++    mFun(mBound, p1, p2, p3, p4, p5);
++    return mBound;
++  }
++  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6) {
++    mFun(mBound, p1, p2, p3, p4, p5, p6);
++    return mBound;
++  }
++  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7) {
++    mFun(mBound, p1, p2, p3, p4, p5, p6, p7);
++    return mBound;
++  }
++  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
++    mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8);
++    return mBound;
++  }
++  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
++    mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9);
++    return mBound;
++  }
++  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10) {
++    mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10);
++    return mBound;
++  }
++  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11) {
++    mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11);
++    return mBound;
++  }
++  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12) {
++    mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12);
++    return mBound;
++  }
++  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13) {
++    mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13);
++    return mBound;
++  }
++  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13, P14 p14) {
++    mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14);
++    return mBound;
++  }
++  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13, P14 p14, P15 p15) {
++    mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15);
++    return mBound;
++  }
++  // [[[end]]]
++
++private:
++  Incoming mFun;
++  NewResult mBound;
++};
++
++template <typename Functor>
++class ResultBinder<void, Functor>
++  : public FunctorImpl<void, typename Functor::ParamList>
++{
++public:
++  typedef Functor Incoming;
++  typedef void ResultType;
++  typedef Functor<void, typename Functor::ParamList>
++          Outgoing;
++
++  COOPT_PARAM_TYPEDEFS(Outgoing)
++
++  ResultBinder(const Incoming& fun)
++    : mFun(fun)
++  {}
++
++  // [[[cog
++  // prefix = "void operator()("
++  // indent = " " * len(prefix)
++  // for i in rng:
++  //   Pps = tlist("P p", i)
++  //   ps = tlist("p", i)
++  //   cog.out(r"""
++  // %(prefix)s%(Pps)s) {
++  //   mFun(%(ps)s);
++  // }""" % locals())
++  // ]]]
++
++  void operator()() {
++    mFun();
++  }
++  void operator()(P1 p1) {
++    mFun(p1);
++  }
++  void operator()(P1 p1, P2 p2) {
++    mFun(p1, p2);
++  }
++  void operator()(P1 p1, P2 p2, P3 p3) {
++    mFun(p1, p2, p3);
++  }
++  void operator()(P1 p1, P2 p2, P3 p3, P4 p4) {
++    mFun(p1, p2, p3, p4);
++  }
++  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5) {
++    mFun(p1, p2, p3, p4, p5);
++  }
++  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6) {
++    mFun(p1, p2, p3, p4, p5, p6);
++  }
++  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7) {
++    mFun(p1, p2, p3, p4, p5, p6, p7);
++  }
++  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
++    mFun(p1, p2, p3, p4, p5, p6, p7, p8);
++  }
++  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
++    mFun(p1, p2, p3, p4, p5, p6, p7, p8, p9);
++  }
++  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10) {
++    mFun(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10);
++  }
++  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11) {
++    mFun(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11);
++  }
++  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12) {
++    mFun(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12);
++  }
++  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13) {
++    mFun(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13);
++  }
++  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13, P14 p14) {
++    mFun(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14);
++  }
++  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13, P14 p14, P15 p15) {
++    mFun(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15);
++  }
++  // [[[end]]]
++
++private:
++  Incoming mFun;
++};
++
++
 +template <typename Result, class Params, typename Bound>
 +typename Binder<Result, Params, Bound>::Outgoing
 +bind(Functor<Result, Params> fun, Bound bound) {
@@ -110,6 +294,27 @@ new file mode 100644
 +  I* binder = new B(fun, bound);
 +  return O(binder);
 +}
++
++template <typename NewResult, typename Functor>
++typename ResultBinder<NewResult, Functor>
++bind_result(Functor fun, NewResult bound) {
++  typedef ResultBinder<NewResult, Functor> B;
++  typedef typename B::Outgoing O;
++  typedef typename O::ImplType I;
++  I* binder = new B(fun, bound);
++  return O(binder);
++}
++
++template <typename Functor>
++typename ResultBinder<void, Functor>
++void_result(Functor fun) {
++  typedef ResultBinder<void, Functor> B;
++  typedef typename B::Outgoing O;
++  typedef typename O::ImplType I;
++  I* binder = new B(fun);
++  return O(binder);
++}
++
 +
 +#define BIND1(F, A) bind(functor(F), A)
 +
@@ -174,7 +379,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Functor.h
-@@ -0,0 +1,617 @@
+@@ -0,0 +1,583 @@
 +#ifndef __functor_h__
 +#define __functor_h__
 +
@@ -285,39 +490,9 @@ new file mode 100644
 +template <class ParentFunctor, typename Method>
 +class MethodHandler;
 +
-+// Only implement nsIRunnable if functor has zero paramters:
-+template <typename Params> class nsMaybeRunnable {};
-+template <> class nsMaybeRunnable<TLIST0()> : public nsIRunnable {
-+  NS_IMPL_THREADSAFE_ISUPPORTS1(nsMaybeRunnable, nsIRunnable)
-+protected:
-+  virtual ~nsMaybeRunnable() {}
-+  nsAutoRefCnt mRefCnt;
-+  NS_DECL_OWNINGTHREAD
-+};
-+
-+template <typename Ensured, typename Impl> struct ensurer;
-+template <typename Ensured>
-+struct ensurer<Ensured, FunctorImpl<Ensured, TLIST0()> > {
-+  static Ensured ensure(FunctorImpl<Ensured, TLIST0()>* impl) { return (*impl)(); }
-+  static Ensured ensure(FunctorImpl<Ensured, TLIST0()>* impl, Ensured) { return (*impl)(); }
-+};
-+template <typename Ensured, typename Given>
-+struct ensurer<Ensured, FunctorImpl<Given, TLIST0()> > {
-+  static Ensured ensure(FunctorImpl<Given, TLIST0()>* impl) {
-+    (*impl)();
-+    return Ensured();
-+  }
-+  static Ensured
-+  ensure(FunctorImpl<Given, TLIST0()>* impl,
-+         Ensured default_result)
-+  {
-+    (*impl)();
-+    return default_result;
-+  }
-+};
 +
 +template <typename R, class Params>
-+class Functor : public nsMaybeRunnable<Params>
++class Functor
 +{
 +public:
 +  typedef FunctorImpl<R, Params> ImplType;
@@ -354,10 +529,6 @@ new file mode 100644
 + ~Functor() {}
 +  Functor(const Functor& fun) : mImpl(fun.mImpl) {}
 +  Functor(ImplType* impl)     : mImpl(impl) {}
-+
-+  NS_IMETHODIMP Run() {
-+    return ensurer<NS_IMETHODIMP, ImplType>::ensure(mImpl, NS_OK);
-+  }
 +
 +  template <typename Callable>
 +  static Functor callable(Callable c) {

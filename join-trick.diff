@@ -1,7 +1,20 @@
 diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
 --- a/xpcom/glue/Bind.h
 +++ b/xpcom/glue/Bind.h
-@@ -14,84 +14,35 @@ class Binder
+@@ -5,282 +5,114 @@
+ 
+ // [[[cog
+ // from cogutil import tlist, MAX_FUNCTOR_ARITY
+ // rng = range(MAX_FUNCTOR_ARITY+1)
+ // ijs = zip(rng, rng[1:])
+ // ]]]
+ // [[[end]]]
+ 
++#define COOPT(N) typedef typename Outgoing::P##N P##N
++#define Pp(N) P##N p##N
++#define COOPT_OUTGOING_PARAM_TYPEDEFS(N) JOIN##N(COOPT,SEMI)
++
+ template <typename Result, typename Params, typename Bound>
  class Binder
    : public FunctorImpl<Result, typename Params::Tail>
  {
@@ -11,9 +24,7 @@ diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
    typedef Functor<Result, typename Params::Tail> Outgoing;
  
 -  COOPT_PARAM_TYPEDEFS(Outgoing)
-+  #define COOPT(N) typedef typename Outgoing::P##N P##N
-+  JOIN16(COOPT,SEMI);
-+  #undef COOPT
++  COOPT_OUTGOING_PARAM_TYPEDEFS(16);
  
    Binder(const Incoming& fun, Bound bound)
      : mFun(fun)
@@ -81,15 +92,13 @@ diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
 -    return mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15);
 -  }
 -  // [[[end]]]
-+  #define Pp(N) P##N p##N
 +  #define cp(N) , p##N
-+  #define DECL_CALLABLE_CALL_OP(N)                                            \
++  #define DECL_BINDER_CALL_OP(N)                                              \
 +    ResultType operator()(JOIN##N(Pp,COMMA)) {                                \
 +      return mFun(mBound JOIN##N(cp,EMPTY));                                  \
 +    }
-+  JOIN16(DECL_CALLABLE_CALL_OP,EMPTY)
-+  #undef DECL_CALLABLE_CALL_OP
-+  #undef Pp
++  JOIN16(DECL_BINDER_CALL_OP,EMPTY)
++  #undef DECL_BINDER_CALL_OP
 +  #undef cp
  
  private:
@@ -97,8 +106,219 @@ diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
    Bound mBound;
  };
  
++#define p(N) p##N
+ 
+ template <typename NewResult, typename Functor>
+ class ResultBinder
+   : public FunctorImpl<NewResult, typename Functor::ParamList>
+ {
+ public:
+   typedef Functor Incoming;
+   typedef NewResult ResultType;
+   typedef Functor<NewResult, typename Functor::ParamList>
+           Outgoing;
+ 
+-  COOPT_PARAM_TYPEDEFS(Outgoing)
++  COOPT_OUTGOING_PARAM_TYPEDEFS(16);
+ 
+   ResultBinder(const Incoming& fun, NewResult bound)
+     : mFun(fun)
+     , mBound(bound)
+   {}
+ 
+-  // [[[cog
+-  // prefix = "NewResult operator()("
+-  // indent = " " * len(prefix)
+-  // for i in rng:
+-  //   Pps = tlist("P p", i)
+-  //   ps = tlist(", p", i, sep="")
+-  //   cog.out(r"""
+-  // %(prefix)s%(Pps)s) {
+-  //   mFun(mBound%(ps)s);
+-  //   return mBound;
+-  // }""" % locals())
+-  // ]]]
+-
+-  NewResult operator()() {
+-    mFun(mBound);
+-    return mBound;
+-  }
+-  NewResult operator()(P1 p1) {
+-    mFun(mBound, p1);
+-    return mBound;
+-  }
+-  NewResult operator()(P1 p1, P2 p2) {
+-    mFun(mBound, p1, p2);
+-    return mBound;
+-  }
+-  NewResult operator()(P1 p1, P2 p2, P3 p3) {
+-    mFun(mBound, p1, p2, p3);
+-    return mBound;
+-  }
+-  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4) {
+-    mFun(mBound, p1, p2, p3, p4);
+-    return mBound;
+-  }
+-  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5) {
+-    mFun(mBound, p1, p2, p3, p4, p5);
+-    return mBound;
+-  }
+-  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6) {
+-    mFun(mBound, p1, p2, p3, p4, p5, p6);
+-    return mBound;
+-  }
+-  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7) {
+-    mFun(mBound, p1, p2, p3, p4, p5, p6, p7);
+-    return mBound;
+-  }
+-  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
+-    mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8);
+-    return mBound;
+-  }
+-  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
+-    mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9);
+-    return mBound;
+-  }
+-  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10) {
+-    mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10);
+-    return mBound;
+-  }
+-  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11) {
+-    mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11);
+-    return mBound;
+-  }
+-  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12) {
+-    mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12);
+-    return mBound;
+-  }
+-  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13) {
+-    mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13);
+-    return mBound;
+-  }
+-  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13, P14 p14) {
+-    mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14);
+-    return mBound;
+-  }
+-  NewResult operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13, P14 p14, P15 p15) {
+-    mFun(mBound, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15);
+-    return mBound;
+-  }
+-  // [[[end]]]
++  #define DECL_RESULT_BINDER_CALL_OP(N)                                       \
++    NewResult operator()(JOIN##N(Pp,COMMA)) {                                 \
++      mFun(JOIN##N(p,COMMA));                                                 \
++      return mBound;                                                          \
++    }
++  JOIN16(DECL_RESULT_BINDER_CALL_OP,EMPTY)
++  #undef DECL_RESULT_BINDER_CALL_OP
+ 
+ private:
+   Incoming mFun;
+   NewResult mBound;
+ };
+ 
+ template <typename Functor>
+ class ResultBinder<void, Functor>
+   : public FunctorImpl<void, typename Functor::ParamList>
+ {
+ public:
+   typedef Functor Incoming;
+   typedef void ResultType;
+   typedef Functor<void, typename Functor::ParamList>
+           Outgoing;
+ 
+-  COOPT_PARAM_TYPEDEFS(Outgoing)
++  COOPT_OUTGOING_PARAM_TYPEDEFS(16);
+ 
+   ResultBinder(const Incoming& fun)
+     : mFun(fun)
+   {}
+ 
+-  // [[[cog
+-  // prefix = "void operator()("
+-  // indent = " " * len(prefix)
+-  // for i in rng:
+-  //   Pps = tlist("P p", i)
+-  //   ps = tlist("p", i)
+-  //   cog.out(r"""
+-  // %(prefix)s%(Pps)s) {
+-  //   mFun(%(ps)s);
+-  // }""" % locals())
+-  // ]]]
+-
+-  void operator()() {
+-    mFun();
+-  }
+-  void operator()(P1 p1) {
+-    mFun(p1);
+-  }
+-  void operator()(P1 p1, P2 p2) {
+-    mFun(p1, p2);
+-  }
+-  void operator()(P1 p1, P2 p2, P3 p3) {
+-    mFun(p1, p2, p3);
+-  }
+-  void operator()(P1 p1, P2 p2, P3 p3, P4 p4) {
+-    mFun(p1, p2, p3, p4);
+-  }
+-  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5) {
+-    mFun(p1, p2, p3, p4, p5);
+-  }
+-  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6) {
+-    mFun(p1, p2, p3, p4, p5, p6);
+-  }
+-  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7) {
+-    mFun(p1, p2, p3, p4, p5, p6, p7);
+-  }
+-  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
+-    mFun(p1, p2, p3, p4, p5, p6, p7, p8);
+-  }
+-  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
+-    mFun(p1, p2, p3, p4, p5, p6, p7, p8, p9);
+-  }
+-  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10) {
+-    mFun(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10);
+-  }
+-  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11) {
+-    mFun(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11);
+-  }
+-  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12) {
+-    mFun(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12);
+-  }
+-  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13) {
+-    mFun(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13);
+-  }
+-  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13, P14 p14) {
+-    mFun(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14);
+-  }
+-  void operator()(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10, P11 p11, P12 p12, P13 p13, P14 p14, P15 p15) {
+-    mFun(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15);
+-  }
+-  // [[[end]]]
++  #define DECL_VOID_RESULT_BINDER_CALL_OP(N)                                  \
++    void operator()(JOIN##N(Pp,COMMA)) {                                      \
++      mFun(JOIN##N(p,COMMA));                                                 \
++    }
++  JOIN16(DECL_VOID_RESULT_BINDER_CALL_OP,EMPTY)
++  #undef DECL_VOID_RESULT_BINDER_CALL_OP
+ 
+ private:
+   Incoming mFun;
+ };
++
++// Used in the ResultBinder classes, now no longer needed:
++#undef p
++// Used in every *Binder class, now no longer needed:
++#undef Pp
++#undef COOPT
+ 
  
  template <typename Result, class Params, typename Bound>
+ typename Binder<Result, Params, Bound>::Outgoing
+ bind(Functor<Result, Params> fun, Bound bound) {
+   typedef Binder<Result, Params, Bound> B;
+   typedef typename B::Outgoing O;
+   typedef typename O::ImplType I;
 diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 --- a/xpcom/glue/Functor.h
 +++ b/xpcom/glue/Functor.h
@@ -216,9 +436,9 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
  template <class ParentFunctor, typename Method>
  class MethodHandler;
  
-@@ -142,36 +91,20 @@ template <typename R, class Params>
+@@ -112,36 +61,20 @@ template <typename R, class Params>
  template <typename R, class Params>
- class Functor : public nsMaybeRunnable<Params>
+ class Functor
  {
  public:
    typedef FunctorImpl<R, Params> ImplType;
@@ -257,7 +477,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
  
  public:
   ~Functor() {}
-@@ -187,431 +120,207 @@ public:
+@@ -153,431 +86,207 @@ public:
      return Functor(new CallableHandler<Functor, Callable>(c));
    }
  
