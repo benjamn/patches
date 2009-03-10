@@ -296,7 +296,7 @@ new file mode 100644
 +}
 +
 +template <typename NewResult, typename Functor>
-+typename ResultBinder<NewResult, Functor>
++typename ResultBinder<NewResult, Functor>::Outgoing
 +bind_result(Functor fun, NewResult bound) {
 +  typedef ResultBinder<NewResult, Functor> B;
 +  typedef typename B::Outgoing O;
@@ -306,7 +306,7 @@ new file mode 100644
 +}
 +
 +template <typename Functor>
-+typename ResultBinder<void, Functor>
++typename ResultBinder<void, Functor>::Outgoing
 +void_result(Functor fun) {
 +  typedef ResultBinder<void, Functor> B;
 +  typedef typename B::Outgoing O;
