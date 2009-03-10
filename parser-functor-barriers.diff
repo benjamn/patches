@@ -54,7 +54,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
             NS_PARSER_FLAG_CAN_TOKENIZE;
    mScriptsExecuting = 0;
  
-+  NS_NewThread(getter_AddRefs(mParserThread));
++  NS_GetCurrentThread(getter_AddRefs(mParserThread));
 +
    MOZ_TIMER_DEBUGLOG(("Reset: Parse Time: nsParser::nsParser(), this=%p\n", this));
    MOZ_TIMER_RESET(mParseTime);

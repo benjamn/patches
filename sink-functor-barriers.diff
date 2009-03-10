@@ -22,7 +22,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  
  #else
  #define SINK_TRACE_NODE(_bit, _msg, _tag, _sp, _obj)
-@@ -149,16 +153,59 @@ NS_NewHTMLNOTUSEDElement(nsINodeInfo *aN
+@@ -149,16 +153,49 @@ NS_NewHTMLNOTUSEDElement(nsINodeInfo *aN
  #define HTML_OTHER(_tag) NS_NewHTMLNOTUSEDElement,
  static const contentCreatorCallback sContentCreatorCallbacks[] = {
    NS_NewHTMLUnknownElement,
@@ -36,8 +36,8 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
 +  PR_BEGIN_MACRO                                                              \
 +    nsIThread* thread = nsnull;                                               \
 +    NS_GetCurrentThread(&thread);                                             \
-+    if (mQueue->GetTarget() != thread)                                        \
-+      return mQueue->Enqueue(BOUND)->Wait();                                  \
++    if (mSinkThread.get() != thread)                                          \
++      return proxy(mSinkThread, (BOUND), NS_DISPATCH_SYNC)->Wait();           \
 +  PR_END_MACRO
 +
 +#define TRIVIAL_PROXY_SYNC(METHOD)                                            \
@@ -64,16 +64,6 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
 +  PROXY_SYNC(BIND2(&HTMLContentSink::METHOD,                                  \
 +                   nsRefPtr<HTMLContentSink>(this),                           \
 +                   make_adf(NODE)))
-+
-+#define PROXY_ASYNC(BOUND, RESULT)                                            \
-+  PR_BEGIN_MACRO                                                              \
-+    nsIThread* thread = nsnull;                                               \
-+    NS_GetCurrentThread(&thread);                                             \
-+    if (mQueue->GetTarget() != thread) {                                      \
-+      mQueue->Enqueue(BOUND);                                                 \
-+      return (RESULT);                                                        \
-+    }                                                                         \
-+  PR_END_MACRO
  
  class SinkContext;
  class HTMLContentSink;
@@ -82,7 +72,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  
  class HTMLContentSink : public nsContentSink,
  #ifdef DEBUG
-@@ -229,16 +276,18 @@ protected:
+@@ -229,16 +266,18 @@ protected:
  
  #ifdef NS_DEBUG
    void SinkTraceNode(PRUint32 aBit,
@@ -92,7 +82,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
                       void* aThis);
  #endif
 +
-+  nsRefPtr<nsFunctorQueue> mQueue;
++  nsRefPtr<nsIThread> mSinkThread;
  
    nsIHTMLDocument* mHTMLDocument;
  
@@ -101,7 +91,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  
    nsGenericHTMLElement* mRoot;
    nsGenericHTMLElement* mBody;
-@@ -1628,16 +1677,19 @@ nsresult
+@@ -1628,16 +1667,17 @@ nsresult
  nsresult
  HTMLContentSink::Init(nsIDocument* aDoc,
                        nsIURI* aURI,
@@ -110,9 +100,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  {
    NS_ENSURE_TRUE(aContainer, NS_ERROR_NULL_POINTER);
  
-+  nsIThread* mainThread = nsnull;
-+  NS_GetMainThread(&mainThread);
-+  mQueue = new nsFunctorQueue(mainThread);
++  NS_GetCurrentThread(getter_AddRefs(mSinkThread));
  
    MOZ_TIMER_DEBUGLOG(("Reset and start: nsHTMLContentSink::Init(), this=%p\n",
                        this));
@@ -121,7 +109,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  
    nsresult rv = nsContentSink::Init(aDoc, aURI, aContainer, aChannel);
    if (NS_FAILED(rv)) {
-@@ -1739,22 +1791,25 @@ HTMLContentSink::Init(nsIDocument* aDoc,
+@@ -1739,22 +1779,25 @@ HTMLContentSink::Init(nsIDocument* aDoc,
    MOZ_TIMER_STOP(mWatch);
  
    return NS_OK;
@@ -147,7 +135,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
        nsDTDMode dtdMode = mParser->GetParseMode();
        switch (dtdMode) {
          case eDTDMode_full_standards:
-@@ -1778,16 +1833,18 @@ HTMLContentSink::WillBuildModel(void)
+@@ -1778,16 +1821,18 @@ HTMLContentSink::WillBuildModel(void)
    mDocument->BeginLoad();
  
    return NS_OK;
@@ -166,7 +154,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    MOZ_TIMER_LOG(("Content creation time (this=%p): ", this));
    MOZ_TIMER_PRINT(mWatch);
  #endif
-@@ -1842,30 +1899,39 @@ HTMLContentSink::ReadyToCallDidBuildMode
+@@ -1842,30 +1887,39 @@ HTMLContentSink::ReadyToCallDidBuildMode
  HTMLContentSink::ReadyToCallDidBuildModel(PRBool aTerminated)
  {
    return ReadyToCallDidBuildModelImpl(aTerminated);
@@ -206,7 +194,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    SinkContext* sc = new SinkContext(this);
    if (!sc) {
      MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::BeginContext()\n"));
-@@ -1914,16 +1980,20 @@ HTMLContentSink::BeginContext(PRInt32 aP
+@@ -1914,16 +1968,20 @@ HTMLContentSink::BeginContext(PRInt32 aP
    MOZ_TIMER_STOP(mWatch);
  
    return NS_OK;
@@ -227,7 +215,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    SinkContext* sc = (SinkContext*) mContextStack.ElementAt(n);
  
    const SinkContext::Node &bottom = mCurrentContext->mStack[0];
-@@ -2004,16 +2074,18 @@ HTMLContentSink::CloseHTML()
+@@ -2004,16 +2062,18 @@ HTMLContentSink::CloseHTML()
    MOZ_TIMER_STOP(mWatch);
  
    return NS_OK;
@@ -246,7 +234,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::OpenHead()\n"));
    MOZ_TIMER_STOP(mWatch);
  
-@@ -2296,32 +2368,39 @@ HTMLContentSink::CloseFrameset()
+@@ -2296,32 +2356,39 @@ HTMLContentSink::CloseFrameset()
    }
  
    return rv;
@@ -286,7 +274,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    switch (aNode.GetNodeType()) {
      case eHTMLTag_frameset:
        rv = OpenFrameset(aNode);
-@@ -2359,16 +2438,20 @@ HTMLContentSink::OpenContainer(const nsI
+@@ -2359,16 +2426,20 @@ HTMLContentSink::OpenContainer(const nsI
    MOZ_TIMER_STOP(mWatch);
  
    return rv;
@@ -307,7 +295,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    switch (aTag) {
      case eHTMLTag_frameset:
        rv = CloseFrameset();
-@@ -2400,16 +2483,18 @@ HTMLContentSink::CloseMalformedContainer
+@@ -2400,16 +2471,18 @@ HTMLContentSink::CloseMalformedContainer
  HTMLContentSink::CloseMalformedContainer(const eHTMLTags aTag)
  {
    return mCurrentContext->CloseContainer(aTag, PR_TRUE);
@@ -326,7 +314,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    nsHTMLTag nodeType = nsHTMLTag(aNode.GetNodeType());
    switch (nodeType) {
    case eHTMLTag_link:
-@@ -2433,16 +2518,18 @@ HTMLContentSink::AddLeaf(const nsIParser
+@@ -2433,16 +2506,18 @@ HTMLContentSink::AddLeaf(const nsIParser
   * This gets called by the parsing system when we find a comment
   * @update	gess11/9/98
   * @param   aNode contains a comment token
@@ -345,7 +333,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::AddComment()\n"));
    MOZ_TIMER_STOP(mWatch);
  
-@@ -2453,16 +2540,18 @@ HTMLContentSink::AddComment(const nsIPar
+@@ -2453,16 +2528,18 @@ HTMLContentSink::AddComment(const nsIPar
   * This gets called by the parsing system when we find a PI
   * @update	gess11/9/98
   * @param   aNode contains a comment token
@@ -364,7 +352,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    MOZ_TIMER_STOP(mWatch);
  
    return result;
-@@ -2471,16 +2560,18 @@ HTMLContentSink::AddProcessingInstructio
+@@ -2471,16 +2548,18 @@ HTMLContentSink::AddProcessingInstructio
  /**
   *  This gets called by the parser when it encounters
   *  a DOCTYPE declaration in the HTML document.
@@ -383,7 +371,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  
    PRInt32 publicStart = docTypeStr.Find("PUBLIC", PR_TRUE);
    PRInt32 systemStart = docTypeStr.Find("SYSTEM", PR_TRUE);
-@@ -2715,34 +2806,39 @@ HTMLContentSink::WillProcessAToken(void)
+@@ -2715,34 +2794,39 @@ HTMLContentSink::WillProcessAToken(void)
  HTMLContentSink::WillProcessAToken(void)
  {
    return NS_OK;
@@ -423,7 +411,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    if (!mObservers) {
      return NS_OK;
    }
-@@ -3184,16 +3280,20 @@ HTMLContentSink::ProcessSTYLEEndTag(nsGe
+@@ -3184,16 +3268,20 @@ HTMLContentSink::ProcessSTYLEEndTag(nsGe
    }
  
    return rv;
@@ -444,7 +432,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
      }
      else if (mCurrentContext) {
        mCurrentContext->FlushText();
-@@ -3215,16 +3315,20 @@ HTMLContentSink::FlushTags()
+@@ -3215,16 +3303,20 @@ HTMLContentSink::FlushTags()
    }
    
    return mCurrentContext ? mCurrentContext->FlushTags() : NS_OK;
@@ -465,7 +453,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
      nsCOMPtr<nsIMarkupDocumentViewer> muCV;
      nsCOMPtr<nsIContentViewer> cv;
      mDocShell->GetContentViewer(getter_AddRefs(cv));
-@@ -3263,16 +3367,17 @@ HTMLContentSink::SetDocumentCharset(nsAC
+@@ -3263,16 +3355,17 @@ HTMLContentSink::SetDocumentCharset(nsAC
    }
  
    return NS_OK;

@@ -1,7 +1,29 @@
+diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/document/src/nsHTMLContentSink.cpp
+--- a/content/html/document/src/nsHTMLContentSink.cpp
++++ b/content/html/document/src/nsHTMLContentSink.cpp
+@@ -1667,17 +1667,17 @@ nsresult
+ nsresult
+ HTMLContentSink::Init(nsIDocument* aDoc,
+                       nsIURI* aURI,
+                       nsISupports* aContainer,
+                       nsIChannel* aChannel)
+ {
+   NS_ENSURE_TRUE(aContainer, NS_ERROR_NULL_POINTER);
+ 
+-  NS_GetCurrentThread(getter_AddRefs(mSinkThread));
++  NS_GetMainThread(getter_AddRefs(mSinkThread));
+ 
+   MOZ_TIMER_DEBUGLOG(("Reset and start: nsHTMLContentSink::Init(), this=%p\n",
+                       this));
+   MOZ_TIMER_RESET(mWatch);
+   MOZ_TIMER_START(mWatch);
+ 
+   nsresult rv = nsContentSink::Init(aDoc, aURI, aContainer, aChannel);
+   if (NS_FAILED(rv)) {
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -827,17 +827,20 @@ nsParser::Initialize(PRBool aConstructor
+@@ -819,17 +819,17 @@ nsParser::Initialize(PRBool aConstructor
    mInternalState = NS_OK;
    mStreamStatus = 0;
    mCommand = eViewNormal;
@@ -10,11 +32,8 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
             NS_PARSER_FLAG_CAN_TOKENIZE;
    mScriptsExecuting = 0;
  
--  mQueue = new nsFunctorQueue(NS_GetCurrentThread());
-+  nsIThread* thread = nsnull;
-+  NS_NewThread(&thread);
-+  if (thread)
-+    mQueue = new nsFunctorQueue(thread);
+-  NS_GetCurrentThread(getter_AddRefs(mParserThread));
++  NS_NewThread(getter_AddRefs(mParserThread));
  
    MOZ_TIMER_DEBUGLOG(("Reset: Parse Time: nsParser::nsParser(), this=%p\n", this));
    MOZ_TIMER_RESET(mParseTime);
