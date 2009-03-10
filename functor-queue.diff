@@ -106,7 +106,7 @@ new file mode 100644
 +template <typename Result>
 +nsRefPtr<RFTYPE(Result)>
 +proxy(nsIEventTarget* target,
-+      FTYPE(Result)& functor,
++      FTYPE(Result) functor,
 +      PRUint32 flags = NS_DISPATCH_NORMAL)
 +{
 +  typedef RFTYPE(Result) rf_t;
