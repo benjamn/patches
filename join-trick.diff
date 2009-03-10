@@ -108,14 +108,14 @@ diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
  
 +#define p(N) p##N
  
- template <typename NewResult, typename Functor>
+ template <typename NewResult, typename ParentFunctor>
  class ResultBinder
-   : public FunctorImpl<NewResult, typename Functor::ParamList>
+   : public FunctorImpl<NewResult, typename ParentFunctor::ParamList>
  {
  public:
-   typedef Functor Incoming;
+   typedef ParentFunctor Incoming;
    typedef NewResult ResultType;
-   typedef Functor<NewResult, typename Functor::ParamList>
+   typedef Functor<NewResult, typename ParentFunctor::ParamList>
            Outgoing;
  
 -  COOPT_PARAM_TYPEDEFS(Outgoing)
@@ -217,14 +217,14 @@ diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
    NewResult mBound;
  };
  
- template <typename Functor>
- class ResultBinder<void, Functor>
-   : public FunctorImpl<void, typename Functor::ParamList>
+ template <typename ParentFunctor>
+ class ResultBinder<void, ParentFunctor>
+   : public FunctorImpl<void, typename ParentFunctor::ParamList>
  {
  public:
-   typedef Functor Incoming;
+   typedef ParentFunctor Incoming;
    typedef void ResultType;
-   typedef Functor<void, typename Functor::ParamList>
+   typedef Functor<void, typename ParentFunctor::ParamList>
            Outgoing;
  
 -  COOPT_PARAM_TYPEDEFS(Outgoing)

@@ -2,7 +2,7 @@ diff --git a/xpcom/glue/FunctorQueue.h b/xpcom/glue/FunctorQueue.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/FunctorQueue.h
-@@ -0,0 +1,222 @@
+@@ -0,0 +1,116 @@
 +#ifndef __functorqueue_h__
 +#define __functorqueue_h__
 +
@@ -12,217 +12,111 @@ new file mode 100644
 +#include "nsIEventTarget.h"
 +#include "nsThreadUtils.h"
 +#include "Functor.h"
++#include "nsProxyRelease.h"
 +
-+#include <vector>
-+
-+// This class guarantees the atomicity of AddRef and Release, but it cannot
-+// guarantee another vital invariant: that Release always happens on the main
-+// thread.  For that, see the macro INHERIT_MAIN_THREAD_RELEASE below.
-+class ThreadSafeReferent
++class ThreadSafeRunnable
++  : public nsIRunnable
 +{
 +  nsAutoRefCnt mRefCnt;
 +public:
-+  NS_IMPL_THREADSAFE_RELEASE(ThreadSafeReferent)
-+  NS_IMPL_THREADSAFE_ADDREF(ThreadSafeReferent)
++  NS_IMPL_THREADSAFE_ISUPPORTS0(ThreadSafeRunnable)
 +protected:
-+  virtual ~ThreadSafeReferent() {}
++  virtual ~ThreadSafeRunnable() {}
 +};
 +
-+// Use this macro to to guarantee that Release always happens on the main
-+// thread.  Note that AddRef may happen on any thread, but must happen
-+// synchronously.  It would be a bug to let AddRef and Release both happen
-+// asynchronously, as the order of NS_Dispatch*ed execution is not guaranteed
-+// to be FIFO.
-+#define INHERIT_MAIN_THREAD_RELEASE(BASE)                                     \
-+  void Release() { Release(NS_IsMainThread()); }                              \
-+  void Release(PRBool isMainThread) {                                         \
-+    if (isMainThread)                                                         \
-+      BASE::Release();                                                        \
-+    else                                                                      \
-+      NS_DispatchToMainThread(NS_NEW_RUNNABLE_METHOD(                         \
-+        BASE, static_cast<BASE*>(this), Release));                            \
-+  }
-+
-+class PayloadBase : public ThreadSafeReferent
++class nsARunnableFunctor
++  : public ThreadSafeRunnable
 +{
 +  PRMonitor* const mMon;
-+  PRBool mDelivered;
-+
++  PRBool mRun;
 +public:
-+
-+  PayloadBase()
-+    : mMon(nsAutoMonitor::NewMonitor("PayloadBase"))
-+    , mDelivered(PR_FALSE)
++  nsARunnableFunctor()
++    : mMon(nsAutoMonitor::NewMonitor("nsARunnableFunctor"))
++    , mRun(PR_FALSE)
 +  {}
-+
-+  INHERIT_MAIN_THREAD_RELEASE(ThreadSafeReferent)
-+
 +  void Wait()
 +  {
 +    nsAutoMonitor mon(mMon);
-+    if (!mDelivered)
++    if (!mRun)
 +      mon.Wait();
 +  }
-+
-+  virtual void Deliver() = 0;
-+
++  nsrefcnt Release()
++  {
++    nsIThread* mainThread = nsnull;
++    NS_GetMainThread(&mainThread);
++    if (mainThread)
++      NS_ProxyRelease(mainThread, static_cast<ThreadSafeRunnable*>(this));
++    return 1;
++  }
 +protected:
-+
-+  ~PayloadBase()
++  ~nsARunnableFunctor()
 +  {
 +    nsAutoMonitor::DestroyMonitor(mMon);
 +  }
-+
-+  void PostDelivery()
++  nsresult AfterRun()
 +  {
 +    nsAutoMonitor mon(mMon);
-+    mDelivered = PR_TRUE;
++    mRun = PR_TRUE;
 +    mon.NotifyAll();
++    return NS_OK;
 +  }
-+
 +};
 +
-+
-+template <typename Result>
-+class Payload : public PayloadBase
++template <typename Result, typename Functor>
++class nsRunnableFunctor
++  : public nsARunnableFunctor
 +{
 +  Result mResult;
-+  typedef Functor<Result, TLIST0()> functor_type;
-+  functor_type mFun;
-+
++  Functor mFunctor;
 +public:
-+
-+  Payload(functor_type fun) : mFun(fun) {}
-+
++  nsRunnableFunctor(Functor& functor)
++    : mFunctor(functor)
++  {}
 +  Result& Wait()
 +  {
-+    PayloadBase::Wait();
++    nsARunnableFunctor::Wait();
 +    return mResult;
 +  }
-+
-+  void Deliver() {
-+    mResult = mFun();
-+    PostDelivery();
++  nsresult Run()
++  {
++    mResult = mFunctor();
++    return AfterRun();
 +  }
-+
 +};
 +
-+
-+template <>
-+class Payload<void> : public PayloadBase
++template <typename Functor>
++class nsRunnableFunctor<void, Functor>
++  : public nsARunnableFunctor
 +{
-+  typedef Functor<void, TLIST0()> functor_type;
-+  functor_type mFun;
-+
++  Functor mFunctor;
 +public:
-+
-+  Payload(functor_type fun) : mFun(fun) {}
-+
-+  void Deliver() {
-+    mFun();
-+    PostDelivery();
-+  }
-+
-+};
-+
-+
-+class FunctorQueue
-+  : public ThreadSafeReferent
-+{
-+  typedef std::vector<PayloadBase*> queue_type;
-+
-+  PRLock* mLock;
-+  queue_type mQueue;
-+
-+  nsAutoRefCnt mRefCnt;
-+
-+public:
-+
-+  FunctorQueue()
-+    : mLock(nsAutoLock::NewLock("FunctorQueue"))
++  nsRunnableFunctor(Functor& functor)
++    : mFunctor(functor)
 +  {}
-+
-+  INHERIT_MAIN_THREAD_RELEASE(ThreadSafeReferent)
-+
-+  virtual ~FunctorQueue()
++  nsresult Run()
 +  {
-+    NS_ASSERTION(mQueue.empty(), "Deleting non-empty FunctorQueue");
-+    nsAutoLock::DestroyLock(mLock);
++    mFunctor();
++    return AfterRun();
 +  }
-+
-+  virtual void Flush()
-+  {
-+    queue_type temp;
-+
-+    { nsAutoLock sync(mLock);
-+      temp = mQueue;
-+      mQueue.clear(); }
-+
-+    PRBool isMainThread = NS_IsMainThread();
-+
-+    queue_type::const_iterator end = temp.end();
-+    for (queue_type::iterator it = temp.begin(); end != it; ++it)
-+    {
-+      PayloadBase* const pl = *it;
-+      pl->Deliver();
-+      pl->Release(isMainThread);
-+    }
-+  }
-+
-+  // Despite the name, subclasses may implement AsyncFlush synchronously:
-+  virtual void AsyncFlush() = 0;
-+
-+  template <typename Result>
-+  nsRefPtr<Payload<Result> >
-+  Enqueue(Functor<Result, TLIST0()> f)
-+  {
-+    nsRefPtr<Payload<Result> >
-+      pl(new Payload<Result>(f));
-+    NS_ENSURE_TRUE(pl, 0);
-+
-+    pl->AddRef(); // balances the Release call in Flush
-+
-+    { nsAutoLock sync(mLock);
-+      mQueue.push_back(pl); }
-+
-+    AsyncFlush();
-+
-+    // pl's refcnt still >= 1, even if already Flushed
-+    return pl;
-+  }
-+
 +};
 +
-+class nsFunctorQueue
-+  : public FunctorQueue
++#define  FTYPE(RTYPE) Functor<Result, TLIST0()> 
++#define RFTYPE(RTYPE) nsRunnableFunctor<Result, FTYPE(Result)> 
++
++template <typename Result>
++nsRefPtr<RFTYPE(Result)>
++proxy(nsIEventTarget* target,
++      FTYPE(Result)& functor,
++      PRUint32 flags = NS_DISPATCH_NORMAL)
 +{
-+  nsRefPtr<nsIEventTarget> mTarget;
-+  const void* mPendingEvent;
++  typedef RFTYPE(Result) rf_t;
++  nsRefPtr<rf_t> rfp(new rf_t(functor));
++  target->Dispatch(rfp, flags);
++  return rfp;
++}
 +
-+public:
-+
-+  nsFunctorQueue(nsIEventTarget* target)
-+    : mTarget(target)
-+    , mPendingEvent(nsnull)
-+  {}
-+
-+  const nsIEventTarget* GetTarget() const { return mTarget; }
-+
-+  void Flush() {
-+    mPendingEvent = nsnull;
-+    FunctorQueue::Flush();
-+  }
-+
-+  void AsyncFlush()
-+  {
-+    if (mPendingEvent)
-+      return;
-+    nsIRunnable* event = NS_NEW_RUNNABLE_METHOD(nsFunctorQueue, this, Flush);
-+    mTarget->Dispatch(event, NS_DISPATCH_NORMAL);
-+    mPendingEvent = event;
-+  }
-+
-+};
++#undef RFTYPE
++#undef  FTYPE
 +
 +#endif
 \ No newline at end of file
@@ -247,3 +141,25 @@ diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
  
  # we don't want the shared lib, but we want to force the creation of a static lib.
  FORCE_STATIC_LIB = 1
+diff --git a/xpcom/glue/nsProxyRelease.h b/xpcom/glue/nsProxyRelease.h
+--- a/xpcom/glue/nsProxyRelease.h
++++ b/xpcom/glue/nsProxyRelease.h
+@@ -31,17 +31,17 @@
+  * use your version of this file under the terms of the MPL, indicate your
+  * decision by deleting the provisions above and replace them with the notice
+  * and other provisions required by the GPL or the LGPL. If you do not delete
+  * the provisions above, a recipient may use your version of this file under
+  * the terms of any one of the MPL, the GPL or the LGPL.
+  *
+  * ***** END LICENSE BLOCK ***** */
+ 
+-#ifndef nsProxyRelease_h_
++#ifndef nsProxyRelease_h__
+ #define nsProxyRelease_h__
+ 
+ #include "nsIEventTarget.h"
+ #include "nsCOMPtr.h"
+ 
+ #ifdef XPCOM_GLUE_AVOID_NSPR
+ #error NS_ProxyRelease implementation depends on NSPR.
+ #endif
