@@ -45,7 +45,26 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  //-------------- Begin ParseContinue Event Definition ------------------------
  /*
  The parser can be explicitly interrupted by passing a return value of
-@@ -906,16 +919,19 @@ nsParser::PostContinueEvent()
+@@ -806,16 +819,18 @@ nsParser::Initialize(PRBool aConstructor
+   mInternalState = NS_OK;
+   mStreamStatus = 0;
+   mCommand = eViewNormal;
+   mFlags = NS_PARSER_FLAG_OBSERVERS_ENABLED |
+            NS_PARSER_FLAG_PARSER_ENABLED |
+            NS_PARSER_FLAG_CAN_TOKENIZE;
+   mScriptsExecuting = 0;
+ 
++  NS_NewThread(getter_AddRefs(mParserThread));
++
+   MOZ_TIMER_DEBUGLOG(("Reset: Parse Time: nsParser::nsParser(), this=%p\n", this));
+   MOZ_TIMER_RESET(mParseTime);
+   MOZ_TIMER_RESET(mDTDTime);
+   MOZ_TIMER_RESET(mTokenizeTime);
+ }
+ 
+ void
+ nsParser::Cleanup()
+@@ -906,16 +921,19 @@ nsParser::PostContinueEvent()
      }
    }
    return NS_OK;
@@ -65,7 +84,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  {
    aCommand = mCommandStr;
  }
-@@ -925,16 +941,22 @@ nsParser::GetCommand(nsCString& aCommand
+@@ -925,16 +943,22 @@ nsParser::GetCommand(nsCString& aCommand
   *  about the command which caused the parser to be constructed. For example,
   *  this allows us to select a DTD which can do, say, view-source.
   *
@@ -88,7 +107,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    } else {
      mCommand = eViewNormal;
    }
-@@ -945,29 +967,39 @@ nsParser::SetCommand(const char* aComman
+@@ -945,29 +969,39 @@ nsParser::SetCommand(const char* aComman
   *  about the command which caused the parser to be constructed. For example,
   *  this allows us to select a DTD which can do, say, view-source.
   *
@@ -128,7 +147,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  }
  
  void
-@@ -983,30 +1015,36 @@ nsParser::SetSinkCharset(nsACString& aCh
+@@ -983,30 +1017,36 @@ nsParser::SetSinkCharset(nsACString& aCh
   *  sink for this parser to dump nodes to.
   *
   *  @param   nsIContentSink interface for node receiver
@@ -165,7 +184,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
   *
   *  @return  parsemode
   */
-@@ -1621,16 +1659,18 @@ nsParser::SetUnusedInput(nsString& aBuff
+@@ -1621,16 +1661,18 @@ nsParser::SetUnusedInput(nsString& aBuff
  nsParser::SetUnusedInput(nsString& aBuffer)
  {
    mUnusedInput = aBuffer;
@@ -184,7 +203,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    while (pc->mPrevContext) {
      pc = pc->mPrevContext;
    }
-@@ -1641,16 +1681,18 @@ nsParser::GetRootContextKey()
+@@ -1641,16 +1683,18 @@ nsParser::GetRootContextKey()
  /**
   *  Call this when you want to *force* the parser to terminate the
   *  parsing process altogether. This is binary -- so once you terminate
@@ -203,7 +222,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
    nsresult result = NS_OK;
    // XXX - [ until we figure out a way to break parser-sink circularity ]
-@@ -1878,33 +1920,55 @@ nsParser::SetCanInterrupt(PRBool aCanInt
+@@ -1878,33 +1922,55 @@ nsParser::SetCanInterrupt(PRBool aCanInt
   *  of this method.
   */
  NS_IMETHODIMP
@@ -268,7 +287,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
        pc->mDTDMode = aMode;
        PushContext(*pc);
  
-@@ -1925,23 +1989,40 @@ nsParser::Parse(nsIURI* aURL,
+@@ -1925,23 +1991,40 @@ nsParser::Parse(nsIURI* aURL,
  /**
   * Call this method if all you want to do is parse 1 string full of HTML text.
   * In particular, this method should be called by the DOM when it has an HTML
@@ -314,7 +333,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    if (!aLastCall && aSourceBuffer.IsEmpty()) {
-@@ -2064,16 +2145,25 @@ NS_IMETHODIMP
+@@ -2064,16 +2147,25 @@ NS_IMETHODIMP
  NS_IMETHODIMP
  nsParser::ParseFragment(const nsAString& aSourceBuffer,
                          void* aKey,
@@ -340,7 +359,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    // Disable observers for fragments
    mFlags &= ~NS_PARSER_FLAG_OBSERVERS_ENABLED;
  
-@@ -2392,16 +2482,21 @@ nsParser::BuildModel()
+@@ -2392,16 +2484,21 @@ nsParser::BuildModel()
  
  /*******************************************************************
    These methods are used to talk to the netlib system...
@@ -362,7 +381,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
    mParserContext->mStreamListenerState = eOnStart;
    mParserContext->mAutoDetectStatus = eUnknownDetect;
-@@ -2814,32 +2909,50 @@ CheckCharset(const char* aBytes,
+@@ -2814,32 +2911,50 @@ CheckCharset(const char* aBytes,
    }
  }
  
@@ -419,7 +438,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    if (theContext) {
-@@ -2886,16 +2999,22 @@ nsParser::OnDataAvailable(nsIRequest *re
+@@ -2886,16 +3001,22 @@ nsParser::OnDataAvailable(nsIRequest *re
  /**
   *  This is called by the networking library once the last block of data
   *  has been collected from the net.
@@ -505,7 +524,7 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
      
 -      
 +
-+    nsRefPtr<nsIEventTarget> mParserThread;
++    nsRefPtr<nsIThread> mParserThread;
 +
      CParserContext*              mParserContext;
      nsCOMPtr<nsIRequestObserver> mObserver;

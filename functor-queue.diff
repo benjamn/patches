@@ -2,7 +2,7 @@ diff --git a/xpcom/glue/FunctorQueue.h b/xpcom/glue/FunctorQueue.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/FunctorQueue.h
-@@ -0,0 +1,116 @@
+@@ -0,0 +1,118 @@
 +#ifndef __functorqueue_h__
 +#define __functorqueue_h__
 +
@@ -42,10 +42,12 @@ new file mode 100644
 +  }
 +  nsrefcnt Release()
 +  {
++    if (NS_IsMainThread())
++      return ThreadSafeRunnable::Release();
 +    nsIThread* mainThread = nsnull;
 +    NS_GetMainThread(&mainThread);
 +    if (mainThread)
-+      NS_ProxyRelease(mainThread, static_cast<ThreadSafeRunnable*>(this));
++      NS_ProxyRelease(mainThread, this);
 +    return 1;
 +  }
 +protected:
