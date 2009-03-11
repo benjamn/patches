@@ -1,3 +1,66 @@
+diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
+--- a/xpcom/glue/Functor.h
++++ b/xpcom/glue/Functor.h
+@@ -1,16 +1,17 @@
+ #ifndef Functor_h__
+ #define Functor_h__
+ 
+ #include "nsISupports.h"
+ #include "nsIRunnable.h"
+ #include "nsAutoPtr.h"
+ #include "TList.h"
+ #include "Join.h"
++#include "nsRunnableFunctor.h"
+ 
+ class FunctorSupports : public nsISupports {
+ public:
+   // nsISupports implementation must be inlined so that this file can be
+   // included across modules.  Because NS_IMPL_ISUPPORTS0 appears inline,
+   // the method prototypes for AddRef, Release, and QueryInterface provided by
+   // NS_DECL_ISUPPORTS are not needed, but the nsAutoRefCnt and
+   // NS_DECL_OWNINGTHREAD members (also provided by NS_DECL_ISUPPORTS)
+@@ -75,16 +76,20 @@ public:
+   typedef P1  first_argument_type;
+   typedef P2 second_argument_type;
+   typedef Result      result_type;
+ 
+ public:
+   Functor(const Functor& f) : mImpl(f.mImpl) {}
+   Functor(ImplType* impl)   : mImpl(impl) {}
+  ~Functor() {}
++
++  nsRefPtr<nsRunnableFunctor<Result, Functor> >
++  proxy(nsIEventTarget* target,
++        PRUint32 flags = NS_DISPATCH_NORMAL);
+ 
+   template <typename Callable>
+   static Functor callable(Callable c) {
+     return Functor(new CallableHandler<Functor, Callable>(c));
+   }
+ 
+   template <typename Method>
+   static Functor method(Method m) {
+@@ -284,9 +289,20 @@ JOIN16(DGFA,EMPTY)
+ #undef DECL_GLOBAL_FUNCTION_ADAPTERS
+ #undef DECL_GLOBAL_METHOD_ADAPTER
+ #undef DGMA
+ #undef DGFA
+ #undef ctnP
+ #undef P
+ #undef cP
+ 
++template <typename Result, class Params>
++nsRefPtr<nsRunnableFunctor<Result, Functor<Result, Params> > >
++Functor<Result, Params>::proxy(nsIEventTarget* target, PRUint32 flags)
++{
++  typedef nsRunnableFunctor<Result, Functor> Event;
++  nsRefPtr<Event> event(new Event(*this));
++  PRBool dispatched = target && NS_SUCCEEDED(target->Dispatch(event, flags));
++  NS_ASSERTION(dispatched, "Failed to dispatch event to target.");
++  return event; // event->Wait() will block forever if Dispatch failed
++}
++
+ #endif
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
@@ -45,7 +108,7 @@ diff --git a/xpcom/glue/nsRunnableFunctor.h b/xpcom/glue/nsRunnableFunctor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/nsRunnableFunctor.h
-@@ -0,0 +1,118 @@
+@@ -0,0 +1,99 @@
 +#ifndef nsRunnableFunctor_h__
 +#define nsRunnableFunctor_h__
 +
@@ -54,7 +117,6 @@ new file mode 100644
 +#include "nsAutoLock.h"
 +#include "nsIEventTarget.h"
 +#include "nsThreadUtils.h"
-+#include "Functor.h"
 +#include "nsProxyRelease.h"
 +
 +class ThreadSafeRunnable
@@ -114,7 +176,7 @@ new file mode 100644
 +  Result mResult;
 +  Functor mFunctor;
 +public:
-+  nsRunnableFunctor(Functor& functor)
++  nsRunnableFunctor(Functor functor)
 +    : mFunctor(functor)
 +  {}
 +  Result& Wait()
@@ -135,7 +197,7 @@ new file mode 100644
 +{
 +  Functor mFunctor;
 +public:
-+  nsRunnableFunctor(Functor& functor)
++  nsRunnableFunctor(Functor functor)
 +    : mFunctor(functor)
 +  {}
 +  nsresult Run()
@@ -145,23 +207,4 @@ new file mode 100644
 +  }
 +};
 +
-+#define  FTYPE(RTYPE) Functor<Result, TLIST0()> 
-+#define RFTYPE(RTYPE) nsRunnableFunctor<Result, FTYPE(Result)> 
-+
-+template <typename Result>
-+nsRefPtr<RFTYPE(Result)>
-+proxy(nsIEventTarget* target,
-+      FTYPE(Result) functor,
-+      PRUint32 flags = NS_DISPATCH_NORMAL)
-+{
-+  typedef RFTYPE(Result) rf_t;
-+  nsRefPtr<rf_t> rfp(new rf_t(functor));
-+  target->Dispatch(rfp, flags);
-+  return rfp;
-+}
-+
-+#undef RFTYPE
-+#undef  FTYPE
-+
 +#endif
-\ No newline at end of file
