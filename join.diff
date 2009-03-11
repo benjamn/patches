@@ -39,10 +39,10 @@ new file mode 100644
 +#define SEMI()  ;
 +#define EMPTY()
 +
-+#define tnT(N) typename T##N
-+#define ctnT(N) , tnT(N)
-+#define Tt(N) T##N t##N
-+#define cTt(N) , Tt(N)
++// #define tnT(N) typename T##N
++// #define ctnT(N) , tnT(N)
++// #define Tt(N) T##N t##N
++// #define cTt(N) , Tt(N)
 +
 +#endif
 \ No newline at end of file
