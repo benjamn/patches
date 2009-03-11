@@ -7,7 +7,6 @@ dtd-const-mparser.diff
 parser-copy-data.diff
 join.diff
 functor.diff
-join-trick.diff
 functor-queue.diff
 parser-functor-barriers.diff
 sink-functor-barriers.diff
