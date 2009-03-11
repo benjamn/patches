@@ -37,7 +37,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
 +    nsIThread* thread = nsnull;                                               \
 +    NS_GetCurrentThread(&thread);                                             \
 +    if (mSinkThread.get() != thread)                                          \
-+      return proxy(mSinkThread, (BOUND), NS_DISPATCH_SYNC)->Wait();           \
++      return (BOUND).proxy(mSinkThread, NS_DISPATCH_SYNC)->Wait();            \
 +  PR_END_MACRO
 +
 +#define TRIVIAL_PROXY_SYNC(METHOD)                                            \
