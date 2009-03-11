@@ -11,7 +11,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  #include "mozAutoDocUpdate.h"
  
 +#include "Bind.h"
-+#include "FunctorQueue.h"
++#include "nsRunnableFunctor.h"
 +#include "nsThreadUtils.h"
 +
  #ifdef NS_DEBUG

@@ -1,7 +1,50 @@
-diff --git a/xpcom/glue/FunctorQueue.h b/xpcom/glue/FunctorQueue.h
+diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
+--- a/xpcom/glue/Makefile.in
++++ b/xpcom/glue/Makefile.in
+@@ -124,16 +124,17 @@ EXPORTS = \
+ EXPORTS = \
+ 		nsThreadUtils.h \
+ 		nsProxyRelease.h \
+ 		nsXPTCUtils.h \
+ 		Join.h \
+ 		TList.h \
+ 		Functor.h \
+ 		Bind.h \
++		nsRunnableFunctor.h \
+ 		$(NULL)
+ 
+ SDK_LIBRARY     =                        \
+ 		$(LIB_PREFIX)xpcomglue_s.$(LIB_SUFFIX) \
+ 		$(NULL)
+ 
+ # we don't want the shared lib, but we want to force the creation of a static lib.
+ FORCE_STATIC_LIB = 1
+diff --git a/xpcom/glue/nsProxyRelease.h b/xpcom/glue/nsProxyRelease.h
+--- a/xpcom/glue/nsProxyRelease.h
++++ b/xpcom/glue/nsProxyRelease.h
+@@ -31,17 +31,17 @@
+  * use your version of this file under the terms of the MPL, indicate your
+  * decision by deleting the provisions above and replace them with the notice
+  * and other provisions required by the GPL or the LGPL. If you do not delete
+  * the provisions above, a recipient may use your version of this file under
+  * the terms of any one of the MPL, the GPL or the LGPL.
+  *
+  * ***** END LICENSE BLOCK ***** */
+ 
+-#ifndef nsProxyRelease_h_
++#ifndef nsProxyRelease_h__
+ #define nsProxyRelease_h__
+ 
+ #include "nsIEventTarget.h"
+ #include "nsCOMPtr.h"
+ 
+ #ifdef XPCOM_GLUE_AVOID_NSPR
+ #error NS_ProxyRelease implementation depends on NSPR.
+ #endif
+diff --git a/xpcom/glue/nsRunnableFunctor.h b/xpcom/glue/nsRunnableFunctor.h
 new file mode 100644
 --- /dev/null
-+++ b/xpcom/glue/FunctorQueue.h
++++ b/xpcom/glue/nsRunnableFunctor.h
 @@ -0,0 +1,118 @@
 +#ifndef __functorqueue_h__
 +#define __functorqueue_h__
@@ -122,46 +165,3 @@ new file mode 100644
 +
 +#endif
 \ No newline at end of file
-diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
---- a/xpcom/glue/Makefile.in
-+++ b/xpcom/glue/Makefile.in
-@@ -124,16 +124,17 @@ EXPORTS = \
- EXPORTS = \
- 		nsThreadUtils.h \
- 		nsProxyRelease.h \
- 		nsXPTCUtils.h \
- 		Join.h \
- 		TList.h \
- 		Functor.h \
- 		Bind.h \
-+		FunctorQueue.h \
- 		$(NULL)
- 
- SDK_LIBRARY     =                        \
- 		$(LIB_PREFIX)xpcomglue_s.$(LIB_SUFFIX) \
- 		$(NULL)
- 
- # we don't want the shared lib, but we want to force the creation of a static lib.
- FORCE_STATIC_LIB = 1
-diff --git a/xpcom/glue/nsProxyRelease.h b/xpcom/glue/nsProxyRelease.h
---- a/xpcom/glue/nsProxyRelease.h
-+++ b/xpcom/glue/nsProxyRelease.h
-@@ -31,17 +31,17 @@
-  * use your version of this file under the terms of the MPL, indicate your
-  * decision by deleting the provisions above and replace them with the notice
-  * and other provisions required by the GPL or the LGPL. If you do not delete
-  * the provisions above, a recipient may use your version of this file under
-  * the terms of any one of the MPL, the GPL or the LGPL.
-  *
-  * ***** END LICENSE BLOCK ***** */
- 
--#ifndef nsProxyRelease_h_
-+#ifndef nsProxyRelease_h__
- #define nsProxyRelease_h__
- 
- #include "nsIEventTarget.h"
- #include "nsCOMPtr.h"
- 
- #ifdef XPCOM_GLUE_AVOID_NSPR
- #error NS_ProxyRelease implementation depends on NSPR.
- #endif

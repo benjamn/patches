@@ -11,7 +11,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  #include "nsXPCOMCIDInternal.h"
  
 +#include "Bind.h"
-+#include "FunctorQueue.h"
++#include "nsRunnableFunctor.h"
 +
  #ifdef MOZ_VIEW_SOURCE
  #include "nsViewSourceHTML.h"
@@ -464,25 +464,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
 --- a/parser/htmlparser/src/nsParser.h
 +++ b/parser/htmlparser/src/nsParser.h
-@@ -91,16 +91,17 @@
- #include "nsCycleCollectionParticipant.h"
- 
- class nsICharsetConverterManager;
- class nsICharsetAlias;
- class nsIDTD;
- class nsScanner;
- class nsSpeculativeScriptThread;
- class nsIThreadPool;
-+class nsFunctorQueue;
- 
- #ifdef _MSC_VER
- #pragma warning( disable : 4275 )
- #endif
- 
- 
- class nsParser : public nsIParser,
-                  public nsIStreamListener
-@@ -422,16 +423,30 @@ class nsParser : public nsIParser,
+@@ -422,16 +422,30 @@ class nsParser : public nsIParser,
       * @update	gess5/18/98
       * @param 
       * @return
@@ -513,7 +495,7 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
  
      /**
       *  Part of the code sandwich, this gets called right before
-@@ -466,17 +481,19 @@ private:
+@@ -466,17 +480,19 @@ private:
       */
      PRBool DidTokenize(PRBool aIsFinalChunk = PR_FALSE);
  
