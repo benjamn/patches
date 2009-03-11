@@ -12,10 +12,6 @@ functor-queue.diff
 parser-functor-barriers.diff
 sink-functor-barriers.diff
 off-main-thread-parsing.diff
-parser-msg-functors.diff
-sink-msg-functors.diff
 bug-470356.diff
-parser-msg-queue.diff
-proxy-queue-refactor.diff
 innerhtml.diff
 bug-468562.diff
