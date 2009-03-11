@@ -7,7 +7,7 @@ dtd-const-mparser.diff
 parser-copy-data.diff
 join.diff
 functor.diff
-functor-queue.diff
+runnable-functor.diff
 parser-functor-barriers.diff
 sink-functor-barriers.diff
 off-main-thread-parsing.diff
