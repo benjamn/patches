@@ -3,8 +3,8 @@ new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Join.h
 @@ -0,0 +1,42 @@
-+#ifndef __join_h__
-+#define __join_h__
++#ifndef Join_h__
++#define Join_h__
 +
 +#define JOIN0(PRED,SEP)
 +#define JOIN1(PRED,SEP) PRED(0)

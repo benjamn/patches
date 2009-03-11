@@ -323,8 +323,8 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 --- a/xpcom/glue/Functor.h
 +++ b/xpcom/glue/Functor.h
 @@ -1,16 +1,16 @@
- #ifndef __functor_h__
- #define __functor_h__
+ #ifndef Functor_h__
+ #define Functor_h__
  
  #include "nsISupports.h"
  #include "nsIRunnable.h"

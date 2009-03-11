@@ -5,8 +5,8 @@ new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Bind.h
 @@ -0,0 +1,369 @@
-+#ifndef __bind_h__
-+#define __bind_h__
++#ifndef Bind_h__
++#define Bind_h__
 +
 +#include "Functor.h"
 +
@@ -380,8 +380,8 @@ new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Functor.h
 @@ -0,0 +1,583 @@
-+#ifndef __functor_h__
-+#define __functor_h__
++#ifndef Functor_h__
++#define Functor_h__
 +
 +#include "nsISupports.h"
 +#include "nsIRunnable.h"

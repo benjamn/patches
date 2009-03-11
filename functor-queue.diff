@@ -46,8 +46,8 @@ new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/nsRunnableFunctor.h
 @@ -0,0 +1,118 @@
-+#ifndef __functorqueue_h__
-+#define __functorqueue_h__
++#ifndef nsRunnableFunctor_h__
++#define nsRunnableFunctor_h__
 +
 +#include "nsISupports.h"
 +#include "nsAutoPtr.h"
