@@ -1,0 +1,110 @@
+diff --git a/browser/components/migration/src/nsMacIEProfileMigrator.h b/browser/components/migration/src/nsMacIEProfileMigrator.h
+--- a/browser/components/migration/src/nsMacIEProfileMigrator.h
++++ b/browser/components/migration/src/nsMacIEProfileMigrator.h
+@@ -31,17 +31,17 @@
+  * decision by deleting the provisions above and replace them with the notice
+  * and other provisions required by the GPL or the LGPL. If you do not delete
+  * the provisions above, a recipient may use your version of this file under
+  * the terms of any one of the MPL, the GPL or the LGPL.
+  *
+  * ***** END LICENSE BLOCK ***** */
+ 
+ #ifndef macieprofilemigrator___h___
+-#define maciebprofilemigrator___h___
++#define macieprofilemigrator___h___
+ 
+ #include "nsIBrowserProfileMigrator.h"
+ #include "nsIObserverService.h"
+ #include "nsISupportsArray.h"
+ #include "nsStringAPI.h"
+ 
+ class nsMacIEProfileMigrator : public nsIBrowserProfileMigrator
+ {
+diff --git a/netwerk/socket/base/nsSOCKSIOLayer.h b/netwerk/socket/base/nsSOCKSIOLayer.h
+--- a/netwerk/socket/base/nsSOCKSIOLayer.h
++++ b/netwerk/socket/base/nsSOCKSIOLayer.h
+@@ -34,17 +34,17 @@
+  * decision by deleting the provisions above and replace them with the notice
+  * and other provisions required by the GPL or the LGPL. If you do not delete
+  * the provisions above, a recipient may use your version of this file under
+  * the terms of any one of the MPL, the GPL or the LGPL.
+  *
+  * ***** END LICENSE BLOCK ***** */
+ 
+ #ifndef nsSOCKSIOLayer_h__
+-#define NSSOCKSIOLayer_h__
++#define nsSOCKSIOLayer_h__
+ 
+ #include "prtypes.h"
+ #include "prio.h"
+ #include "nscore.h"
+ 
+ nsresult nsSOCKSIOLayerAddToSocket(PRInt32       family,
+                                    const char   *host, 
+                                    PRInt32       port,
+diff --git a/plugin/oji/MRJ/plugin/Source/CSecureEnv.h b/plugin/oji/MRJ/plugin/Source/CSecureEnv.h
+--- a/plugin/oji/MRJ/plugin/Source/CSecureEnv.h
++++ b/plugin/oji/MRJ/plugin/Source/CSecureEnv.h
+@@ -36,17 +36,17 @@
+ 
+ /*
+ 	CSecureEnv.h
+ 	
+ 	Rewritten for use with MRJ plugin by Patrick C. Beard.
+  */
+ 
+ #ifndef CSecureJNI2_h___
+-#define CSecureJNI_h___
++#define CSecureJNI2_h___
+ 
+ #include "nsISecureEnv.h"
+ #include "nsIThreadManager.h"
+ #include "SupportsMixin.h"
+ #include "nsAgg.h"
+ 
+ class MRJPlugin;
+ class MRJSession;
+diff --git a/plugin/oji/MRJCarbon/plugin/Source/CSecureEnv.h b/plugin/oji/MRJCarbon/plugin/Source/CSecureEnv.h
+--- a/plugin/oji/MRJCarbon/plugin/Source/CSecureEnv.h
++++ b/plugin/oji/MRJCarbon/plugin/Source/CSecureEnv.h
+@@ -37,17 +37,17 @@
+ 
+ /*
+     CSecureEnv.h
+     
+     Rewritten for use with MRJ plugin by Patrick C. Beard.
+  */
+ 
+ #ifndef CSecureJNI2_h___
+-#define CSecureJNI_h___
++#define CSecureJNI2_h___
+ 
+ #include "nsISecureEnv.h"
+ #include "nsIThreadManager.h"
+ #include "SupportsMixin.h"
+ 
+ class MRJPlugin;
+ class MRJSession;
+ 
+diff --git a/xpcom/glue/nsProxyRelease.h b/xpcom/glue/nsProxyRelease.h
+--- a/xpcom/glue/nsProxyRelease.h
++++ b/xpcom/glue/nsProxyRelease.h
+@@ -31,17 +31,17 @@
+  * use your version of this file under the terms of the MPL, indicate your
+  * decision by deleting the provisions above and replace them with the notice
+  * and other provisions required by the GPL or the LGPL. If you do not delete
+  * the provisions above, a recipient may use your version of this file under
+  * the terms of any one of the MPL, the GPL or the LGPL.
+  *
+  * ***** END LICENSE BLOCK ***** */
+ 
+-#ifndef nsProxyRelease_h_
++#ifndef nsProxyRelease_h__
+ #define nsProxyRelease_h__
+ 
+ #include "nsIEventTarget.h"
+ #include "nsCOMPtr.h"
+ 
+ #ifdef XPCOM_GLUE_AVOID_NSPR
+ #error NS_ProxyRelease implementation depends on NSPR.
+ #endif
