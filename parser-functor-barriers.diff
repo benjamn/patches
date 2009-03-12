@@ -1,7 +1,158 @@
+diff --git a/content/xul/document/src/nsXULContentSink.cpp b/content/xul/document/src/nsXULContentSink.cpp
+--- a/content/xul/document/src/nsXULContentSink.cpp
++++ b/content/xul/document/src/nsXULContentSink.cpp
+@@ -87,16 +87,18 @@
+ 
+ #include "nsUnicharUtils.h"
+ #include "nsGkAtoms.h"
+ #include "nsContentUtils.h"
+ #include "nsAttrName.h"
+ #include "nsXMLContentSink.h"
+ #include "nsIConsoleService.h"
+ #include "nsIScriptError.h"
++
++#include "Bind.h"
+ 
+ #ifdef PR_LOGGING
+ static PRLogModuleInfo* gLog;
+ #endif
+ 
+ //----------------------------------------------------------------------
+ 
+ XULContentSinkImpl::ContextStack::ContextStack()
+@@ -448,16 +450,22 @@ XULContentSinkImpl::FlushText(PRBool aCr
+ }
+ 
+ //----------------------------------------------------------------------
+ 
+ nsresult
+ XULContentSinkImpl::NormalizeAttributeString(const PRUnichar *aExpatName,
+                                              nsAttrName &aName)
+ {
++    if (!NS_IsMainThread())
++        return BIND3(&XULContentSinkImpl::NormalizeAttributeString,
++                     nsRefPtr<XULContentSinkImpl>(this),
++                     aExpatName,
++                     aName).proxy(nsnull, NS_DISPATCH_SYNC)->Wait();
++
+     PRInt32 nameSpaceID;
+     nsCOMPtr<nsIAtom> prefix, localName;
+     nsContentUtils::SplitExpatName(aExpatName, getter_AddRefs(prefix),
+                                    getter_AddRefs(localName), &nameSpaceID);
+ 
+     if (nameSpaceID == kNameSpaceID_None) {
+         aName.SetTo(localName);
+ 
+@@ -492,17 +500,26 @@ XULContentSinkImpl::CreateElement(nsINod
+ 
+ 
+ NS_IMETHODIMP 
+ XULContentSinkImpl::HandleStartElement(const PRUnichar *aName, 
+                                        const PRUnichar **aAtts,
+                                        PRUint32 aAttsCount, 
+                                        PRInt32 aIndex, 
+                                        PRUint32 aLineNumber)
+-{ 
++{
++  if (!NS_IsMainThread())
++    return BIND6(&XULContentSinkImpl::HandleStartElement,
++                 this,
++                 aName,
++                 aAtts,
++                 aAttsCount,
++                 aIndex,
++                 aLineNumber).proxy(nsnull, NS_DISPATCH_SYNC)->Wait();
++
+   // XXX Hopefully the parser will flag this before we get here. If
+   // we're in the epilog, there should be no new elements
+   NS_PRECONDITION(mState != eInEpilog, "tag in XUL doc epilog");
+   NS_PRECONDITION(aIndex >= -1, "Bogus aIndex");
+   NS_PRECONDITION(aAttsCount % 2 == 0, "incorrect aAttsCount");
+   // Adjust aAttsCount so it's the actual number of attributes
+   aAttsCount /= 2;
+   
+diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsExpatDriver.cpp
+--- a/parser/htmlparser/src/nsExpatDriver.cpp
++++ b/parser/htmlparser/src/nsExpatDriver.cpp
+@@ -56,16 +56,19 @@
+ #include "nsCRT.h"
+ #include "nsIConsoleService.h"
+ #include "nsIScriptError.h"
+ #include "nsIContentPolicy.h"
+ #include "nsContentPolicyUtils.h"
+ #include "nsContentErrors.h"
+ #include "nsXPCOMCIDInternal.h"
+ #include "nsUnicharInputStream.h"
++
++#include "nsThreadUtils.h"
++#include "Bind.h"
+ 
+ #define kExpatSeparatorChar 0xFFFF
+ 
+ static const PRUnichar kUTF16[] = { 'U', 'T', 'F', '-', '1', '6', '\0' };
+ 
+ #ifdef PR_LOGGING
+ static PRLogModuleInfo *gExpatDriverLog = PR_NewLogModule("expatdriver");
+ #endif
+@@ -424,20 +427,25 @@ nsExpatDriver::HandleStartElement(const 
+   PRUint32 attrArrayLength;
+   for (attrArrayLength = XML_GetSpecifiedAttributeCount(mExpatParser);
+        aAtts[attrArrayLength];
+        attrArrayLength += 2) {
+     // Just looping till we find out what the length is
+   }
+ 
+   if (mSink) {
+-    nsresult rv = mSink->
+-      HandleStartElement(aValue, aAtts, attrArrayLength,
+-                         XML_GetIdAttributeIndex(mExpatParser),
+-                         XML_GetCurrentLineNumber(mExpatParser));
++    PRUint32 attrIndex = XML_GetIdAttributeIndex(mExpatParser),
++            lineNumber = XML_GetCurrentLineNumber(mExpatParser);
++    nsresult rv = NS_IsMainThread()
++      ? mSink->HandleStartElement(aValue, aAtts, attrArrayLength,
++                                  attrIndex, lineNumber)
++      : BIND6(&nsIExpatSink::HandleStartElement,
++              mSink,
++              aValue, aAtts, attrArrayLength,
++              attrIndex, lineNumber).proxy(nsnull, NS_DISPATCH_SYNC)->Wait();
+     MaybeStopParser(rv);
+   }
+ 
+   return NS_OK;
+ }
+ 
+ nsresult
+ nsExpatDriver::HandleEndElement(const PRUnichar *aValue)
+@@ -716,16 +724,24 @@ ExternalDTDStreamReaderFunc(nsIUnicharIn
+ }
+ 
+ int
+ nsExpatDriver::HandleExternalEntityRef(const PRUnichar *openEntityNames,
+                                        const PRUnichar *base,
+                                        const PRUnichar *systemId,
+                                        const PRUnichar *publicId)
+ {
++  if (!NS_IsMainThread())
++    return BIND5(&nsExpatDriver::HandleExternalEntityRef,
++                 this,
++                 openEntityNames,
++                 base,
++                 systemId,
++                 publicId).proxy(nsnull, NS_DISPATCH_SYNC)->Wait();
++  
+   if (mInInternalSubset && !mInExternalDTD && openEntityNames) {
+     mInternalSubset.Append(PRUnichar('%'));
+     mInternalSubset.Append(nsDependentString(openEntityNames));
+     mInternalSubset.Append(PRUnichar(';'));
+   }
+ 
+   // Load the external entity into a buffer.
+   nsCOMPtr<nsIInputStream> in;
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -67,30 +67,43 @@
+@@ -67,30 +67,46 @@
  #include "nsHTMLTokenizer.h"
  #include "nsIDocument.h"
  #include "nsNetUtil.h"
@@ -28,10 +179,13 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  static NS_DEFINE_CID(kCParserCID, NS_PARSER_CID);
  static NS_DEFINE_IID(kIParserIID, NS_IPARSER_IID);
 +
++#define PROXY_SYNC_EXPR(TARGET, BOUND)                                        \
++  (BOUND).proxy((TARGET), NS_DISPATCH_SYNC)->Wait()
++
 +#define PROXY_SYNC(BOUND)                                                     \
 +  PR_BEGIN_MACRO                                                              \
 +    if (NS_GetCurrentThread() != mParserThread.get())                         \
-+      return (BOUND).proxy(mParserThread, NS_DISPATCH_SYNC)->Wait();          \
++      return PROXY_SYNC_EXPR(mParserThread, BOUND);                           \
 +  PR_END_MACRO
 +
 +#define TRIVIAL_PROXY_SYNC(METHOD)                                            \
@@ -45,7 +199,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  //-------------- Begin ParseContinue Event Definition ------------------------
  /*
  The parser can be explicitly interrupted by passing a return value of
-@@ -806,16 +819,18 @@ nsParser::Initialize(PRBool aConstructor
+@@ -806,16 +822,18 @@ nsParser::Initialize(PRBool aConstructor
    mInternalState = NS_OK;
    mStreamStatus = 0;
    mCommand = eViewNormal;
@@ -64,7 +218,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
  void
  nsParser::Cleanup()
-@@ -906,16 +921,19 @@ nsParser::PostContinueEvent()
+@@ -906,16 +924,19 @@ nsParser::PostContinueEvent()
      }
    }
    return NS_OK;
@@ -84,7 +238,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  {
    aCommand = mCommandStr;
  }
-@@ -925,16 +943,22 @@ nsParser::GetCommand(nsCString& aCommand
+@@ -925,16 +946,22 @@ nsParser::GetCommand(nsCString& aCommand
   *  about the command which caused the parser to be constructed. For example,
   *  this allows us to select a DTD which can do, say, view-source.
   *
@@ -107,7 +261,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    } else {
      mCommand = eViewNormal;
    }
-@@ -945,29 +969,39 @@ nsParser::SetCommand(const char* aComman
+@@ -945,29 +972,39 @@ nsParser::SetCommand(const char* aComman
   *  about the command which caused the parser to be constructed. For example,
   *  this allows us to select a DTD which can do, say, view-source.
   *
@@ -147,7 +301,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  }
  
  void
-@@ -983,30 +1017,36 @@ nsParser::SetSinkCharset(nsACString& aCh
+@@ -983,30 +1020,36 @@ nsParser::SetSinkCharset(nsACString& aCh
   *  sink for this parser to dump nodes to.
   *
   *  @param   nsIContentSink interface for node receiver
@@ -184,7 +338,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
   *
   *  @return  parsemode
   */
-@@ -1621,16 +1661,18 @@ nsParser::SetUnusedInput(nsString& aBuff
+@@ -1621,16 +1664,18 @@ nsParser::SetUnusedInput(nsString& aBuff
  nsParser::SetUnusedInput(nsString& aBuffer)
  {
    mUnusedInput = aBuffer;
@@ -203,7 +357,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    while (pc->mPrevContext) {
      pc = pc->mPrevContext;
    }
-@@ -1641,16 +1683,18 @@ nsParser::GetRootContextKey()
+@@ -1641,16 +1686,18 @@ nsParser::GetRootContextKey()
  /**
   *  Call this when you want to *force* the parser to terminate the
   *  parsing process altogether. This is binary -- so once you terminate
@@ -222,7 +376,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
    nsresult result = NS_OK;
    // XXX - [ until we figure out a way to break parser-sink circularity ]
-@@ -1878,33 +1922,55 @@ nsParser::SetCanInterrupt(PRBool aCanInt
+@@ -1878,33 +1925,55 @@ nsParser::SetCanInterrupt(PRBool aCanInt
   *  of this method.
   */
  NS_IMETHODIMP
@@ -287,7 +441,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
        pc->mDTDMode = aMode;
        PushContext(*pc);
  
-@@ -1925,23 +1991,40 @@ nsParser::Parse(nsIURI* aURL,
+@@ -1925,23 +1994,40 @@ nsParser::Parse(nsIURI* aURL,
  /**
   * Call this method if all you want to do is parse 1 string full of HTML text.
   * In particular, this method should be called by the DOM when it has an HTML
@@ -333,7 +487,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    if (!aLastCall && aSourceBuffer.IsEmpty()) {
-@@ -2064,16 +2147,25 @@ NS_IMETHODIMP
+@@ -2064,16 +2150,25 @@ NS_IMETHODIMP
  NS_IMETHODIMP
  nsParser::ParseFragment(const nsAString& aSourceBuffer,
                          void* aKey,
@@ -359,7 +513,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    // Disable observers for fragments
    mFlags &= ~NS_PARSER_FLAG_OBSERVERS_ENABLED;
  
-@@ -2392,16 +2484,21 @@ nsParser::BuildModel()
+@@ -2392,16 +2487,21 @@ nsParser::BuildModel()
  
  /*******************************************************************
    These methods are used to talk to the netlib system...
@@ -381,7 +535,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
    mParserContext->mStreamListenerState = eOnStart;
    mParserContext->mAutoDetectStatus = eUnknownDetect;
-@@ -2814,32 +2911,50 @@ CheckCharset(const char* aBytes,
+@@ -2814,32 +2914,50 @@ CheckCharset(const char* aBytes,
    }
  }
  
@@ -438,7 +592,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    if (theContext) {
-@@ -2886,16 +3001,22 @@ nsParser::OnDataAvailable(nsIRequest *re
+@@ -2886,16 +3004,22 @@ nsParser::OnDataAvailable(nsIRequest *re
  /**
   *  This is called by the networking library once the last block of data
   *  has been collected from the net.
@@ -495,7 +649,8 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
  
      /**
       *  Part of the code sandwich, this gets called right before
-@@ -466,17 +480,19 @@ private:
+@@ -465,18 +479,19 @@ private:
+      *  @return  TRUE if all went well
       */
      PRBool DidTokenize(PRBool aIsFinalChunk = PR_FALSE);
  
@@ -503,7 +658,7 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
      //*********************************************
      // And now, some data members...
      //*********************************************
-     
+-    
 -      
 +
 +    nsRefPtr<nsIThread> mParserThread;

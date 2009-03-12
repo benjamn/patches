@@ -23,7 +23,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -819,17 +819,17 @@ nsParser::Initialize(PRBool aConstructor
+@@ -822,17 +822,17 @@ nsParser::Initialize(PRBool aConstructor
    mInternalState = NS_OK;
    mStreamStatus = 0;
    mCommand = eViewNormal;

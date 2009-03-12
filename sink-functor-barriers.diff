@@ -471,3 +471,27 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
   *  This will dump content model into the output file.
   *
   *  @update  harishd 05/25/00
+diff --git a/content/xul/document/src/nsXULContentSink.cpp b/content/xul/document/src/nsXULContentSink.cpp
+--- a/content/xul/document/src/nsXULContentSink.cpp
++++ b/content/xul/document/src/nsXULContentSink.cpp
+@@ -270,16 +270,20 @@ XULContentSinkImpl::WillBuildModel(void)
+ #endif
+ 
+     return NS_OK;
+ }
+ 
+ NS_IMETHODIMP 
+ XULContentSinkImpl::DidBuildModel(void)
+ {
++    if (!NS_IsMainThread())
++        return BIND1(&XULContentSinkImpl::DidBuildModel,
++                     this).proxy(nsnull, NS_DISPATCH_SYNC)->Wait();
++
+     nsCOMPtr<nsIDocument> doc = do_QueryReferent(mDocument);
+     if (doc) {
+         doc->EndLoad();
+         mDocument = nsnull;
+     }
+ 
+     // Drop our reference to the parser to get rid of a circular
+     // reference.

@@ -40,7 +40,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
  
    template <typename Method>
    static Functor method(Method m) {
-@@ -284,9 +289,20 @@ JOIN16(DGFA,EMPTY)
+@@ -284,9 +289,35 @@ JOIN16(DGFA,EMPTY)
  #undef DECL_GLOBAL_FUNCTION_ADAPTERS
  #undef DECL_GLOBAL_METHOD_ADAPTER
  #undef DGMA
@@ -53,14 +53,29 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 +nsRefPtr<nsRunnableFunctor<Result, Functor<Result, Params> > >
 +Functor<Result, Params>::proxy(nsIEventTarget* target, PRUint32 flags)
 +{
++  static nsIThread* mainThread = nsnull;
++  if (!target && (mainThread || NS_SUCCEEDED(NS_GetMainThread(&mainThread))))
++      target = mainThread;
++
 +  typedef nsRunnableFunctor<Result, Functor> Event;
 +  nsRefPtr<Event> event(new Event(*this));
++
++#if DEBUG
++  nsIThread* currentThread = nsnull;
++  NS_GetCurrentThread(&currentThread);
++  if (currentThread == target) {
++    NS_ERROR("OYEZ Proxying to same thread!!");
++    NS_ABORT();
++  }
+ #endif
++
 +  PRBool dispatched = target && NS_SUCCEEDED(target->Dispatch(event, flags));
-+  NS_ASSERTION(dispatched, "Failed to dispatch event to target.");
++  NS_ASSERTION(dispatched, "Failed to dispatch event to thread.");
++
 +  return event; // event->Wait() will block forever if Dispatch failed
 +}
 +
- #endif
++#endif
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
@@ -82,28 +97,6 @@ diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
  
  # we don't want the shared lib, but we want to force the creation of a static lib.
  FORCE_STATIC_LIB = 1
-diff --git a/xpcom/glue/nsProxyRelease.h b/xpcom/glue/nsProxyRelease.h
---- a/xpcom/glue/nsProxyRelease.h
-+++ b/xpcom/glue/nsProxyRelease.h
-@@ -31,17 +31,17 @@
-  * use your version of this file under the terms of the MPL, indicate your
-  * decision by deleting the provisions above and replace them with the notice
-  * and other provisions required by the GPL or the LGPL. If you do not delete
-  * the provisions above, a recipient may use your version of this file under
-  * the terms of any one of the MPL, the GPL or the LGPL.
-  *
-  * ***** END LICENSE BLOCK ***** */
- 
--#ifndef nsProxyRelease_h_
-+#ifndef nsProxyRelease_h__
- #define nsProxyRelease_h__
- 
- #include "nsIEventTarget.h"
- #include "nsCOMPtr.h"
- 
- #ifdef XPCOM_GLUE_AVOID_NSPR
- #error NS_ProxyRelease implementation depends on NSPR.
- #endif
 diff --git a/xpcom/glue/nsRunnableFunctor.h b/xpcom/glue/nsRunnableFunctor.h
 new file mode 100644
 --- /dev/null

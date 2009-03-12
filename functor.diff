@@ -212,7 +212,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Functor.h
-@@ -0,0 +1,292 @@
+@@ -0,0 +1,291 @@
 +#ifndef Functor_h__
 +#define Functor_h__
 +
@@ -230,11 +230,10 @@ new file mode 100644
 +  // NS_DECL_ISUPPORTS are not needed, but the nsAutoRefCnt and
 +  // NS_DECL_OWNINGTHREAD members (also provided by NS_DECL_ISUPPORTS)
 +  // must now be declared manually.
-+  virtual ~FunctorSupports() {}
-+  NS_IMPL_ISUPPORTS0(FunctorSupports)
++  NS_IMPL_THREADSAFE_ISUPPORTS0(FunctorSupports)
 +protected:
++  virtual ~FunctorSupports() {}
 +  nsAutoRefCnt mRefCnt;
-+  NS_DECL_OWNINGTHREAD
 +};
 +
 +
