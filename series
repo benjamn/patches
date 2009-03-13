@@ -8,7 +8,6 @@ join.diff
 functor.diff
 runnable-functor.diff
 parser-functor-barriers.diff
-sink-functor-barriers.diff
 off-main-thread-parsing.diff
 bug-470356.diff
 innerhtml.diff
