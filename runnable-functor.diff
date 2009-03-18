@@ -19,7 +19,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
    // the method prototypes for AddRef, Release, and QueryInterface provided by
    // NS_DECL_ISUPPORTS are not needed, but the nsAutoRefCnt and
    // NS_DECL_OWNINGTHREAD members (also provided by NS_DECL_ISUPPORTS)
-@@ -75,16 +76,20 @@ public:
+@@ -74,16 +75,20 @@ public:
    typedef P1  first_argument_type;
    typedef P2 second_argument_type;
    typedef Result      result_type;
@@ -30,8 +30,8 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
   ~Functor() {}
 +
 +  nsRefPtr<nsRunnableFunctor<Result, Functor> >
-+  proxy(nsIEventTarget* target,
-+        PRUint32 flags = NS_DISPATCH_NORMAL);
++  proxy(nsIThread* target,
++        PRUint32 flags = NS_DISPATCH_SYNC);
  
    template <typename Callable>
    static Functor callable(Callable c) {
@@ -40,7 +40,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
  
    template <typename Method>
    static Functor method(Method m) {
-@@ -284,9 +289,35 @@ JOIN16(DGFA,EMPTY)
+@@ -283,9 +288,35 @@ JOIN16(DGFA,EMPTY)
  #undef DECL_GLOBAL_FUNCTION_ADAPTERS
  #undef DECL_GLOBAL_METHOD_ADAPTER
  #undef DGMA
@@ -51,7 +51,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
  
 +template <typename Result, class Params>
 +nsRefPtr<nsRunnableFunctor<Result, Functor<Result, Params> > >
-+Functor<Result, Params>::proxy(nsIEventTarget* target, PRUint32 flags)
++Functor<Result, Params>::proxy(nsIThread* target, PRUint32 flags)
 +{
 +  static nsIThread* mainThread = nsnull;
 +  if (!target && (mainThread || NS_SUCCEEDED(NS_GetMainThread(&mainThread))))
@@ -117,7 +117,7 @@ new file mode 100644
 +{
 +  nsAutoRefCnt mRefCnt;
 +public:
-+  NS_IMPL_THREADSAFE_ISUPPORTS0(ThreadSafeRunnable)
++  NS_IMPL_THREADSAFE_ISUPPORTS1(ThreadSafeRunnable, nsIRunnable)
 +protected:
 +  virtual ~ThreadSafeRunnable() {}
 +};

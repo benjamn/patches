@@ -1,0 +1,301 @@
+diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.cpp
+--- a/parser/htmlparser/src/CNavDTD.cpp
++++ b/parser/htmlparser/src/CNavDTD.cpp
+@@ -250,17 +250,17 @@ CNavDTD::WillBuildModel(const CParserCon
+ 
+   return result;
+ }
+ 
+ nsresult
+ CNavDTD::BuildModel(nsIParser* aParser,
+                     nsITokenizer* aTokenizer,
+                     nsITokenObserver* anObserver,
+-                    nsIContentSink* aSink)
++                    nsIContentSink*)
+ {
+   NS_PRECONDITION(mBodyContext != nsnull,
+                   "Create a context before calling build model");
+ 
+   nsresult result = NS_OK;
+ 
+   if (!aTokenizer || !aParser) {
+     return NS_OK;
+@@ -359,50 +359,46 @@ CNavDTD::BuildModel(nsIParser* aParser,
+   mTokenizer = oldTokenizer;
+   return result;
+ }
+ 
+ nsresult
+ CNavDTD::BuildNeglectedTarget(eHTMLTags aTarget,
+                               eHTMLTokenTypes aType,
+                               nsIParser* aParser,
+-                              nsIContentSink* aSink)
++                              nsIContentSink*)
+ { 
+   NS_ASSERTION(mTokenizer, "tokenizer is null! unable to build target.");
+   NS_ASSERTION(mTokenAllocator, "unable to create tokens without an allocator.");
+   if (!mTokenizer || !mTokenAllocator) {
+     return NS_OK;
+   }
+ 
+   CToken* target = mTokenAllocator->CreateTokenOfType(aType, aTarget);
+   NS_ENSURE_TRUE(target, NS_ERROR_OUT_OF_MEMORY);
+   mTokenizer->PushTokenFront(target);
+-  return BuildModel(aParser, mTokenizer, 0, aSink);
++  return BuildModel(aParser, mTokenizer, 0, 0);
+ }
+ 
+ nsresult
+ CNavDTD::DidBuildModel(nsresult anErrorCode,
+                        PRBool aNotifySink,
+                        nsIParser* aParser,
+-                       nsIContentSink* aSink)
++                       nsIContentSink*)
+ {
+-  if (!aSink) {
+-    return NS_OK;
+-  }
+-
+   nsresult result = NS_OK;
+   if (aParser && aNotifySink) {
+     if (NS_OK == anErrorCode) {
+       if (!(mFlags & NS_DTD_FLAG_HAS_MAIN_CONTAINER)) {
+         // This document is not a frameset document, however, it did not contain
+         // a body tag either. So, make one!. Note: Body tag is optional per spec..
+         // Also note: We ignore the return value of BuildNeglectedTarget, we
+         // can't reasonably respond to errors (or requests to block) at this
+         // point in the parsing process.
+-        BuildNeglectedTarget(eHTMLTag_body, eToken_start, aParser, aSink);
++        BuildNeglectedTarget(eHTMLTag_body, eToken_start, aParser, 0);
+       }
+       if (mFlags & NS_DTD_FLAG_MISPLACED_CONTENT) {
+         // Looks like the misplaced contents are not processed yet.
+         // Here is our last chance to handle the misplaced content.
+ 
+         // Keep track of the top index.
+         PRInt32 topIndex = mBodyContext->mContextTopIndex;
+         
+@@ -430,17 +426,17 @@ CNavDTD::DidBuildModel(nsresult anErrorC
+ 
+       // Now let's disable style handling to save time when closing remaining
+       // stack members.
+       mFlags &= ~NS_DTD_FLAG_ENABLE_RESIDUAL_STYLE;
+       while (mBodyContext->GetCount() > 0) { 
+         result = CloseContainersTo(mBodyContext->Last(), PR_FALSE);
+         if (NS_FAILED(result)) {
+           //No matter what, you need to call did build model.
+-          aSink->DidBuildModel();
++          mSink->DidBuildModel();
+           return result;
+         }
+       } 
+     } else {
+       // If you're here, then an error occured, but we still have nodes on the stack.
+       // At a minimum, we should grab the nodes and recycle them.
+       // Just to be correct, we'll also recycle the nodes.
+       while (mBodyContext->GetCount() > 0) { 
+@@ -455,17 +451,17 @@ CNavDTD::DidBuildModel(nsresult anErrorC
+     // by forcefully recycling any tokens we might find there.
+     CToken* theToken = 0;
+     while ((theToken = (CToken*)mMisplacedContent.Pop())) {
+       IF_FREE(theToken, mTokenAllocator);
+     }
+   }
+ 
+   // No matter what, you need to call did build model.
+-  return aSink->DidBuildModel(); 
++  return mSink->DidBuildModel(); 
+ }
+ 
+ NS_IMETHODIMP_(void) 
+ CNavDTD::Terminate() 
+ { 
+   mFlags |= NS_DTD_FLAG_STOP_PARSING; 
+ }
+ 
+@@ -3147,35 +3143,35 @@ CNavDTD::CreateContextStackFor(eHTMLTags
+     // Note: These tokens should all wind up on contextstack, so don't recycle
+     // them.
+     CToken *theToken = mTokenAllocator->CreateTokenOfType(eToken_start, theTag);
+     HandleToken(theToken, mParser);
+   }
+ }
+ 
+ nsresult
+-CNavDTD::WillResumeParse(nsIContentSink* aSink)
++CNavDTD::WillResumeParse(nsIContentSink*)
+ {
+   STOP_TIMER();
+   MOZ_TIMER_DEBUGLOG(("Stop: Parse Time: CNavDTD::WillResumeParse(), this=%p\n", this));
+ 
+-  nsresult result = aSink ? aSink->WillResume() : NS_OK;
++  nsresult result = mSink ? mSink->WillResume() : NS_OK;
+ 
+   MOZ_TIMER_DEBUGLOG(("Start: Parse Time: CNavDTD::WillResumeParse(), this=%p\n", this));
+   START_TIMER();
+ 
+   return result;
+ }
+ 
+ nsresult
+-CNavDTD::WillInterruptParse(nsIContentSink* aSink)
++CNavDTD::WillInterruptParse(nsIContentSink*)
+ {
+   STOP_TIMER();
+   MOZ_TIMER_DEBUGLOG(("Stop: Parse Time: CNavDTD::WillInterruptParse(), this=%p\n", this));
+ 
+-  nsresult result = aSink ? aSink->WillInterrupt() : NS_OK;
++  nsresult result = mSink ? mSink->WillInterrupt() : NS_OK;
+ 
+   MOZ_TIMER_DEBUGLOG(("Start: Parse Time: CNavDTD::WillInterruptParse(), this=%p\n", this));
+   START_TIMER();
+ 
+   return result;
+ }
+ 
+diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsExpatDriver.cpp
+--- a/parser/htmlparser/src/nsExpatDriver.cpp
++++ b/parser/htmlparser/src/nsExpatDriver.cpp
+@@ -1296,32 +1296,32 @@ nsExpatDriver::WillBuildModel(const CPar
+ 
+   return aSink->WillBuildModel();
+ }
+ 
+ NS_IMETHODIMP
+ nsExpatDriver::BuildModel(nsIParser* aParser,
+                           nsITokenizer* aTokenizer,
+                           nsITokenObserver* anObserver,
+-                          nsIContentSink* aSink)
++                          nsIContentSink*)
+ {
+   return mInternalState;
+ }
+ 
+ NS_IMETHODIMP
+ nsExpatDriver::DidBuildModel(nsresult anErrorCode,
+                              PRBool aNotifySink,
+                              nsIParser* aParser,
+-                             nsIContentSink* aSink)
++                             nsIContentSink*)
+ {
+   // Check for mSink is intentional. This would make sure
+   // that DidBuildModel() is called only once on the sink.
+   nsresult result = NS_OK;
+   if (mSink) {
+-    result = aSink->DidBuildModel();
++    nsCOMPtr<nsIContentSink>(do_QueryInterface(mSink))->DidBuildModel();
+     mSink = nsnull;
+   }
+ 
+   mExtendedSink = nsnull;
+ 
+   return result;
+ }
+ 
+@@ -1329,25 +1329,27 @@ nsExpatDriver::WillTokenize(PRBool aIsFi
+ nsExpatDriver::WillTokenize(PRBool aIsFinalChunk,
+                             nsTokenAllocator* aTokenAllocator)
+ {
+   mIsFinalChunk = aIsFinalChunk;
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+-nsExpatDriver::WillResumeParse(nsIContentSink* aSink)
++nsExpatDriver::WillResumeParse(nsIContentSink*)
+ {
+-  return aSink ? aSink->WillResume() : NS_OK;
++  nsCOMPtr<nsIContentSink> sink(do_QueryInterface(mSink));
++  return sink ? sink->WillResume() : NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+-nsExpatDriver::WillInterruptParse(nsIContentSink* aSink)
++nsExpatDriver::WillInterruptParse(nsIContentSink*)
+ {
+-  return aSink ? aSink->WillInterrupt() : NS_OK;
++  nsCOMPtr<nsIContentSink> sink(do_QueryInterface(mSink));
++  return sink ? sink->WillInterrupt() : NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ nsExpatDriver::DidTokenize(PRBool aIsFinalChunk)
+ {
+   return NS_OK;
+ }
+ 
+diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/nsViewSourceHTML.cpp
+--- a/parser/htmlparser/src/nsViewSourceHTML.cpp
++++ b/parser/htmlparser/src/nsViewSourceHTML.cpp
+@@ -333,17 +333,17 @@ nsresult CViewSourceHTML::WillBuildModel
+ /**
+   * The parser uses a code sandwich to wrap the parsing process. Before
+   * the process begins, WillBuildModel() is called. Afterwards the parser
+   * calls DidBuildModel().
+   * @update gess5/18/98
+   * @param  aFilename is the name of the file being parsed.
+   * @return error code (almost always 0)
+   */
+-NS_IMETHODIMP CViewSourceHTML::BuildModel(nsIParser* aParser,nsITokenizer* aTokenizer,nsITokenObserver* anObserver,nsIContentSink* aSink) {
++NS_IMETHODIMP CViewSourceHTML::BuildModel(nsIParser* aParser,nsITokenizer* aTokenizer,nsITokenObserver* anObserver,nsIContentSink*) {
+   nsresult result=NS_OK;
+ 
+   if(aTokenizer && aParser) {
+ 
+     nsITokenizer*  oldTokenizer=mTokenizer;
+     mTokenizer=aTokenizer;
+     nsTokenAllocator* theAllocator=mTokenizer->GetTokenAllocator();
+ 
+@@ -542,17 +542,17 @@ void CViewSourceHTML::AddAttrToNode(nsCP
+ }
+ 
+ /**
+  *
+  * @update  gess5/18/98
+  * @param
+  * @return
+  */
+-NS_IMETHODIMP CViewSourceHTML::DidBuildModel(nsresult anErrorCode,PRBool aNotifySink,nsIParser* aParser,nsIContentSink* aSink){
++NS_IMETHODIMP CViewSourceHTML::DidBuildModel(nsresult anErrorCode,PRBool aNotifySink,nsIParser* aParser,nsIContentSink*){
+   nsresult result= NS_OK;
+ 
+   //ADD CODE HERE TO CLOSE OPEN CONTAINERS...
+ 
+   if(aParser){
+ 
+     mParser=(nsParser*)aParser;  //debug XXX
+     STOP_TIMER();
+@@ -612,31 +612,31 @@ CViewSourceHTML::GetType() {
+ }
+ 
+ /**
+  *
+  * @update  gess5/18/98
+  * @param
+  * @return
+  */
+-NS_IMETHODIMP CViewSourceHTML::WillResumeParse(nsIContentSink* aSink){
++NS_IMETHODIMP CViewSourceHTML::WillResumeParse(nsIContentSink*){
+   nsresult result = NS_OK;
+   if(mSink) {
+     result = mSink->WillResume();
+   }
+   return result;
+ }
+ 
+ /**
+  *
+  * @update  gess5/18/98
+  * @param
+  * @return
+  */
+-NS_IMETHODIMP CViewSourceHTML::WillInterruptParse(nsIContentSink* aSink){
++NS_IMETHODIMP CViewSourceHTML::WillInterruptParse(nsIContentSink*){
+   nsresult result = NS_OK;
+   if(mSink) {
+     result = mSink->WillInterrupt();
+   }
+   return result;
+ }
+ 
+ /**

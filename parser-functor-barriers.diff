@@ -24,7 +24,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  
  #else
  #define SINK_TRACE_NODE(_bit, _msg, _tag, _sp, _obj)
-@@ -149,16 +153,49 @@ NS_NewHTMLNOTUSEDElement(nsINodeInfo *aN
+@@ -149,16 +153,34 @@ NS_NewHTMLNOTUSEDElement(nsINodeInfo *aN
  #define HTML_OTHER(_tag) NS_NewHTMLNOTUSEDElement,
  static const contentCreatorCallback sContentCreatorCallbacks[] = {
    NS_NewHTMLUnknownElement,
@@ -47,25 +47,10 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
 +                   nsRefPtr<HTMLContentSink>                                  \
 +                           (const_cast<HTMLContentSink*>(this))))
 +
-+template <typename T>
-+class AutoDerefHolder {
-+  T* mPtr;
-+public:
-+  AutoDerefHolder(T& t) : mPtr(&t) {}
-+  operator T&() { return *mPtr; }
-+  operator T*() { return mPtr; }
-+};
-+
-+template <typename T>
-+static AutoDerefHolder<T>
-+make_adf(T& t) {
-+  return AutoDerefHolder<T>(t);
-+}
-+
 +#define PARSER_NODE_PROXY_SYNC(METHOD, NODE)                                  \
 +  PROXY_SYNC(BIND2(&HTMLContentSink::METHOD,                                  \
 +                   nsRefPtr<HTMLContentSink>(this),                           \
-+                   make_adf(NODE)))
++                   ref(NODE)))
  
  class SinkContext;
  class HTMLContentSink;
@@ -74,7 +59,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  
  class HTMLContentSink : public nsContentSink,
  #ifdef DEBUG
-@@ -229,16 +266,18 @@ protected:
+@@ -229,16 +251,18 @@ protected:
  
  #ifdef NS_DEBUG
    void SinkTraceNode(PRUint32 aBit,
@@ -93,7 +78,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  
    nsGenericHTMLElement* mRoot;
    nsGenericHTMLElement* mBody;
-@@ -1628,16 +1667,17 @@ nsresult
+@@ -1628,16 +1652,17 @@ nsresult
  nsresult
  HTMLContentSink::Init(nsIDocument* aDoc,
                        nsIURI* aURI,
@@ -102,7 +87,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  {
    NS_ENSURE_TRUE(aContainer, NS_ERROR_NULL_POINTER);
  
-+  NS_GetCurrentThread(getter_AddRefs(mSinkThread));
++  NS_GetMainThread(getter_AddRefs(mSinkThread));
  
    MOZ_TIMER_DEBUGLOG(("Reset and start: nsHTMLContentSink::Init(), this=%p\n",
                        this));
@@ -111,7 +96,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  
    nsresult rv = nsContentSink::Init(aDoc, aURI, aContainer, aChannel);
    if (NS_FAILED(rv)) {
-@@ -1739,22 +1779,25 @@ HTMLContentSink::Init(nsIDocument* aDoc,
+@@ -1739,22 +1764,25 @@ HTMLContentSink::Init(nsIDocument* aDoc,
    MOZ_TIMER_STOP(mWatch);
  
    return NS_OK;
@@ -137,7 +122,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
        nsDTDMode dtdMode = mParser->GetParseMode();
        switch (dtdMode) {
          case eDTDMode_full_standards:
-@@ -1778,16 +1821,18 @@ HTMLContentSink::WillBuildModel(void)
+@@ -1778,16 +1806,18 @@ HTMLContentSink::WillBuildModel(void)
    mDocument->BeginLoad();
  
    return NS_OK;
@@ -156,7 +141,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    MOZ_TIMER_LOG(("Content creation time (this=%p): ", this));
    MOZ_TIMER_PRINT(mWatch);
  #endif
-@@ -1842,30 +1887,39 @@ HTMLContentSink::ReadyToCallDidBuildMode
+@@ -1842,30 +1872,39 @@ HTMLContentSink::ReadyToCallDidBuildMode
  HTMLContentSink::ReadyToCallDidBuildModel(PRBool aTerminated)
  {
    return ReadyToCallDidBuildModelImpl(aTerminated);
@@ -196,7 +181,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    SinkContext* sc = new SinkContext(this);
    if (!sc) {
      MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::BeginContext()\n"));
-@@ -1914,16 +1968,20 @@ HTMLContentSink::BeginContext(PRInt32 aP
+@@ -1914,16 +1953,20 @@ HTMLContentSink::BeginContext(PRInt32 aP
    MOZ_TIMER_STOP(mWatch);
  
    return NS_OK;
@@ -217,7 +202,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    SinkContext* sc = (SinkContext*) mContextStack.ElementAt(n);
  
    const SinkContext::Node &bottom = mCurrentContext->mStack[0];
-@@ -2004,16 +2062,18 @@ HTMLContentSink::CloseHTML()
+@@ -2004,16 +2047,18 @@ HTMLContentSink::CloseHTML()
    MOZ_TIMER_STOP(mWatch);
  
    return NS_OK;
@@ -236,7 +221,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::OpenHead()\n"));
    MOZ_TIMER_STOP(mWatch);
  
-@@ -2296,32 +2356,39 @@ HTMLContentSink::CloseFrameset()
+@@ -2296,32 +2341,39 @@ HTMLContentSink::CloseFrameset()
    }
  
    return rv;
@@ -276,7 +261,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    switch (aNode.GetNodeType()) {
      case eHTMLTag_frameset:
        rv = OpenFrameset(aNode);
-@@ -2359,16 +2426,20 @@ HTMLContentSink::OpenContainer(const nsI
+@@ -2359,16 +2411,20 @@ HTMLContentSink::OpenContainer(const nsI
    MOZ_TIMER_STOP(mWatch);
  
    return rv;
@@ -297,7 +282,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    switch (aTag) {
      case eHTMLTag_frameset:
        rv = CloseFrameset();
-@@ -2400,16 +2471,18 @@ HTMLContentSink::CloseMalformedContainer
+@@ -2400,16 +2456,18 @@ HTMLContentSink::CloseMalformedContainer
  HTMLContentSink::CloseMalformedContainer(const eHTMLTags aTag)
  {
    return mCurrentContext->CloseContainer(aTag, PR_TRUE);
@@ -316,7 +301,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    nsHTMLTag nodeType = nsHTMLTag(aNode.GetNodeType());
    switch (nodeType) {
    case eHTMLTag_link:
-@@ -2433,16 +2506,18 @@ HTMLContentSink::AddLeaf(const nsIParser
+@@ -2433,16 +2491,18 @@ HTMLContentSink::AddLeaf(const nsIParser
   * This gets called by the parsing system when we find a comment
   * @update	gess11/9/98
   * @param   aNode contains a comment token
@@ -335,7 +320,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::AddComment()\n"));
    MOZ_TIMER_STOP(mWatch);
  
-@@ -2453,16 +2528,18 @@ HTMLContentSink::AddComment(const nsIPar
+@@ -2453,16 +2513,18 @@ HTMLContentSink::AddComment(const nsIPar
   * This gets called by the parsing system when we find a PI
   * @update	gess11/9/98
   * @param   aNode contains a comment token
@@ -354,7 +339,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    MOZ_TIMER_STOP(mWatch);
  
    return result;
-@@ -2471,16 +2548,18 @@ HTMLContentSink::AddProcessingInstructio
+@@ -2471,16 +2533,18 @@ HTMLContentSink::AddProcessingInstructio
  /**
   *  This gets called by the parser when it encounters
   *  a DOCTYPE declaration in the HTML document.
@@ -373,7 +358,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  
    PRInt32 publicStart = docTypeStr.Find("PUBLIC", PR_TRUE);
    PRInt32 systemStart = docTypeStr.Find("SYSTEM", PR_TRUE);
-@@ -2715,34 +2794,39 @@ HTMLContentSink::WillProcessAToken(void)
+@@ -2715,34 +2779,41 @@ HTMLContentSink::WillProcessAToken(void)
  HTMLContentSink::WillProcessAToken(void)
  {
    return NS_OK;
@@ -403,7 +388,9 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  NS_IMETHODIMP
  HTMLContentSink::NotifyTagObservers(nsIParserNode* aNode)
  {
-+  PARSER_NODE_PROXY_SYNC(NotifyTagObservers, *aNode);
++  PROXY_SYNC(BIND2(&HTMLContentSink::NotifyTagObservers,
++                   nsRefPtr<HTMLContentSink>(this),
++                   aNode));
 +
    // Bug 125317
    // Inform observers that we're handling a document.write().
@@ -413,7 +400,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    if (!mObservers) {
      return NS_OK;
    }
-@@ -3184,16 +3268,20 @@ HTMLContentSink::ProcessSTYLEEndTag(nsGe
+@@ -3184,16 +3255,20 @@ HTMLContentSink::ProcessSTYLEEndTag(nsGe
    }
  
    return rv;
@@ -434,7 +421,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
      }
      else if (mCurrentContext) {
        mCurrentContext->FlushText();
-@@ -3215,16 +3303,20 @@ HTMLContentSink::FlushTags()
+@@ -3215,16 +3290,20 @@ HTMLContentSink::FlushTags()
    }
    
    return mCurrentContext ? mCurrentContext->FlushTags() : NS_OK;
@@ -455,7 +442,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
      nsCOMPtr<nsIMarkupDocumentViewer> muCV;
      nsCOMPtr<nsIContentViewer> cv;
      mDocShell->GetContentViewer(getter_AddRefs(cv));
-@@ -3263,16 +3355,17 @@ HTMLContentSink::SetDocumentCharset(nsAC
+@@ -3263,16 +3342,17 @@ HTMLContentSink::SetDocumentCharset(nsAC
    }
  
    return NS_OK;
@@ -567,6 +554,49 @@ diff --git a/content/xul/document/src/nsXULContentSink.cpp b/content/xul/documen
    // Adjust aAttsCount so it's the actual number of attributes
    aAttsCount /= 2;
    
+diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.cpp
+--- a/parser/htmlparser/src/CNavDTD.cpp
++++ b/parser/htmlparser/src/CNavDTD.cpp
+@@ -319,16 +319,19 @@ CNavDTD::BuildModel(nsIParser* aParser,
+                                            eHTMLTag_html,
+                                            NS_LITERAL_STRING("html"));
+       if (tempToken) {
+         mTokenizer->PushTokenFront(tempToken);
+       }
+     }
+   }
+ 
++  // Who needs comments?
++  const PRBool giveADamnAboutInterruptions = NS_IsMainThread();
++
+   while (NS_SUCCEEDED(result)) {
+     if (!(mFlags & NS_DTD_FLAG_STOP_PARSING)) {
+       CToken* theToken = mTokenizer->PopToken();
+       if (!theToken) {
+         break;
+       }
+       result = HandleToken(theToken, aParser);
+     } else {
+@@ -342,17 +345,18 @@ CNavDTD::BuildModel(nsIParser* aParser,
+       // interrupted. 
+       // The mParser->CanInterrupt will return TRUE if BuildModel was called
+       // from a place in the parser where it prepared to handle a return value of
+       // NS_ERROR_HTMLPARSER_INTERRUPTED.
+       // If the parser is processing a script's document.write we should not
+       // allow it to be interrupted.
+       // We also need to make sure that an interruption does not override
+       // a request to block the parser.
+-      if (mParser->CanInterrupt() && 
++      if (giveADamnAboutInterruptions &&
++          mParser->CanInterrupt() && 
+           !IsParserInDocWrite() && 
+           NS_SUCCEEDED(result)) {
+         result = NS_ERROR_HTMLPARSER_INTERRUPTED;
+         break;
+       }
+     }
+   }
+ 
 diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsExpatDriver.cpp
 --- a/parser/htmlparser/src/nsExpatDriver.cpp
 +++ b/parser/htmlparser/src/nsExpatDriver.cpp
@@ -590,7 +620,34 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
  #ifdef PR_LOGGING
  static PRLogModuleInfo *gExpatDriverLog = PR_NewLogModule("expatdriver");
  #endif
-@@ -424,20 +427,25 @@ nsExpatDriver::HandleStartElement(const 
+@@ -407,79 +410,94 @@ nsExpatDriver::nsExpatDriver()
+ 
+ nsExpatDriver::~nsExpatDriver()
+ {
+   if (mExpatParser) {
+     XML_ParserFree(mExpatParser);
+   }
+ }
+ 
++#define PROXY_SYNC(BOUND)                                                     \
++  PR_BEGIN_MACRO                                                              \
++    if (!NS_IsMainThread())                                                   \
++      return (BOUND).proxy(nsnull, NS_DISPATCH_SYNC)->Wait();                 \
++  PR_END_MACRO
++
+ nsresult
+ nsExpatDriver::HandleStartElement(const PRUnichar *aValue,
+                                   const PRUnichar **aAtts)
+ {
++  PROXY_SYNC(BIND3(&nsExpatDriver::HandleStartElement,
++                   this, aValue, aAtts));
++
+   NS_ASSERTION(mSink, "content sink not found!");
+ 
+   // Calculate the total number of elements in aAtts.
+   // XML_GetSpecifiedAttributeCount will only give us the number of specified
+   // attrs (twice that number, actually), so we have to check for default attrs
+   // ourselves.
    PRUint32 attrArrayLength;
    for (attrArrayLength = XML_GetSpecifiedAttributeCount(mExpatParser);
         aAtts[attrArrayLength];
@@ -605,13 +662,8 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
 -                         XML_GetCurrentLineNumber(mExpatParser));
 +    PRUint32 attrIndex = XML_GetIdAttributeIndex(mExpatParser),
 +            lineNumber = XML_GetCurrentLineNumber(mExpatParser);
-+    nsresult rv = NS_IsMainThread()
-+      ? mSink->HandleStartElement(aValue, aAtts, attrArrayLength,
-+                                  attrIndex, lineNumber)
-+      : BIND6(&nsIExpatSink::HandleStartElement,
-+              mSink,
-+              aValue, aAtts, attrArrayLength,
-+              attrIndex, lineNumber).proxy(nsnull, NS_DISPATCH_SYNC)->Wait();
++    nsresult rv = mSink->HandleStartElement(aValue, aAtts, attrArrayLength,
++                                            attrIndex, lineNumber);
      MaybeStopParser(rv);
    }
  
@@ -620,7 +672,234 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
  
  nsresult
  nsExpatDriver::HandleEndElement(const PRUnichar *aValue)
-@@ -716,16 +724,24 @@ ExternalDTDStreamReaderFunc(nsIUnicharIn
+ {
++  PROXY_SYNC(BIND2(&nsExpatDriver::HandleEndElement,
++                   this, aValue));
+   NS_ASSERTION(mSink, "content sink not found!");
+   NS_ASSERTION(mInternalState != NS_ERROR_HTMLPARSER_BLOCK,
+                "Shouldn't block from HandleStartElement.");
+ 
+   if (mSink && mInternalState != NS_ERROR_HTMLPARSER_STOPPARSING) {
+     nsresult rv = mSink->HandleEndElement(aValue);
+     MaybeStopParser(rv);
+   }
+ 
+   return NS_OK;
+ }
+ 
+ nsresult
+ nsExpatDriver::HandleCharacterData(const PRUnichar *aValue,
+                                    const PRUint32 aLength)
+ {
++  PROXY_SYNC(BIND3(&nsExpatDriver::HandleCharacterData,
++                   this, aValue, aLength));
+   NS_ASSERTION(mSink, "content sink not found!");
+ 
+   if (mInCData) {
+     mCDataText.Append(aValue, aLength);
+   }
+   else if (mSink) {
+     nsresult rv = mSink->HandleCharacterData(aValue, aLength);
+     MaybeStopParser(rv);
+   }
+ 
+   return NS_OK;
+ }
+ 
+ nsresult
+ nsExpatDriver::HandleComment(const PRUnichar *aValue)
+ {
++  PROXY_SYNC(BIND2(&nsExpatDriver::HandleComment,
++                   this, aValue));
+   NS_ASSERTION(mSink, "content sink not found!");
+ 
+   if (mInExternalDTD) {
+     // Ignore comments from external DTDs
+     return NS_OK;
+   }
+ 
+   if (mInInternalSubset) {
+@@ -494,16 +512,18 @@ nsExpatDriver::HandleComment(const PRUni
+ 
+   return NS_OK;
+ }
+ 
+ nsresult
+ nsExpatDriver::HandleProcessingInstruction(const PRUnichar *aTarget,
+                                            const PRUnichar *aData)
+ {
++  PROXY_SYNC(BIND3(&nsExpatDriver::HandleProcessingInstruction,
++                   this, aTarget, aData));
+   NS_ASSERTION(mSink, "content sink not found!");
+ 
+   if (mInExternalDTD) {
+     // Ignore PIs in external DTDs for now.  Eventually we want to
+     // pass them to the sink in a way that doesn't put them in the DOM
+     return NS_OK;
+   }
+ 
+@@ -522,28 +542,32 @@ nsExpatDriver::HandleProcessingInstructi
+   return NS_OK;
+ }
+ 
+ nsresult
+ nsExpatDriver::HandleXMLDeclaration(const PRUnichar *aVersion,
+                                     const PRUnichar *aEncoding,
+                                     PRInt32 aStandalone)
+ {
++  PROXY_SYNC(BIND4(&nsExpatDriver::HandleXMLDeclaration,
++                   this, aVersion, aEncoding, aStandalone));
+   if (mSink) {
+     nsresult rv = mSink->HandleXMLDeclaration(aVersion, aEncoding, aStandalone);
+     MaybeStopParser(rv);
+   }
+ 
+   return NS_OK;
+ }
+ 
+ nsresult
+ nsExpatDriver::HandleDefault(const PRUnichar *aValue,
+                              const PRUint32 aLength)
+ {
++  PROXY_SYNC(BIND3(&nsExpatDriver::HandleDefault,
++                   this, aValue, aLength));
+   NS_ASSERTION(mSink, "content sink not found!");
+ 
+   if (mInExternalDTD) {
+     // Ignore newlines in external DTDs
+     return NS_OK;
+   }
+ 
+   if (mInInternalSubset) {
+@@ -561,24 +585,26 @@ nsExpatDriver::HandleDefault(const PRUni
+   }
+ 
+   return NS_OK;
+ }
+ 
+ nsresult
+ nsExpatDriver::HandleStartCdataSection()
+ {
++  PROXY_SYNC(BIND1(&nsExpatDriver::HandleStartCdataSection, this));
+   mInCData = PR_TRUE;
+ 
+   return NS_OK;
+ }
+ 
+ nsresult
+ nsExpatDriver::HandleEndCdataSection()
+ {
++  PROXY_SYNC(BIND1(&nsExpatDriver::HandleEndCdataSection, this));
+   NS_ASSERTION(mSink, "content sink not found!");
+ 
+   mInCData = PR_FALSE;
+   if (mSink) {
+     nsresult rv = mSink->HandleCDataSection(mCDataText.get(),
+                                             mCDataText.Length());
+     MaybeStopParser(rv);
+   }
+@@ -586,70 +612,81 @@ nsExpatDriver::HandleEndCdataSection()
+ 
+   return NS_OK;
+ }
+ 
+ nsresult
+ nsExpatDriver::HandleStartNamespaceDecl(const PRUnichar* aPrefix,
+                                         const PRUnichar* aUri)
+ {
++  PROXY_SYNC(BIND3(&nsExpatDriver::HandleStartNamespaceDecl,
++                   this, aPrefix, aUri));
+   if (mExtendedSink) {
+     nsresult rv = mExtendedSink->HandleStartNamespaceDecl(aPrefix, aUri);
+     MaybeStopParser(rv);
+   }
+   return NS_OK;
+ }
+ 
+ nsresult
+ nsExpatDriver::HandleEndNamespaceDecl(const PRUnichar* aPrefix)
+ {
++  PROXY_SYNC(BIND2(&nsExpatDriver::HandleEndNamespaceDecl,
++                   this, aPrefix));
+   if (mExtendedSink && mInternalState != NS_ERROR_HTMLPARSER_STOPPARSING) {
+     nsresult rv = mExtendedSink->HandleEndNamespaceDecl(aPrefix);
+     MaybeStopParser(rv);
+   }
+   return NS_OK;
+ }
+ 
+ nsresult
+ nsExpatDriver::HandleNotationDecl(const PRUnichar* aNotationName,
+                                   const PRUnichar* aBase,
+                                   const PRUnichar* aSysid,
+                                   const PRUnichar* aPubid)
+ {
++  PROXY_SYNC(BIND5(&nsExpatDriver::HandleNotationDecl,
++                   this, aNotationName, aBase, aSysid, aPubid));
+   if (mExtendedSink) {
+     nsresult rv = mExtendedSink->HandleNotationDecl(aNotationName, aSysid,
+                                                     aPubid);
+     MaybeStopParser(rv);
+   }
+   return NS_OK;
+ }
+ 
+ nsresult
+ nsExpatDriver::HandleUnparsedEntityDecl(const PRUnichar* aEntityName,
+                                         const PRUnichar* aBase,
+                                         const PRUnichar* aSysid,
+                                         const PRUnichar* aPubid,
+                                         const PRUnichar* aNotationName)
+ {
++  PROXY_SYNC(BIND6(&nsExpatDriver::HandleUnparsedEntityDecl,
++                   this, aEntityName, aBase, aSysid, aPubid, aNotationName));
+   if (mExtendedSink) {
+     nsresult rv = mExtendedSink->HandleUnparsedEntityDecl(aEntityName,
+                                                           aSysid,
+                                                           aPubid,
+                                                           aNotationName);
+     MaybeStopParser(rv);
+   }
+   return NS_OK;
+ }
+ 
+ nsresult
+ nsExpatDriver::HandleStartDoctypeDecl(const PRUnichar* aDoctypeName,
+                                       const PRUnichar* aSysid,
+                                       const PRUnichar* aPubid,
+                                       PRBool aHasInternalSubset)
+ {
++  PROXY_SYNC(BIND5(&nsExpatDriver::HandleStartDoctypeDecl,
++                   this, aDoctypeName, aSysid, aPubid, aHasInternalSubset));
++
+   mDoctypeName = aDoctypeName;
+   mSystemID = aSysid;
+   mPublicID = aPubid;
+ 
+   if (mExtendedSink) {
+     nsresult rv = mExtendedSink->HandleStartDTD(aDoctypeName, aSysid, aPubid);
+     MaybeStopParser(rv);
+   }
+@@ -666,16 +703,18 @@ nsExpatDriver::HandleStartDoctypeDecl(co
+   }
+ 
+   return NS_OK;
+ }
+ 
+ nsresult
+ nsExpatDriver::HandleEndDoctypeDecl()
+ {
++  PROXY_SYNC(BIND1(&nsExpatDriver::HandleEndDoctypeDecl, this));
++
+   NS_ASSERTION(mSink, "content sink not found!");
+ 
+   mInInternalSubset = PR_FALSE;
+ 
+   if (mSink) {
+     // let the sink know any additional knowledge that we have about the
+     // document (currently, from bug 124570, we only expect to pass additional
+     // agent sheets needed to layout the XML vocabulary of the document)
+@@ -717,16 +756,19 @@ ExternalDTDStreamReaderFunc(nsIUnicharIn
  }
  
  int
@@ -629,14 +908,9 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
                                         const PRUnichar *systemId,
                                         const PRUnichar *publicId)
  {
-+  if (!NS_IsMainThread())
-+    return BIND5(&nsExpatDriver::HandleExternalEntityRef,
-+                 this,
-+                 openEntityNames,
-+                 base,
-+                 systemId,
-+                 publicId).proxy(nsnull, NS_DISPATCH_SYNC)->Wait();
-+  
++  PROXY_SYNC(BIND5(&nsExpatDriver::HandleExternalEntityRef,
++             this, openEntityNames, base, systemId, publicId));
++
    if (mInInternalSubset && !mInExternalDTD && openEntityNames) {
      mInternalSubset.Append(PRUnichar('%'));
      mInternalSubset.Append(nsDependentString(openEntityNames));
@@ -645,6 +919,206 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
  
    // Load the external entity into a buffer.
    nsCOMPtr<nsIInputStream> in;
+@@ -768,16 +810,19 @@ nsExpatDriver::HandleExternalEntityRef(c
+ 
+ nsresult
+ nsExpatDriver::OpenInputStreamFromExternalDTD(const PRUnichar* aFPIStr,
+                                               const PRUnichar* aURLStr,
+                                               const PRUnichar* aBaseURL,
+                                               nsIInputStream** aStream,
+                                               nsAString& aAbsURL)
+ {
++  PROXY_SYNC(BIND6(&nsExpatDriver::OpenInputStreamFromExternalDTD,
++                   this, aFPIStr, aURLStr, aBaseURL, aStream, nsString(aAbsURL)));
++  
+   nsCOMPtr<nsIURI> baseURI;
+   nsresult rv = NS_NewURI(getter_AddRefs(baseURI),
+                           NS_ConvertUTF16toUTF8(aBaseURL));
+   NS_ENSURE_SUCCESS(rv, rv);
+ 
+   nsCOMPtr<nsIURI> uri;
+   rv = NS_NewURI(getter_AddRefs(uri), NS_ConvertUTF16toUTF8(aURLStr), nsnull,
+                  baseURI);
+@@ -886,16 +931,18 @@ AppendErrorPointer(const PRInt32 aColNum
+   aSourceString.Append(PRUnichar('^'));
+ 
+   return NS_OK;
+ }
+ 
+ nsresult
+ nsExpatDriver::HandleError()
+ {
++  PROXY_SYNC(BIND1(&nsExpatDriver::HandleError, this));
++
+   PRInt32 code = XML_GetErrorCode(mExpatParser);
+   NS_ASSERTION(code > XML_ERROR_NONE, "unexpected XML error code");
+ 
+   // Map Expat error code to an error string
+   // XXX Deal with error returns.
+   nsAutoString description;
+   nsParserMsgUtils::GetLocalizedStringByID(XMLPARSER_PROPERTIES, code,
+                                            description);
+@@ -998,16 +1045,19 @@ nsExpatDriver::HandleError()
+ }
+ 
+ void
+ nsExpatDriver::ParseBuffer(const PRUnichar *aBuffer,
+                            PRUint32 aLength,
+                            PRBool aIsFinal,
+                            PRUint32 *aConsumed)
+ {
++  PROXY_SYNC(BIND5(&nsExpatDriver::ParseBuffer, this,
++                   aBuffer, aLength, aIsFinal, aConsumed));
++
+   NS_ASSERTION((aBuffer && aLength != 0) || (!aBuffer && aLength == 0), "?");
+   NS_ASSERTION(mInternalState != NS_OK || aIsFinal || aBuffer,
+                "Useless call, we won't call Expat");
+   NS_PRECONDITION(!BlockedOrInterrupted() || !aBuffer,
+                   "Non-null buffer when resuming");
+   NS_PRECONDITION(XML_GetCurrentByteIndex(mExpatParser) % sizeof(PRUnichar) == 0,
+                   "Consumed part of a PRUnichar?");
+ 
+@@ -1049,16 +1099,19 @@ nsExpatDriver::ParseBuffer(const PRUnich
+   else {
+     *aConsumed = 0;
+   }
+ }
+ 
+ NS_IMETHODIMP
+ nsExpatDriver::ConsumeToken(nsScanner& aScanner, PRBool& aFlushTokens)
+ {
++  PROXY_SYNC(BIND3(&nsExpatDriver::ConsumeToken, this,
++                   ref(aScanner),
++                   ref(aFlushTokens)));
+   // We keep the scanner pointing to the position where Expat will start
+   // parsing.
+   nsScannerIterator currentExpatPosition;
+   aScanner.CurrentPosition(currentExpatPosition);
+ 
+   // This is the start of the first buffer that we need to pass to Expat.
+   nsScannerIterator start = currentExpatPosition;
+   start.advance(mExpatBuffered);
+@@ -1219,16 +1272,20 @@ nsExpatDriver::ConsumeToken(nsScanner& a
+   return NS_SUCCEEDED(mInternalState) ? kEOF : NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ nsExpatDriver::WillBuildModel(const CParserContext& aParserContext,
+                               nsITokenizer* aTokenizer,
+                               nsIContentSink* aSink)
+ {
++  PROXY_SYNC(BIND4(&nsExpatDriver::WillBuildModel, this,
++                   ref(aParserContext),
++                   aTokenizer, aSink));
++
+   mSink = do_QueryInterface(aSink);
+   if (!mSink) {
+     NS_ERROR("nsExpatDriver didn't get an nsIExpatSink");
+     // Make sure future calls to us bail out as needed
+     mInternalState = NS_ERROR_UNEXPECTED;
+     return mInternalState;
+   }
+ 
+@@ -1298,25 +1355,29 @@ nsExpatDriver::WillBuildModel(const CPar
+ }
+ 
+ NS_IMETHODIMP
+ nsExpatDriver::BuildModel(nsIParser* aParser,
+                           nsITokenizer* aTokenizer,
+                           nsITokenObserver* anObserver,
+                           nsIContentSink* aSink)
+ {
++  PROXY_SYNC(BIND5(&nsExpatDriver::BuildModel, this,
++                   aParser, aTokenizer, anObserver, aSink));
+   return mInternalState;
+ }
+ 
+ NS_IMETHODIMP
+ nsExpatDriver::DidBuildModel(nsresult anErrorCode,
+                              PRBool aNotifySink,
+                              nsIParser* aParser,
+                              nsIContentSink* aSink)
+ {
++  PROXY_SYNC(BIND5(&nsExpatDriver::DidBuildModel, this,
++                   anErrorCode, aNotifySink, aParser, aSink));
+   // Check for mSink is intentional. This would make sure
+   // that DidBuildModel() is called only once on the sink.
+   nsresult result = NS_OK;
+   if (mSink) {
+     result = aSink->DidBuildModel();
+     mSink = nsnull;
+   }
+ 
+@@ -1324,41 +1385,48 @@ nsExpatDriver::DidBuildModel(nsresult an
+ 
+   return result;
+ }
+ 
+ NS_IMETHODIMP
+ nsExpatDriver::WillTokenize(PRBool aIsFinalChunk,
+                             nsTokenAllocator* aTokenAllocator)
+ {
++  PROXY_SYNC(BIND3(&nsExpatDriver::WillTokenize, this,
++                   aIsFinalChunk, aTokenAllocator));
+   mIsFinalChunk = aIsFinalChunk;
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ nsExpatDriver::WillResumeParse(nsIContentSink* aSink)
+ {
+-  return aSink ? aSink->WillResume() : NS_OK;
++  if (aSink)
++    PROXY_SYNC(BIND1(&nsIContentSink::WillResume, aSink));
++  return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ nsExpatDriver::WillInterruptParse(nsIContentSink* aSink)
+ {
+-  return aSink ? aSink->WillInterrupt() : NS_OK;
++  if (aSink)
++    PROXY_SYNC(BIND1(&nsIContentSink::WillInterrupt, aSink));
++  return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ nsExpatDriver::DidTokenize(PRBool aIsFinalChunk)
+ {
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP_(void)
+ nsExpatDriver::Terminate()
+ {
++  PROXY_SYNC(BIND1(&nsExpatDriver::Terminate, this));
+   // XXX - not sure what happens to the unparsed data.
+   if (mExpatParser) {
+     XML_StopParser(mExpatParser, XML_FALSE);
+   }
+   mInternalState = NS_ERROR_HTMLPARSER_STOPPARSING;
+ }
+ 
+ NS_IMETHODIMP_(PRInt32)
+@@ -1438,16 +1506,18 @@ nsExpatDriver::CanContain(PRInt32 aParen
+ nsExpatDriver::CanContain(PRInt32 aParent,PRInt32 aChild) const
+ {
+   return PR_TRUE;
+ }
+ 
+ void
+ nsExpatDriver::MaybeStopParser(nsresult aState)
+ {
++  PROXY_SYNC(BIND2(&nsExpatDriver::MaybeStopParser, this, aState));
++
+   if (NS_FAILED(aState)) {
+     // If we had a failure we want to override NS_ERROR_HTMLPARSER_INTERRUPTED
+     // and we want to override NS_ERROR_HTMLPARSER_BLOCK but not with
+     // NS_ERROR_HTMLPARSER_INTERRUPTED.
+     if (NS_SUCCEEDED(mInternalState) ||
+         mInternalState == NS_ERROR_HTMLPARSER_INTERRUPTED ||
+         (mInternalState == NS_ERROR_HTMLPARSER_BLOCK &&
+          aState != NS_ERROR_HTMLPARSER_INTERRUPTED)) {
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
@@ -714,7 +1188,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
  void
  nsParser::Cleanup()
-@@ -906,16 +924,19 @@ nsParser::PostContinueEvent()
+@@ -907,16 +925,19 @@ nsParser::PostContinueEvent()
      }
    }
    return NS_OK;
@@ -734,7 +1208,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  {
    aCommand = mCommandStr;
  }
-@@ -925,16 +946,22 @@ nsParser::GetCommand(nsCString& aCommand
+@@ -926,16 +947,22 @@ nsParser::GetCommand(nsCString& aCommand
   *  about the command which caused the parser to be constructed. For example,
   *  this allows us to select a DTD which can do, say, view-source.
   *
@@ -757,7 +1231,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    } else {
      mCommand = eViewNormal;
    }
-@@ -945,29 +972,39 @@ nsParser::SetCommand(const char* aComman
+@@ -946,29 +973,39 @@ nsParser::SetCommand(const char* aComman
   *  about the command which caused the parser to be constructed. For example,
   *  this allows us to select a DTD which can do, say, view-source.
   *
@@ -797,7 +1271,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  }
  
  void
-@@ -983,30 +1020,36 @@ nsParser::SetSinkCharset(nsACString& aCh
+@@ -984,30 +1021,36 @@ nsParser::SetSinkCharset(nsACString& aCh
   *  sink for this parser to dump nodes to.
   *
   *  @param   nsIContentSink interface for node receiver
@@ -872,7 +1346,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
    nsresult result = NS_OK;
    // XXX - [ until we figure out a way to break parser-sink circularity ]
-@@ -1878,33 +1925,55 @@ nsParser::SetCanInterrupt(PRBool aCanInt
+@@ -1876,33 +1923,55 @@ nsParser::SetCanInterrupt(PRBool aCanInt
   *  of this method.
   */
  NS_IMETHODIMP
@@ -929,15 +1403,15 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +    nsScanner* theScanner = new nsScanner(*theName, PR_FALSE, mCharset,
                                            mCharsetSource);
 +    delete theName;
-     CParserContext* pc = new CParserContext(theScanner, aKey, mCommand,
-                                             aListener);
+     CParserContext* pc = new CParserContext(mParserContext, theScanner, aKey,
+                                             mCommand, aListener);
      if (pc && theScanner) {
        pc->mMultipart = PR_TRUE;
        pc->mContextType = CParserContext::eCTURL;
        pc->mDTDMode = aMode;
        PushContext(*pc);
  
-@@ -1925,23 +1994,40 @@ nsParser::Parse(nsIURI* aURL,
+@@ -1923,23 +1992,40 @@ nsParser::Parse(nsIURI* aURL,
  /**
   * Call this method if all you want to do is parse 1 string full of HTML text.
   * In particular, this method should be called by the DOM when it has an HTML
@@ -983,7 +1457,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    if (!aLastCall && aSourceBuffer.IsEmpty()) {
-@@ -2064,16 +2150,25 @@ NS_IMETHODIMP
+@@ -2057,16 +2143,25 @@ NS_IMETHODIMP
  NS_IMETHODIMP
  nsParser::ParseFragment(const nsAString& aSourceBuffer,
                          void* aKey,
@@ -1009,7 +1483,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    // Disable observers for fragments
    mFlags &= ~NS_PARSER_FLAG_OBSERVERS_ENABLED;
  
-@@ -2392,16 +2487,21 @@ nsParser::BuildModel()
+@@ -2381,16 +2476,21 @@ nsParser::BuildModel()
  
  /*******************************************************************
    These methods are used to talk to the netlib system...
@@ -1031,7 +1505,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
    mParserContext->mStreamListenerState = eOnStart;
    mParserContext->mAutoDetectStatus = eUnknownDetect;
-@@ -2814,32 +2914,50 @@ CheckCharset(const char* aBytes,
+@@ -2806,32 +2906,50 @@ CheckCharset(const char* aBytes,
    }
  }
  
@@ -1088,7 +1562,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    if (theContext) {
-@@ -2886,16 +3004,22 @@ nsParser::OnDataAvailable(nsIRequest *re
+@@ -2878,16 +2996,22 @@ nsParser::OnDataAvailable(nsIRequest *re
  /**
   *  This is called by the networking library once the last block of data
   *  has been collected from the net.
@@ -1160,10 +1634,10 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
 +    nsRefPtr<nsIThread> mParserThread;
 +
      CParserContext*              mParserContext;
+     nsCOMPtr<nsIDTD>             mDTD;
      nsCOMPtr<nsIRequestObserver> mObserver;
      nsCOMPtr<nsIContentSink>     mSink;
      nsIRunnable*                 mContinueEvent;  // weak ref
      nsRefPtr<nsSpeculativeScriptThread> mSpeculativeScriptThread;
     
      nsCOMPtr<nsIParserFilter> mParserFilter;
-     nsTokenAllocator          mTokenAllocator;
