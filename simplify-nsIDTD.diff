@@ -193,7 +193,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
        // At a minimum, we should grab the nodes and recycle them.
        // Just to be correct, we'll also recycle the nodes.
        while (mBodyContext->GetCount() > 0) { 
-@@ -455,30 +452,48 @@ CNavDTD::DidBuildModel(nsresult anErrorC
+@@ -455,30 +452,36 @@ CNavDTD::DidBuildModel(nsresult anErrorC
      // by forcefully recycling any tokens we might find there.
      CToken* theToken = 0;
      while ((theToken = (CToken*)mMisplacedContent.Pop())) {
@@ -222,19 +222,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
 +NS_IMETHODIMP_(nsITokenizer*)
 +CNavDTD::CreateTokenizer()
 +{
-+  nsCOMPtr<nsIHTMLContentSink> sink = do_QueryInterface(mSink);
-+  PRUint16 theFlags = 0;
-+  if (sink) {
-+    // XXX This code is repeated both here and in nsViewSourceHTML.
-+    PRBool enabled;
-+    sink->IsEnabled(eHTMLTag_frameset, &enabled);
-+    if (enabled)
-+      theFlags |= NS_IPARSER_FLAG_FRAMES_ENABLED;
-+    sink->IsEnabled(eHTMLTag_script, &enabled);
-+    if (enabled)
-+      theFlags |= NS_IPARSER_FLAG_SCRIPT_ENABLED;
-+  }
-+  return new nsHTMLTokenizer(mDTDMode, mDocType, mParserCommand, theFlags);
++  return new nsHTMLTokenizer(mDTDMode, mDocType, mParserCommand, mSink);
  }
  
  /**
@@ -243,7 +231,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
   *
   * @param aToken The current token that we care about.
   * @param aTokenizer A tokenizer that we can get the tags attributes off of.
-@@ -3147,35 +3162,35 @@ CNavDTD::CreateContextStackFor(eHTMLTags
+@@ -3147,35 +3150,35 @@ CNavDTD::CreateContextStackFor(eHTMLTags
      // Note: These tokens should all wind up on contextstack, so don't recycle
      // them.
      CToken *theToken = mTokenAllocator->CreateTokenOfType(eToken_start, theTag);
@@ -490,6 +478,63 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
  nsExpatDriver::PushTokenFront(CToken* aToken)
  {
    return 0;
+diff --git a/parser/htmlparser/src/nsHTMLTokenizer.cpp b/parser/htmlparser/src/nsHTMLTokenizer.cpp
+--- a/parser/htmlparser/src/nsHTMLTokenizer.cpp
++++ b/parser/htmlparser/src/nsHTMLTokenizer.cpp
+@@ -68,19 +68,29 @@ NS_IMPL_ISUPPORTS1(nsHTMLTokenizer, nsIT
+  * 
+  * @param  aParseMode The current mode the document is in (quirks, etc.)
+  * @param  aDocType The document type of the current document
+  * @param  aCommand What we are trying to do (view-source, parse a fragment, etc.)
+  */
+ nsHTMLTokenizer::nsHTMLTokenizer(PRInt32 aParseMode,
+                                  eParserDocType aDocType,
+                                  eParserCommands aCommand,
+-                                 PRUint16 aFlags) :
+-  nsITokenizer(), mTokenDeque(0), mFlags(aFlags)
++                                 nsIHTMLContentSink* aSink)
++  : nsITokenizer(), mTokenDeque(0), mFlags(0)
+ {
++  if (aSink) {
++    PRBool enabled;
++    aSink->IsEnabled(eHTMLTag_frameset, &enabled);
++    if (enabled)
++      mFlags |= NS_IPARSER_FLAG_FRAMES_ENABLED;
++    aSink->IsEnabled(eHTMLTag_script, &enabled);
++    if (enabled)
++      mFlags |= NS_IPARSER_FLAG_SCRIPT_ENABLED;
++  }
++
+   if (aParseMode == eDTDMode_full_standards ||
+       aParseMode == eDTDMode_almost_standards) {
+     mFlags |= NS_IPARSER_FLAG_STRICT_MODE;
+   } else if (aParseMode == eDTDMode_quirks)  {
+     mFlags |= NS_IPARSER_FLAG_QUIRKS_MODE;
+   } else if (aParseMode == eDTDMode_autodetect) {
+     mFlags |= NS_IPARSER_FLAG_AUTO_DETECT_MODE;
+   } else {
+diff --git a/parser/htmlparser/src/nsHTMLTokenizer.h b/parser/htmlparser/src/nsHTMLTokenizer.h
+--- a/parser/htmlparser/src/nsHTMLTokenizer.h
++++ b/parser/htmlparser/src/nsHTMLTokenizer.h
+@@ -65,17 +65,17 @@ class nsHTMLTokenizer : public nsITokeni
+ class nsHTMLTokenizer : public nsITokenizer {
+ public:
+   
+   NS_DECL_ISUPPORTS
+   NS_DECL_NSITOKENIZER
+   nsHTMLTokenizer(PRInt32 aParseMode = eDTDMode_quirks,
+                   eParserDocType aDocType = eHTML_Quirks,
+                   eParserCommands aCommand = eViewNormal,
+-                  PRUint16 aFlags = 0);
++                  nsIHTMLContentSink* aSink = 0);
+   virtual ~nsHTMLTokenizer();
+ 
+ protected:
+ 
+   nsresult ConsumeTag(PRUnichar aChar,CToken*& aToken,nsScanner& aScanner,PRBool& aFlushTokens);
+   nsresult ConsumeStartTag(PRUnichar aChar,CToken*& aToken,nsScanner& aScanner,PRBool& aFlushTokens);
+   nsresult ConsumeEndTag(PRUnichar aChar,CToken*& aToken,nsScanner& aScanner);
+   nsresult ConsumeAttributes(PRUnichar aChar, CToken* aToken, nsScanner& aScanner);
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
@@ -723,7 +768,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
  
      mParser=(nsParser*)aParser;  //debug XXX
      STOP_TIMER();
-@@ -606,37 +612,57 @@ CViewSourceHTML::Terminate() {
+@@ -606,37 +612,45 @@ CViewSourceHTML::Terminate() {
  CViewSourceHTML::Terminate() {
  }
  
@@ -735,19 +780,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
 +NS_IMETHODIMP_(nsITokenizer*)
 +CViewSourceHTML::CreateTokenizer()
 +{
-+  nsCOMPtr<nsIHTMLContentSink> sink = do_QueryInterface(mSink);
-+  PRUint16 theFlags = 0;
-+  if (sink) {
-+    // XXX This code is repeated both here and in CNavDTD.
-+    PRBool enabled;
-+    sink->IsEnabled(eHTMLTag_frameset, &enabled);
-+    if (enabled)
-+      theFlags |= NS_IPARSER_FLAG_FRAMES_ENABLED;
-+    sink->IsEnabled(eHTMLTag_script, &enabled);
-+    if (enabled)
-+      theFlags |= NS_IPARSER_FLAG_SCRIPT_ENABLED;
-+  }
-+  return new nsHTMLTokenizer(mDTDMode, mDocType, mParserCommand, theFlags);
++  return new nsHTMLTokenizer(mDTDMode, mDocType, mParserCommand, mSink);
 +}
 +
  /**
