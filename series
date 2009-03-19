@@ -1,5 +1,5 @@
 parser-own-dtd.diff
-elim-parser-sink.diff
+simplify-nsIDTD.diff
 kill-jsd_assert.diff
 safe-suspect-forget.diff
 hdst-index-bound.diff
