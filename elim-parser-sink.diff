@@ -117,7 +117,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
  
    if (!aTokenizer || !aParser) {
      return NS_OK;
-@@ -358,51 +357,45 @@ CNavDTD::BuildModel(nsIParser* aParser,
+@@ -358,51 +357,49 @@ CNavDTD::BuildModel(nsIParser* aParser,
  
    mTokenizer = oldTokenizer;
    return result;
@@ -151,9 +151,10 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
 +                       nsIParser* aParser)
  {
 -  if (!aSink) {
--    return NS_OK;
--  }
--
++  if (!mSink) {
+     return NS_OK;
+   }
+ 
    nsresult result = NS_OK;
    if (aParser && aNotifySink) {
      if (NS_OK == anErrorCode) {
@@ -173,7 +174,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
          // Keep track of the top index.
          PRInt32 topIndex = mBodyContext->mContextTopIndex;
          
-@@ -430,17 +423,17 @@ CNavDTD::DidBuildModel(nsresult anErrorC
+@@ -430,17 +427,17 @@ CNavDTD::DidBuildModel(nsresult anErrorC
  
        // Now let's disable style handling to save time when closing remaining
        // stack members.
@@ -192,7 +193,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
        // At a minimum, we should grab the nodes and recycle them.
        // Just to be correct, we'll also recycle the nodes.
        while (mBodyContext->GetCount() > 0) { 
-@@ -455,30 +448,36 @@ CNavDTD::DidBuildModel(nsresult anErrorC
+@@ -455,30 +452,48 @@ CNavDTD::DidBuildModel(nsresult anErrorC
      // by forcefully recycling any tokens we might find there.
      CToken* theToken = 0;
      while ((theToken = (CToken*)mMisplacedContent.Pop())) {
@@ -221,7 +222,19 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
 +NS_IMETHODIMP_(nsITokenizer*)
 +CNavDTD::CreateTokenizer()
 +{
-+  return new nsHTMLTokenizer(mDTDMode, mDocType, mParserCommand, mFlags);
++  nsCOMPtr<nsIHTMLContentSink> sink = do_QueryInterface(mSink);
++  PRUint16 theFlags = 0;
++  if (sink) {
++    // XXX This code is repeated both here and in nsViewSourceHTML.
++    PRBool enabled;
++    sink->IsEnabled(eHTMLTag_frameset, &enabled);
++    if (enabled)
++      theFlags |= NS_IPARSER_FLAG_FRAMES_ENABLED;
++    sink->IsEnabled(eHTMLTag_script, &enabled);
++    if (enabled)
++      theFlags |= NS_IPARSER_FLAG_SCRIPT_ENABLED;
++  }
++  return new nsHTMLTokenizer(mDTDMode, mDocType, mParserCommand, theFlags);
  }
  
  /**
@@ -230,7 +243,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
   *
   * @param aToken The current token that we care about.
   * @param aTokenizer A tokenizer that we can get the tags attributes off of.
-@@ -3147,35 +3146,35 @@ CNavDTD::CreateContextStackFor(eHTMLTags
+@@ -3147,35 +3162,35 @@ CNavDTD::CreateContextStackFor(eHTMLTags
      // Note: These tokens should all wind up on contextstack, so don't recycle
      // them.
      CToken *theToken = mTokenAllocator->CreateTokenOfType(eToken_start, theTag);
@@ -413,7 +426,7 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
    nsresult result = NS_OK;
    if (mSink) {
 -    result = aSink->DidBuildModel();
-+    nsCOMPtr<nsIContentSink>(do_QueryInterface(mSink))->DidBuildModel();
++    result = nsCOMPtr<nsIContentSink>(do_QueryInterface(mSink))->DidBuildModel();
      mSink = nsnull;
    }
  
@@ -710,40 +723,33 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
  
      mParser=(nsParser*)aParser;  //debug XXX
      STOP_TIMER();
-@@ -602,41 +608,63 @@ NS_IMETHODIMP CViewSourceHTML::DidBuildM
-  * @param
-  * @return
-  */
- NS_IMETHODIMP_(void)
+@@ -606,37 +612,57 @@ CViewSourceHTML::Terminate() {
  CViewSourceHTML::Terminate() {
  }
  
  NS_IMETHODIMP_(PRInt32)
--CViewSourceHTML::GetType() {
-+CViewSourceHTML::GetType()
-+{
+ CViewSourceHTML::GetType() {
    return NS_IPARSER_FLAG_HTML;
-+}
-+
+ }
+ 
 +NS_IMETHODIMP_(nsITokenizer*)
 +CViewSourceHTML::CreateTokenizer()
 +{
 +  nsCOMPtr<nsIHTMLContentSink> sink = do_QueryInterface(mSink);
 +  PRUint16 theFlags = 0;
 +  if (sink) {
-+    // XXX This code is repeated both here and in CNavDTD. Can the two
-+    // callsites be combined?
++    // XXX This code is repeated both here and in CNavDTD.
 +    PRBool enabled;
 +    sink->IsEnabled(eHTMLTag_frameset, &enabled);
-+    if(enabled)
++    if (enabled)
 +      theFlags |= NS_IPARSER_FLAG_FRAMES_ENABLED;
 +    sink->IsEnabled(eHTMLTag_script, &enabled);
-+    if(enabled)
++    if (enabled)
 +      theFlags |= NS_IPARSER_FLAG_SCRIPT_ENABLED;
 +  }
 +  return new nsHTMLTokenizer(mDTDMode, mDocType, mParserCommand, theFlags);
- }
- 
++}
++
  /**
   *
   * @update  gess5/18/98
