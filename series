@@ -1,10 +1,10 @@
 parser-own-dtd.diff
 simplify-nsIDTD.diff
+dtd-const-mparser.diff
 kill-jsd_assert.diff
 safe-suspect-forget.diff
 hdst-index-bound.diff
 suppress-title-change-events.diff
-dtd-const-mparser.diff
 parser-copy-data.diff
 join.diff
 functor.diff

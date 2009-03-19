@@ -1,7 +1,9 @@
+* * *
+
 diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD.h
 --- a/parser/htmlparser/public/nsIDTD.h
 +++ b/parser/htmlparser/public/nsIDTD.h
-@@ -121,17 +121,17 @@ public:
+@@ -119,17 +119,17 @@ public:
       * created during the parse phase is stored in a deque (in the
       * parser) and are passed to this method so that the DTD can
       * process the token. Ultimately, the DTD will transform given
@@ -11,7 +13,7 @@ diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD
       * @return error code (usually 0)
       */
 -    NS_IMETHOD HandleToken(CToken* aToken,nsIParser* aParser) = 0;
-+    NS_IMETHOD HandleToken(CToken* aToken,const nsIParser* aParser) = 0;
++    NS_IMETHOD HandleToken(CToken* aToken, const nsIParser* aParser) = 0;
  
      /**
       * If the parse process gets interrupted midway, this method is
@@ -19,24 +21,25 @@ diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD
       * @update  gess5/18/98
       * @return ignored
       */
-     NS_IMETHOD WillResumeParse(nsIContentSink* aSink) = 0;
-@@ -181,16 +181,16 @@ public:
+     NS_IMETHOD WillResumeParse() = 0;
+@@ -181,17 +181,17 @@ public:
  };
  
  NS_DEFINE_STATIC_IID_ACCESSOR(nsIDTD, NS_IDTD_IID)
  
  #define NS_DECL_NSIDTD \
      NS_IMETHOD WillBuildModel(  const CParserContext& aParserContext, nsITokenizer* aTokenizer, nsIContentSink* aSink);\
-     NS_IMETHOD DidBuildModel(nsresult anErrorCode,PRBool aNotifySink,nsIParser* aParser,nsIContentSink* aSink);\
-     NS_IMETHOD BuildModel(nsIParser* aParser,nsITokenizer* aTokenizer,nsITokenObserver* anObserver,nsIContentSink* aSink);\
--    NS_IMETHOD HandleToken(CToken* aToken,nsIParser* aParser);\
-+    NS_IMETHOD HandleToken(CToken* aToken,const nsIParser* aParser);\
-     NS_IMETHOD WillResumeParse(nsIContentSink* aSink = 0);\
-     NS_IMETHOD WillInterruptParse(nsIContentSink* aSink = 0);\
+     NS_IMETHOD DidBuildModel(nsresult anErrorCode, PRBool aNotifySink, nsIParser* aParser);\
+     NS_IMETHOD BuildModel(nsIParser* aParser, nsITokenizer* aTokenizer, nsITokenObserver* anObserver);\
+-    NS_IMETHOD HandleToken(CToken* aToken, nsIParser* aParser);\
++    NS_IMETHOD HandleToken(CToken* aToken, const nsIParser* aParser);\
+     NS_IMETHOD WillResumeParse();\
+     NS_IMETHOD WillInterruptParse();\
      NS_IMETHOD_(PRBool) CanContain(PRInt32 aParent,PRInt32 aChild) const;\
      NS_IMETHOD_(PRBool) IsContainer(PRInt32 aTag) const;\
      NS_IMETHOD_(void)  Terminate();\
-     NS_IMETHOD_(PRInt32) GetType();
+     NS_IMETHOD_(PRInt32) GetType();\
+     NS_IMETHOD_(nsITokenizer*) CreateTokenizer();
  #endif /* nsIDTD_h___ */
 diff --git a/parser/htmlparser/public/nsIParser.h b/parser/htmlparser/public/nsIParser.h
 --- a/parser/htmlparser/public/nsIParser.h
@@ -63,7 +66,7 @@ diff --git a/parser/htmlparser/public/nsIParser.h b/parser/htmlparser/public/nsI
 diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.cpp
 --- a/parser/htmlparser/src/CNavDTD.cpp
 +++ b/parser/htmlparser/src/CNavDTD.cpp
-@@ -582,17 +582,17 @@ HasOpenTagOfType(PRInt32 aType, const ns
+@@ -586,17 +586,17 @@ HasOpenTagOfType(PRInt32 aType, const ns
        return PR_TRUE;
      }
    }
@@ -82,7 +85,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
    nsresult        result   = NS_OK;
    CHTMLToken*     theToken = static_cast<CHTMLToken*>(aToken);
    eHTMLTokenTypes theType  = eHTMLTokenTypes(theToken->GetTokenType());
-@@ -741,17 +741,17 @@ CNavDTD::HandleToken(CToken* aToken, nsI
+@@ -745,17 +745,17 @@ CNavDTD::HandleToken(CToken* aToken, nsI
              }
              return result;
            }
@@ -101,6 +104,101 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
        case eToken_newline:
          result = HandleStartToken(theToken);
          break;
+@@ -1566,46 +1566,50 @@ FindAutoCloseTargetForEndTag(eHTMLTags a
+                                                                   aMode);
+       }
+     }
+   }
+ 
+   return eHTMLTag_unknown;
+ }
+ 
+-static void
++static PRUint32
+ StripWSFollowingTag(eHTMLTags aChildTag, nsITokenizer* aTokenizer,
+-                    nsTokenAllocator* aTokenAllocator, PRInt32& aNewlineCount)
++                    nsTokenAllocator* aTokenAllocator)
+ {
++  PRUint32 newlineCount = 0;
++
+   if (!aTokenizer || !aTokenAllocator) {
+-    return;
++    return newlineCount;
+   }
+ 
+   CToken* theToken = aTokenizer->PeekToken();
+ 
+   while (theToken) {
+     eHTMLTokenTypes theType = eHTMLTokenTypes(theToken->GetTokenType());
+ 
+     switch(theType) {
+       case eToken_newline:
+-        ++aNewlineCount;
++        ++NewlineCount;
+         // Fall through...
+ 
+       case eToken_whitespace:
+         theToken = aTokenizer->PopToken();
+         IF_FREE(theToken, aTokenAllocator);
+ 
+         theToken = aTokenizer->PeekToken();
+         break;
+ 
+       default:
+         theToken = nsnull;
+         break;
+     }
+   }
++
++  return newlineCount;
+ }
+ 
+ /**
+  *  This method gets called when an end token has been 
+  *  encountered in the parse process. If the end tag matches
+  *  the start tag on the stack, then simply close it. Otherwise,
+  *  we have a erroneous state condition. This can be because we
+  *  have a close tag with no prior open tag (user error) or because
+@@ -1627,17 +1631,17 @@ CNavDTD::HandleEndToken(CToken* aToken)
+   CollectAttributes(nsnull, theChildTag, aToken->GetAttributeCount());
+ 
+   switch (theChildTag) {
+     case eHTMLTag_link:
+     case eHTMLTag_meta:
+       break;
+ 
+     case eHTMLTag_head:
+-      StripWSFollowingTag(theChildTag, mTokenizer, mTokenAllocator, mLineNumber);
++      mLineNumber += StripWSFollowingTag(theChildTag, mTokenizer, mTokenAllocator);
+       if (mBodyContext->LastOf(eHTMLTag_head) != kNotFound) {
+         result = CloseContainersTo(eHTMLTag_head, PR_FALSE);
+       }
+       mFlags &= ~NS_DTD_FLAG_HAS_EXPLICIT_HEAD;
+       break;
+ 
+     case eHTMLTag_form:
+       result = CloseContainer(eHTMLTag_form, PR_FALSE);
+@@ -1654,18 +1658,18 @@ CNavDTD::HandleEndToken(CToken* aToken)
+                                                                 theChildTag);
+           result = HandleToken(theToken, mParser);
+         }
+       }
+       break;
+ 
+     case eHTMLTag_body:
+     case eHTMLTag_html:
+-      StripWSFollowingTag(theChildTag, mTokenizer, mTokenAllocator,
+-                          mLineNumber);
++      mLineNumber += StripWSFollowingTag(theChildTag, mTokenizer,
++                                         mTokenAllocator);
+       break;
+ 
+     case eHTMLTag_script:
+       // Note: we don't fall through to the default case because
+       // CloseContainersTo() has the bad habit of closing tags that are opened
+       // by document.write(). Fortunately, the tokenizer guarantees that no
+       // actual tags appear between <script> and </script> so we won't be
+       // closing the wrong tag.
 diff --git a/parser/htmlparser/src/CNavDTD.h b/parser/htmlparser/src/CNavDTD.h
 --- a/parser/htmlparser/src/CNavDTD.h
 +++ b/parser/htmlparser/src/CNavDTD.h
@@ -126,7 +224,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.h b/parser/htmlparser/src/CNavDTD.h
 diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsExpatDriver.cpp
 --- a/parser/htmlparser/src/nsExpatDriver.cpp
 +++ b/parser/htmlparser/src/nsExpatDriver.cpp
-@@ -1410,17 +1410,17 @@ nsExpatDriver::PrependTokens(nsDeque& aD
+@@ -1433,17 +1433,17 @@ nsExpatDriver::PrependTokens(nsDeque& aD
  
  NS_IMETHODIMP
  nsExpatDriver::CopyState(nsITokenizer* aTokenizer)
@@ -205,7 +303,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
      mCVar = PR_NewCondVar(mLock.get());
      if (!mCVar.get()) {
-@@ -992,17 +992,17 @@ nsParser::SetContentSink(nsIContentSink*
+@@ -996,17 +996,17 @@ nsParser::SetContentSink(nsIContentSink*
    }
  }
  
@@ -224,7 +322,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
   *  Retrieve parsemode from topmost parser context
   *
   *  @return  parsemode
-@@ -1843,17 +1843,17 @@ nsParser::DataAdded(const nsSubstring& a
+@@ -1848,17 +1848,17 @@ nsParser::DataAdded(const nsSubstring& a
        canceled = PR_TRUE;
      }
    }
@@ -308,7 +406,7 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
 diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/nsViewSourceHTML.cpp
 --- a/parser/htmlparser/src/nsViewSourceHTML.cpp
 +++ b/parser/htmlparser/src/nsViewSourceHTML.cpp
-@@ -854,17 +854,17 @@ nsresult CViewSourceHTML::WriteTag(PRInt
+@@ -869,17 +869,17 @@ nsresult CViewSourceHTML::WriteTag(PRInt
  }
  
  /**

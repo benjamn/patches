@@ -386,7 +386,52 @@ diff --git a/parser/htmlparser/src/CParserContext.h b/parser/htmlparser/src/CPar
 diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsExpatDriver.cpp
 --- a/parser/htmlparser/src/nsExpatDriver.cpp
 +++ b/parser/htmlparser/src/nsExpatDriver.cpp
-@@ -1295,33 +1295,31 @@ nsExpatDriver::WillBuildModel(const CPar
+@@ -798,20 +798,22 @@ nsExpatDriver::OpenInputStreamFromExtern
+     nsCOMPtr<nsIURI> localURI;
+     if (!IsLoadableDTD(mCatalogData, uri, getter_AddRefs(localURI))) {
+       return NS_ERROR_NOT_IMPLEMENTED;
+     }
+ 
+     localURI.swap(uri);
+   }
+ 
+-  nsCOMPtr<nsIContentSink> sink = do_QueryInterface(mSink);
+   nsCOMPtr<nsIDocument> doc;
+-  if (sink)
+-    doc = do_QueryInterface(sink->GetTarget());
++  NS_ASSERTION(mSink == nsCOMPtr<nsIExpatSink>(do_QueryInterface(mOriginalSink)),
++               "In nsExpatDriver::OpenInputStreamFromExternalDTD: "
++               "mOriginalSink not the same object as mSink?");
++  if (mOriginalSink)
++    doc = do_QueryInterface(mOriginalSink->GetTarget());
+   PRInt16 shouldLoad = nsIContentPolicy::ACCEPT;
+   rv = NS_CheckContentLoadPolicy(nsIContentPolicy::TYPE_DTD,
+                                 uri,
+                                 (doc ? doc->NodePrincipal() : nsnull),
+                                 doc,
+                                 EmptyCString(), //mime guess
+                                 nsnull,         //extra
+                                 &shouldLoad);
+@@ -1227,16 +1229,18 @@ nsExpatDriver::WillBuildModel(const CPar
+   mSink = do_QueryInterface(aSink);
+   if (!mSink) {
+     NS_ERROR("nsExpatDriver didn't get an nsIExpatSink");
+     // Make sure future calls to us bail out as needed
+     mInternalState = NS_ERROR_UNEXPECTED;
+     return mInternalState;
+   }
+ 
++  mOriginalSink = aSink;
++
+   static const XML_Memory_Handling_Suite memsuite =
+     {
+       (void *(*)(size_t))PR_Malloc,
+       (void *(*)(void *, size_t))PR_Realloc,
+       PR_Free
+     };
+ 
+   static const PRUnichar kExpatSeparator[] = { kExpatSeparatorChar, '\0' };
+@@ -1295,59 +1299,64 @@ nsExpatDriver::WillBuildModel(const CPar
    aParserContext.mScanner->OverrideReplacementCharacter(0xffff);
  
    return aSink->WillBuildModel();
@@ -409,21 +454,27 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
 -                             nsIContentSink* aSink)
 +                             nsIParser* aParser)
  {
-   // Check for mSink is intentional. This would make sure
+-  // Check for mSink is intentional. This would make sure
++  NS_ASSERTION(mSink == nsCOMPtr<nsIExpatSink>(do_QueryInterface(mOriginalSink)),
++               "In nsExpatDriver::DidBuildModel: mOriginalSink not the same object as mSink?");
++  // Check for mOriginalSink is intentional. This would make sure
    // that DidBuildModel() is called only once on the sink.
    nsresult result = NS_OK;
-   if (mSink) {
+-  if (mSink) {
 -    result = aSink->DidBuildModel();
-+    result = nsCOMPtr<nsIContentSink>(do_QueryInterface(mSink))->DidBuildModel();
-     mSink = nsnull;
+-    mSink = nsnull;
++  if (mOriginalSink) {
++    result = mOriginalSink->DidBuildModel();
++    mOriginalSink = nsnull;
    }
  
++  mSink = nsnull;
    mExtendedSink = nsnull;
  
    return result;
  }
  
-@@ -1329,25 +1327,27 @@ nsExpatDriver::WillTokenize(PRBool aIsFi
+ NS_IMETHODIMP
  nsExpatDriver::WillTokenize(PRBool aIsFinalChunk,
                              nsTokenAllocator* aTokenAllocator)
  {
@@ -436,8 +487,9 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
 +nsExpatDriver::WillResumeParse()
  {
 -  return aSink ? aSink->WillResume() : NS_OK;
-+  nsCOMPtr<nsIContentSink> sink(do_QueryInterface(mSink));
-+  return sink ? sink->WillResume() : NS_OK;
++  NS_ASSERTION(mSink == nsCOMPtr<nsIExpatSink>(do_QueryInterface(mOriginalSink)),
++               "In nsExpatDriver::WillResumeParse: mOriginalSink not the same object as mSink?");
++  return mOriginalSink ? mOriginalSink->WillResume() : NS_OK;
  }
  
  NS_IMETHODIMP
@@ -445,8 +497,9 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
 +nsExpatDriver::WillInterruptParse()
  {
 -  return aSink ? aSink->WillInterrupt() : NS_OK;
-+  nsCOMPtr<nsIContentSink> sink(do_QueryInterface(mSink));
-+  return sink ? sink->WillInterrupt() : NS_OK;
++  NS_ASSERTION(mSink == nsCOMPtr<nsIExpatSink>(do_QueryInterface(mOriginalSink)),
++               "In nsExpatDriver::WillInterruptParse: mOriginalSink not the same object as mSink?");
++  return mOriginalSink ? mOriginalSink->WillInterrupt() : NS_OK;
  }
  
  NS_IMETHODIMP
@@ -455,7 +508,7 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
    return NS_OK;
  }
  
-@@ -1360,16 +1360,22 @@ nsExpatDriver::Terminate()
+@@ -1360,16 +1369,22 @@ nsExpatDriver::Terminate()
    }
    mInternalState = NS_ERROR_HTMLPARSER_STOPPARSING;
  }
@@ -478,6 +531,48 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
  nsExpatDriver::PushTokenFront(CToken* aToken)
  {
    return 0;
+diff --git a/parser/htmlparser/src/nsExpatDriver.h b/parser/htmlparser/src/nsExpatDriver.h
+--- a/parser/htmlparser/src/nsExpatDriver.h
++++ b/parser/htmlparser/src/nsExpatDriver.h
+@@ -36,16 +36,17 @@
+  * ***** END LICENSE BLOCK ***** */
+ 
+ #ifndef NS_EXPAT_DRIVER__
+ #define NS_EXPAT_DRIVER__
+ 
+ #include "expat_config.h"
+ #include "expat.h"
+ #include "nsCOMPtr.h"
++#include "nsAutoPtr.h"
+ #include "nsString.h"
+ #include "nsIDTD.h"
+ #include "nsITokenizer.h"
+ #include "nsIInputStream.h"
+ #include "nsIParser.h"
+ #include "nsCycleCollectionParticipant.h"
+ 
+ class nsIExpatSink;
+@@ -151,15 +152,20 @@ private:
+   // Necko
+   PRPackedBool     mIsFinalChunk;
+ 
+   nsresult         mInternalState;
+ 
+   // The length of the data in Expat's buffer (in number of PRUnichars).
+   PRUint32         mExpatBuffered;
+ 
++  // These sinks all refer the same conceptual object. mOriginalSink is
++  // identical with the nsIContentSink* passed to WillBuildModel, and exists
++  // only to avoid QI-ing back to nsIContentSink*.
++  nsRefPtr<nsIContentSink> mOriginalSink;
+   nsCOMPtr<nsIExpatSink> mSink;
+   nsCOMPtr<nsIExtendedExpatSink> mExtendedSink;
++
+   const nsCatalogData* mCatalogData; // weak
+   nsString         mURISpec;
+ };
+ 
+ #endif
 diff --git a/parser/htmlparser/src/nsHTMLTokenizer.cpp b/parser/htmlparser/src/nsHTMLTokenizer.cpp
 --- a/parser/htmlparser/src/nsHTMLTokenizer.cpp
 +++ b/parser/htmlparser/src/nsHTMLTokenizer.cpp

@@ -557,7 +557,7 @@ diff --git a/content/xul/document/src/nsXULContentSink.cpp b/content/xul/documen
 diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.cpp
 --- a/parser/htmlparser/src/CNavDTD.cpp
 +++ b/parser/htmlparser/src/CNavDTD.cpp
-@@ -319,16 +319,19 @@ CNavDTD::BuildModel(nsIParser* aParser,
+@@ -318,16 +318,19 @@ CNavDTD::BuildModel(nsIParser* aParser,
                                             eHTMLTag_html,
                                             NS_LITERAL_STRING("html"));
        if (tempToken) {
@@ -577,7 +577,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
        }
        result = HandleToken(theToken, aParser);
      } else {
-@@ -342,17 +345,18 @@ CNavDTD::BuildModel(nsIParser* aParser,
+@@ -341,17 +344,18 @@ CNavDTD::BuildModel(nsIParser* aParser,
        // interrupted. 
        // The mParser->CanInterrupt will return TRUE if BuildModel was called
        // from a place in the parser where it prepared to handle a return value of
@@ -939,7 +939,7 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
    nsCOMPtr<nsIURI> uri;
    rv = NS_NewURI(getter_AddRefs(uri), NS_ConvertUTF16toUTF8(aURLStr), nsnull,
                   baseURI);
-@@ -886,16 +931,18 @@ AppendErrorPointer(const PRInt32 aColNum
+@@ -888,16 +933,18 @@ AppendErrorPointer(const PRInt32 aColNum
    aSourceString.Append(PRUnichar('^'));
  
    return NS_OK;
@@ -958,7 +958,7 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
    nsAutoString description;
    nsParserMsgUtils::GetLocalizedStringByID(XMLPARSER_PROPERTIES, code,
                                             description);
-@@ -998,16 +1045,19 @@ nsExpatDriver::HandleError()
+@@ -1000,16 +1047,19 @@ nsExpatDriver::HandleError()
  }
  
  void
@@ -978,7 +978,7 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
    NS_PRECONDITION(XML_GetCurrentByteIndex(mExpatParser) % sizeof(PRUnichar) == 0,
                    "Consumed part of a PRUnichar?");
  
-@@ -1049,16 +1099,19 @@ nsExpatDriver::ParseBuffer(const PRUnich
+@@ -1051,16 +1101,19 @@ nsExpatDriver::ParseBuffer(const PRUnich
    else {
      *aConsumed = 0;
    }
@@ -998,7 +998,7 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
    // This is the start of the first buffer that we need to pass to Expat.
    nsScannerIterator start = currentExpatPosition;
    start.advance(mExpatBuffered);
-@@ -1219,16 +1272,20 @@ nsExpatDriver::ConsumeToken(nsScanner& a
+@@ -1221,16 +1274,20 @@ nsExpatDriver::ConsumeToken(nsScanner& a
    return NS_SUCCEEDED(mInternalState) ? kEOF : NS_OK;
  }
  
@@ -1019,37 +1019,36 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
      return mInternalState;
    }
  
-@@ -1298,25 +1355,29 @@ nsExpatDriver::WillBuildModel(const CPar
+@@ -1301,24 +1358,28 @@ nsExpatDriver::WillBuildModel(const CPar
+   return aSink->WillBuildModel();
  }
  
  NS_IMETHODIMP
  nsExpatDriver::BuildModel(nsIParser* aParser,
                            nsITokenizer* aTokenizer,
-                           nsITokenObserver* anObserver,
-                           nsIContentSink* aSink)
+                           nsITokenObserver* anObserver)
  {
-+  PROXY_SYNC(BIND5(&nsExpatDriver::BuildModel, this,
-+                   aParser, aTokenizer, anObserver, aSink));
++  PROXY_SYNC(BIND4(&nsExpatDriver::BuildModel, this,
++                   aParser, aTokenizer, anObserver));
    return mInternalState;
  }
  
  NS_IMETHODIMP
  nsExpatDriver::DidBuildModel(nsresult anErrorCode,
                               PRBool aNotifySink,
-                              nsIParser* aParser,
-                              nsIContentSink* aSink)
+                              nsIParser* aParser)
  {
-+  PROXY_SYNC(BIND5(&nsExpatDriver::DidBuildModel, this,
-+                   anErrorCode, aNotifySink, aParser, aSink));
-   // Check for mSink is intentional. This would make sure
++  PROXY_SYNC(BIND4(&nsExpatDriver::DidBuildModel, this,
++                   anErrorCode, aNotifySink, aParser));
+   NS_ASSERTION(mSink == nsCOMPtr<nsIExpatSink>(do_QueryInterface(mOriginalSink)),
+                "In nsExpatDriver::DidBuildModel: mOriginalSink not the same object as mSink?");
+   // Check for mOriginalSink is intentional. This would make sure
    // that DidBuildModel() is called only once on the sink.
    nsresult result = NS_OK;
-   if (mSink) {
-     result = aSink->DidBuildModel();
-     mSink = nsnull;
-   }
- 
-@@ -1324,41 +1385,48 @@ nsExpatDriver::DidBuildModel(nsresult an
+   if (mOriginalSink) {
+     result = mOriginalSink->DidBuildModel();
+     mOriginalSink = nsnull;
+@@ -1329,45 +1390,50 @@ nsExpatDriver::DidBuildModel(nsresult an
  
    return result;
  }
@@ -1065,21 +1064,21 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
  }
  
  NS_IMETHODIMP
- nsExpatDriver::WillResumeParse(nsIContentSink* aSink)
+ nsExpatDriver::WillResumeParse()
  {
--  return aSink ? aSink->WillResume() : NS_OK;
-+  if (aSink)
-+    PROXY_SYNC(BIND1(&nsIContentSink::WillResume, aSink));
-+  return NS_OK;
++  PROXY_SYNC(BIND1(&nsExpatDriver::WillResumeParse, this));
+   NS_ASSERTION(mSink == nsCOMPtr<nsIExpatSink>(do_QueryInterface(mOriginalSink)),
+                "In nsExpatDriver::WillResumeParse: mOriginalSink not the same object as mSink?");
+   return mOriginalSink ? mOriginalSink->WillResume() : NS_OK;
  }
  
  NS_IMETHODIMP
- nsExpatDriver::WillInterruptParse(nsIContentSink* aSink)
+ nsExpatDriver::WillInterruptParse()
  {
--  return aSink ? aSink->WillInterrupt() : NS_OK;
-+  if (aSink)
-+    PROXY_SYNC(BIND1(&nsIContentSink::WillInterrupt, aSink));
-+  return NS_OK;
++  PROXY_SYNC(BIND1(&nsExpatDriver::WillInterruptParse, this));
+   NS_ASSERTION(mSink == nsCOMPtr<nsIExpatSink>(do_QueryInterface(mOriginalSink)),
+                "In nsExpatDriver::WillInterruptParse: mOriginalSink not the same object as mSink?");
+   return mOriginalSink ? mOriginalSink->WillInterrupt() : NS_OK;
  }
  
  NS_IMETHODIMP
@@ -1100,7 +1099,7 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
  }
  
  NS_IMETHODIMP_(PRInt32)
-@@ -1438,16 +1506,18 @@ nsExpatDriver::CanContain(PRInt32 aParen
+@@ -1453,16 +1519,18 @@ nsExpatDriver::CanContain(PRInt32 aParen
  nsExpatDriver::CanContain(PRInt32 aParent,PRInt32 aChild) const
  {
    return PR_TRUE;
