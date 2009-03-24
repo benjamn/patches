@@ -1,4 +1,3 @@
-parser-own-dtd.diff
 simplify-nsIDTD.diff
 divorce-parser-from-dtd.diff
 dtd-const-mparser.diff
