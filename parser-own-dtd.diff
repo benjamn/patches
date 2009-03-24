@@ -456,12 +456,18 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      }
    }
  
-@@ -2362,31 +2354,28 @@ nsresult
+@@ -2357,36 +2349,27 @@ nsParser::ResumeParse(PRBool allowIterat
+ 
+ /**
+  *  This is where we loop over the tokens created in the
+  *  tokenization phase, and try to make sense out of them.
+  */
  nsresult
  nsParser::BuildModel()
  {
-   CParserContext* theRootContext = mParserContext;
-   nsITokenizer*   theTokenizer = nsnull;
+-  CParserContext* theRootContext = mParserContext;
+-  nsITokenizer*   theTokenizer = nsnull;
++  nsITokenizer* theTokenizer = nsnull;
  
    nsresult result = NS_OK;
    if (mParserContext) {
@@ -472,11 +478,11 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    if (NS_SUCCEEDED(result)) {
-     // Get the root DTD for use in model building...
-     while (theRootContext->mPrevContext) {
-       theRootContext = theRootContext->mPrevContext;
-     }
- 
+-    // Get the root DTD for use in model building...
+-    while (theRootContext->mPrevContext) {
+-      theRootContext = theRootContext->mPrevContext;
+-    }
+-
 -    nsIDTD* theRootDTD = theRootContext->mDTD;
 -    if (theRootDTD) {
 +    if (mDTD) {
@@ -491,7 +497,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    return result;
  }
  
-@@ -2400,18 +2389,21 @@ nsParser::OnStartRequest(nsIRequest *req
+@@ -2400,19 +2383,22 @@ nsParser::OnStartRequest(nsIRequest *req
    NS_PRECONDITION(eNone == mParserContext->mStreamListenerState,
                    "Parser's nsIStreamListener API was not setup "
                    "correctly in constructor.");
@@ -502,11 +508,11 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    mParserContext->mAutoDetectStatus = eUnknownDetect;
 -  mParserContext->mDTD = nsnull;
    mParserContext->mRequest = request;
-+
+ 
 +  NS_ASSERTION(!mParserContext->mPrevContext,
 +               "Clobbering DTD for non-root parser context!");
 +  mDTD = nsnull;
- 
++
    nsresult rv;
    nsCAutoString contentType;
    nsCOMPtr<nsIChannel> channel = do_QueryInterface(request);
@@ -514,7 +520,8 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      rv = channel->GetContentType(contentType);
      if (NS_SUCCEEDED(rv)) {
        mParserContext->SetMimeType(contentType);
-@@ -2957,19 +2949,17 @@ PRBool
+     }
+@@ -2990,19 +2976,17 @@ nsParser::OnStopRequest(nsIRequest *requ
  PRBool
  nsParser::WillTokenize(PRBool aIsFinalChunk)
  {
@@ -535,7 +542,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
  /**
   * This is the primary control routine to consume tokens.
-@@ -2977,19 +2967,17 @@ nsParser::WillTokenize(PRBool aIsFinalCh
+@@ -3010,19 +2994,17 @@ nsParser::WillTokenize(PRBool aIsFinalCh
   * you run out of data.
   */
  nsresult nsParser::Tokenize(PRBool aIsFinalChunk)
@@ -556,7 +563,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
        // the parser got blocked before all the tokens in the
        // stack got handled). Flush 'em now. Ref. bug 104856
        if (theTokenizer->GetCount() != 0) {
-@@ -3054,19 +3042,17 @@ PRBool
+@@ -3087,19 +3069,17 @@ nsresult nsParser::Tokenize(PRBool aIsFi
  PRBool
  nsParser::DidTokenize(PRBool aIsFinalChunk)
  {
@@ -577,7 +584,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
  /**
   * Get the channel associated with this parser
-@@ -3086,14 +3072,14 @@ nsParser::GetChannel(nsIChannel** aChann
+@@ -3119,14 +3099,14 @@ nsParser::GetChannel(nsIChannel** aChann
  
  /**
   * Get the DTD associated with this parser
@@ -596,7 +603,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
 --- a/parser/htmlparser/src/nsParser.h
 +++ b/parser/htmlparser/src/nsParser.h
-@@ -468,16 +468,17 @@ private:
+@@ -466,16 +466,17 @@ private:
  
  protected:
      //*********************************************

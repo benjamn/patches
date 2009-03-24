@@ -1,7 +1,7 @@
 diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD.h
 --- a/parser/htmlparser/public/nsIDTD.h
 +++ b/parser/htmlparser/public/nsIDTD.h
-@@ -98,28 +98,26 @@ public:
+@@ -98,28 +98,25 @@ public:
  
      /**
       * Called by the parser after the parsing process has concluded
@@ -20,10 +20,10 @@ diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD
       * @param   anErrorCode - contains error code resulting from parse process
       * @return
       */
-     NS_IMETHOD BuildModel(nsIParser* aParser, nsITokenizer* aTokenizer,
+-    NS_IMETHOD BuildModel(nsIParser* aParser, nsITokenizer* aTokenizer,
 -                          nsITokenObserver* anObserver,
 -                          nsIContentSink* aSink) = 0;
-+                          nsITokenObserver* anObserver) = 0;
++    NS_IMETHOD BuildModel(nsIParser* aParser, nsITokenizer* aTokenizer) = 0;
  
      /**
       * Called during model building phase of parse process. Each token
@@ -32,7 +32,7 @@ diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD
       * process the token. Ultimately, the DTD will transform given
       * token into calls onto a contentsink.
       * @update  gess 3/25/98
-@@ -129,25 +127,25 @@ public:
+@@ -129,25 +126,25 @@ public:
      NS_IMETHOD HandleToken(CToken* aToken,nsIParser* aParser) = 0;
  
      /**
@@ -60,7 +60,7 @@ diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD
       * @update  gess 3/25/98
       * @param   aParent -- int tag of parent container
       * @param   aChild -- int tag of child container
-@@ -173,24 +171,27 @@ public:
+@@ -173,24 +170,27 @@ public:
       *
       * @update  harishd 07/22/99
       * @param
@@ -83,7 +83,7 @@ diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD
 -    NS_IMETHOD WillResumeParse(nsIContentSink* aSink = 0);\
 -    NS_IMETHOD WillInterruptParse(nsIContentSink* aSink = 0);\
 +    NS_IMETHOD DidBuildModel(nsresult anErrorCode, PRBool aNotifySink, nsIParser* aParser);\
-+    NS_IMETHOD BuildModel(nsIParser* aParser, nsITokenizer* aTokenizer, nsITokenObserver* anObserver);\
++    NS_IMETHOD BuildModel(nsIParser* aParser, nsITokenizer* aTokenizer);\
 +    NS_IMETHOD HandleToken(CToken* aToken, nsIParser* aParser);\
 +    NS_IMETHOD WillResumeParse();\
 +    NS_IMETHOD WillInterruptParse();\
@@ -94,10 +94,39 @@ diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD
 +    NS_IMETHOD_(PRInt32) GetType();\
 +    NS_IMETHOD_(nsITokenizer*) CreateTokenizer();
  #endif /* nsIDTD_h___ */
+diff --git a/parser/htmlparser/public/nsITokenizer.h b/parser/htmlparser/public/nsITokenizer.h
+--- a/parser/htmlparser/public/nsITokenizer.h
++++ b/parser/htmlparser/public/nsITokenizer.h
+@@ -51,24 +51,16 @@
+ class CToken;
+ class nsScanner;
+ class nsDeque;
+ class nsTokenAllocator;
+ 
+ #define NS_ITOKENIZER_IID      \
+   {0xe4238ddc, 0x9eb6,  0x11d2, {0xba, 0xa5, 0x0,     0x10, 0x4b, 0x98, 0x3f, 0xd4 }}
+ 
+-/**
+- * This interface is used as a callback to objects interested
+- * in observing the token stream created from the parse process.
+- */
+-class nsITokenObserver {
+-public:
+-  virtual PRBool  operator()(CToken* aToken)=0;
+-};
+ 
+ /***************************************************************
+   Notes: 
+  ***************************************************************/
+ 
+ 
+ class nsITokenizer : public nsISupports {
+ public:
 diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.cpp
 --- a/parser/htmlparser/src/CNavDTD.cpp
 +++ b/parser/htmlparser/src/CNavDTD.cpp
-@@ -249,18 +249,17 @@ CNavDTD::WillBuildModel(const CParserCon
+@@ -248,19 +248,17 @@ CNavDTD::WillBuildModel(const CParserCon
+     }
    }
  
    return result;
@@ -105,10 +134,10 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
  
  nsresult
  CNavDTD::BuildModel(nsIParser* aParser,
-                     nsITokenizer* aTokenizer,
+-                    nsITokenizer* aTokenizer,
 -                    nsITokenObserver* anObserver,
 -                    nsIContentSink* aSink)
-+                    nsITokenObserver* anObserver)
++                    nsITokenizer* aTokenizer)
  {
    NS_PRECONDITION(mBodyContext != nsnull,
                    "Create a context before calling build model");
@@ -117,7 +146,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
  
    if (!aTokenizer || !aParser) {
      return NS_OK;
-@@ -358,51 +357,49 @@ CNavDTD::BuildModel(nsIParser* aParser,
+@@ -358,51 +356,49 @@ CNavDTD::BuildModel(nsIParser* aParser,
  
    mTokenizer = oldTokenizer;
    return result;
@@ -140,7 +169,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
    NS_ENSURE_TRUE(target, NS_ERROR_OUT_OF_MEMORY);
    mTokenizer->PushTokenFront(target);
 -  return BuildModel(aParser, mTokenizer, 0, aSink);
-+  return BuildModel(aParser, mTokenizer, 0);
++  return BuildModel(aParser, mTokenizer);
  }
  
  nsresult
@@ -174,7 +203,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
          // Keep track of the top index.
          PRInt32 topIndex = mBodyContext->mContextTopIndex;
          
-@@ -430,17 +427,17 @@ CNavDTD::DidBuildModel(nsresult anErrorC
+@@ -430,17 +426,17 @@ CNavDTD::DidBuildModel(nsresult anErrorC
  
        // Now let's disable style handling to save time when closing remaining
        // stack members.
@@ -193,7 +222,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
        // At a minimum, we should grab the nodes and recycle them.
        // Just to be correct, we'll also recycle the nodes.
        while (mBodyContext->GetCount() > 0) { 
-@@ -455,30 +452,36 @@ CNavDTD::DidBuildModel(nsresult anErrorC
+@@ -455,32 +451,38 @@ CNavDTD::DidBuildModel(nsresult anErrorC
      // by forcefully recycling any tokens we might find there.
      CToken* theToken = 0;
      while ((theToken = (CToken*)mMisplacedContent.Pop())) {
@@ -217,21 +246,23 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
  CNavDTD::GetType() 
  { 
    return NS_IPARSER_FLAG_HTML; 
-+}
-+
+ }
+ 
 +NS_IMETHODIMP_(nsITokenizer*)
 +CNavDTD::CreateTokenizer()
 +{
 +  return new nsHTMLTokenizer(mDTDMode, mDocType, mParserCommand, mSink);
- }
- 
++}
++
  /**
   * Text and some tags require a body when they're added, this function returns
   * true for those tags.
   *
   * @param aToken The current token that we care about.
   * @param aTokenizer A tokenizer that we can get the tags attributes off of.
-@@ -3147,35 +3150,35 @@ CNavDTD::CreateContextStackFor(eHTMLTags
+  * @return PR_TRUE if aToken does indeed force the body to open.
+  */
+@@ -3147,35 +3149,35 @@ CNavDTD::CreateContextStackFor(eHTMLTags
      // Note: These tokens should all wind up on contextstack, so don't recycle
      // them.
      CToken *theToken = mTokenAllocator->CreateTokenOfType(eToken_start, theTag);
@@ -431,7 +462,8 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
      };
  
    static const PRUnichar kExpatSeparator[] = { kExpatSeparatorChar, '\0' };
-@@ -1295,59 +1299,64 @@ nsExpatDriver::WillBuildModel(const CPar
+@@ -1294,60 +1298,64 @@ nsExpatDriver::WillBuildModel(const CPar
+   // XML must detect invalid character convertion
    aParserContext.mScanner->OverrideReplacementCharacter(0xffff);
  
    return aSink->WillBuildModel();
@@ -439,10 +471,10 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
  
  NS_IMETHODIMP
  nsExpatDriver::BuildModel(nsIParser* aParser,
-                           nsITokenizer* aTokenizer,
+-                          nsITokenizer* aTokenizer,
 -                          nsITokenObserver* anObserver,
 -                          nsIContentSink* aSink)
-+                          nsITokenObserver* anObserver)
++                          nsITokenizer* aTokenizer)
  {
    return mInternalState;
  }
@@ -508,29 +540,29 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
    return NS_OK;
  }
  
-@@ -1360,16 +1369,22 @@ nsExpatDriver::Terminate()
-   }
-   mInternalState = NS_ERROR_HTMLPARSER_STOPPARSING;
+@@ -1362,16 +1370,22 @@ nsExpatDriver::Terminate()
  }
  
  NS_IMETHODIMP_(PRInt32)
  nsExpatDriver::GetType()
  {
    return NS_IPARSER_FLAG_XML;
-+}
-+
+ }
+ 
 +NS_IMETHODIMP_(nsITokenizer*)
 +nsExpatDriver::CreateTokenizer()
 +{
 +  return static_cast<nsITokenizer*>(this);
- }
- 
++}
++
  /*************************** Unused methods **********************************/
  
  NS_IMETHODIMP_(CToken*)
  nsExpatDriver::PushTokenFront(CToken* aToken)
  {
    return 0;
+ }
+ 
 diff --git a/parser/htmlparser/src/nsExpatDriver.h b/parser/htmlparser/src/nsExpatDriver.h
 --- a/parser/htmlparser/src/nsExpatDriver.h
 +++ b/parser/htmlparser/src/nsExpatDriver.h
@@ -564,7 +596,7 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.h b/parser/htmlparser/src/nsExp
 +  // These sinks all refer the same conceptual object. mOriginalSink is
 +  // identical with the nsIContentSink* passed to WillBuildModel, and exists
 +  // only to avoid QI-ing back to nsIContentSink*.
-+  nsRefPtr<nsIContentSink> mOriginalSink;
++  nsCOMPtr<nsIContentSink> mOriginalSink;
    nsCOMPtr<nsIExpatSink> mSink;
    nsCOMPtr<nsIExtendedExpatSink> mExtendedSink;
 +
@@ -611,7 +643,7 @@ diff --git a/parser/htmlparser/src/nsHTMLTokenizer.cpp b/parser/htmlparser/src/n
 diff --git a/parser/htmlparser/src/nsHTMLTokenizer.h b/parser/htmlparser/src/nsHTMLTokenizer.h
 --- a/parser/htmlparser/src/nsHTMLTokenizer.h
 +++ b/parser/htmlparser/src/nsHTMLTokenizer.h
-@@ -65,17 +65,17 @@ class nsHTMLTokenizer : public nsITokeni
+@@ -65,17 +65,17 @@
  class nsHTMLTokenizer : public nsITokenizer {
  public:
    
@@ -728,12 +760,12 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      }
    }
  
-@@ -2354,28 +2354,28 @@ nsresult
+@@ -2353,23 +2353,23 @@ nsParser::ResumeParse(PRBool allowIterat
+  */
  nsresult
  nsParser::BuildModel()
  {
-   CParserContext* theRootContext = mParserContext;
-   nsITokenizer*   theTokenizer = nsnull;
+   nsITokenizer* theTokenizer = nsnull;
  
    nsresult result = NS_OK;
    if (mParserContext) {
@@ -742,15 +774,10 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    if (NS_SUCCEEDED(result)) {
-     // Get the root DTD for use in model building...
-     while (theRootContext->mPrevContext) {
-       theRootContext = theRootContext->mPrevContext;
-     }
- 
      if (mDTD) {
        MOZ_TIMER_START(mDTDTime);
 -      result = mDTD->BuildModel(this, theTokenizer, nsnull, mSink);
-+      result = mDTD->BuildModel(this, theTokenizer, nsnull);
++      result = mDTD->BuildModel(this, theTokenizer);
        MOZ_TIMER_STOP(mDTDTime);
      }
    } else {
@@ -759,7 +786,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    return result;
  }
  
-@@ -2982,17 +2982,17 @@ PRBool
+@@ -2976,17 +2976,17 @@ nsParser::OnStopRequest(nsIRequest *requ
  PRBool
  nsParser::WillTokenize(PRBool aIsFinalChunk)
  {
@@ -778,7 +805,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
  /**
   * This is the primary control routine to consume tokens.
-@@ -3000,17 +3000,17 @@ nsParser::WillTokenize(PRBool aIsFinalCh
+@@ -2994,17 +2994,17 @@ nsParser::WillTokenize(PRBool aIsFinalCh
   * you run out of data.
   */
  nsresult nsParser::Tokenize(PRBool aIsFinalChunk)
@@ -797,7 +824,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
        // the parser got blocked before all the tokens in the
        // stack got handled). Flush 'em now. Ref. bug 104856
        if (theTokenizer->GetCount() != 0) {
-@@ -3075,17 +3075,17 @@ PRBool
+@@ -3069,17 +3069,17 @@ nsresult nsParser::Tokenize(PRBool aIsFi
  PRBool
  nsParser::DidTokenize(PRBool aIsFinalChunk)
  {
@@ -819,7 +846,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/nsViewSourceHTML.cpp
 --- a/parser/htmlparser/src/nsViewSourceHTML.cpp
 +++ b/parser/htmlparser/src/nsViewSourceHTML.cpp
-@@ -333,17 +333,20 @@ nsresult CViewSourceHTML::WillBuildModel
+@@ -333,17 +333,19 @@ nsresult CViewSourceHTML::WillBuildModel
  /**
    * The parser uses a code sandwich to wrap the parsing process. Before
    * the process begins, WillBuildModel() is called. Afterwards the parser
@@ -830,8 +857,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
    */
 -NS_IMETHODIMP CViewSourceHTML::BuildModel(nsIParser* aParser,nsITokenizer* aTokenizer,nsITokenObserver* anObserver,nsIContentSink* aSink) {
 +NS_IMETHODIMP CViewSourceHTML::BuildModel(nsIParser* aParser,
-+                                          nsITokenizer* aTokenizer,
-+                                          nsITokenObserver* anObserver)
++                                          nsITokenizer* aTokenizer)
 +{
    nsresult result=NS_OK;
  
@@ -841,7 +867,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
      mTokenizer=aTokenizer;
      nsTokenAllocator* theAllocator=mTokenizer->GetTokenAllocator();
  
-@@ -542,17 +545,20 @@ void CViewSourceHTML::AddAttrToNode(nsCP
+@@ -542,17 +544,20 @@ void CViewSourceHTML::AddAttrToNode(nsCP
  }
  
  /**
@@ -863,7 +889,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
  
      mParser=(nsParser*)aParser;  //debug XXX
      STOP_TIMER();
-@@ -606,37 +612,45 @@ CViewSourceHTML::Terminate() {
+@@ -606,37 +611,45 @@ NS_IMETHODIMP_(void)
  CViewSourceHTML::Terminate() {
  }
  
