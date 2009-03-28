@@ -1,0 +1,114 @@
+diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
+--- a/parser/htmlparser/src/nsParser.cpp
++++ b/parser/htmlparser/src/nsParser.cpp
+@@ -71,16 +71,18 @@
+ #include "nsDataHashtable.h"
+ #include "nsIThreadPool.h"
+ #include "nsXPCOMCIDInternal.h"
+ 
+ #ifdef MOZ_VIEW_SOURCE
+ #include "nsViewSourceHTML.h"
+ #endif
+ 
++#include "Bind.h"
++
+ #define NS_PARSER_FLAG_PARSER_ENABLED         0x00000002
+ #define NS_PARSER_FLAG_OBSERVERS_ENABLED      0x00000004
+ #define NS_PARSER_FLAG_PENDING_CONTINUE_EVENT 0x00000008
+ #define NS_PARSER_FLAG_CAN_INTERRUPT          0x00000010
+ #define NS_PARSER_FLAG_FLUSH_TOKENS           0x00000020
+ #define NS_PARSER_FLAG_CAN_TOKENIZE           0x00000040
+ 
+ static NS_DEFINE_IID(kISupportsIID, NS_ISUPPORTS_IID);
+@@ -806,16 +808,19 @@ nsParser::Initialize(PRBool aConstructor
+   mInternalState = NS_OK;
+   mStreamStatus = 0;
+   mCommand = eViewNormal;
+   mFlags = NS_PARSER_FLAG_OBSERVERS_ENABLED |
+            NS_PARSER_FLAG_PARSER_ENABLED |
+            NS_PARSER_FLAG_CAN_TOKENIZE;
+   mScriptsExecuting = 0;
+ 
++  NS_GetCurrentThread(getter_AddRefs(mTokenizerThread));
++  NS_GetCurrentThread(getter_AddRefs(mBuildModelThread));
++
+   MOZ_TIMER_DEBUGLOG(("Reset: Parse Time: nsParser::nsParser(), this=%p\n", this));
+   MOZ_TIMER_RESET(mParseTime);
+   MOZ_TIMER_RESET(mDTDTime);
+   MOZ_TIMER_RESET(mTokenizeTime);
+ }
+ 
+ void
+ nsParser::Cleanup()
+@@ -2349,16 +2354,22 @@ nsParser::ResumeParse(PRBool allowIterat
+ 
+ /**
+  *  This is where we loop over the tokens created in the
+  *  tokenization phase, and try to make sense out of them.
+  */
+ nsresult
+ nsParser::BuildModel()
+ {
++  if (NS_GetCurrentThread() != mBuildModelThread)
++    return BIND1(&nsParser::BuildModel,
++                 nsRefPtr<nsParser>(this)
++                ).proxy(mTokenizerThread,
++                        NS_DISPATCH_SYNC)->Wait();
++
+   nsITokenizer* theTokenizer = nsnull;
+ 
+   nsresult result = NS_OK;
+   if (mParserContext) {
+     result = mParserContext->GetTokenizer(mDTD, theTokenizer);
+   }
+ 
+   if (NS_SUCCEEDED(result)) {
+@@ -2963,16 +2974,22 @@ nsParser::WillTokenize(PRBool aIsFinalCh
+ 
+ /**
+  * This is the primary control routine to consume tokens.
+  * It iteratively consumes tokens until an error occurs or
+  * you run out of data.
+  */
+ nsresult nsParser::Tokenize(PRBool aIsFinalChunk)
+ {
++  if (NS_GetCurrentThread() != mTokenizerThread)
++    return BIND2(&nsParser::Tokenize,
++                 nsRefPtr<nsParser>(this),
++                 aIsFinalChunk).proxy(mTokenizerThread,
++                                      NS_DISPATCH_SYNC)->Wait();
++
+   nsITokenizer* theTokenizer;
+ 
+   nsresult result = NS_ERROR_NOT_AVAILABLE;
+   if (mParserContext) {
+     result = mParserContext->GetTokenizer(mDTD, theTokenizer);
+   }
+ 
+   if (NS_SUCCEEDED(result)) {
+diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
+--- a/parser/htmlparser/src/nsParser.h
++++ b/parser/htmlparser/src/nsParser.h
+@@ -463,18 +463,20 @@ private:
+      *  @return  TRUE if all went well
+      */
+     PRBool DidTokenize(PRBool aIsFinalChunk = PR_FALSE);
+ 
+ protected:
+     //*********************************************
+     // And now, some data members...
+     //*********************************************
+-    
+-      
++
++    nsCOMPtr<nsIThread> mTokenizerThread;
++    nsCOMPtr<nsIThread> mBuildModelThread;
++
+     CParserContext*              mParserContext;
+     nsCOMPtr<nsIDTD>             mDTD;
+     nsCOMPtr<nsIRequestObserver> mObserver;
+     nsCOMPtr<nsIContentSink>     mSink;
+     nsIRunnable*                 mContinueEvent;  // weak ref
+     nsRefPtr<nsSpeculativeScriptThread> mSpeculativeScriptThread;
+    
+     nsCOMPtr<nsIParserFilter> mParserFilter;

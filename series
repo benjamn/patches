@@ -1,3 +1,4 @@
+tokenizing-tokenizer.diff
 simplify-nsIDTD.diff
 divorce-parser-from-dtd.diff
 kill-jsd_assert.diff

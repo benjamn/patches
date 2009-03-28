@@ -1,0 +1,233 @@
+diff --git a/parser/htmlparser/public/nsITokenizer.h b/parser/htmlparser/public/nsITokenizer.h
+--- a/parser/htmlparser/public/nsITokenizer.h
++++ b/parser/htmlparser/public/nsITokenizer.h
+@@ -70,16 +70,19 @@ public:
+  ***************************************************************/
+ 
+ 
+ class nsITokenizer : public nsISupports {
+ public:
+   NS_DECLARE_STATIC_IID_ACCESSOR(NS_ITOKENIZER_IID)
+ 
+   NS_IMETHOD                     WillTokenize(PRBool aIsFinalChunk,nsTokenAllocator* aTokenAllocator)=0;
++  virtual nsresult               Tokenize(nsScanner& aScanner,
++                                          PRUint32*  aNumConsumedPtr,
++                                          PRBool*    aFlushTokensPtr)=0;
+   NS_IMETHOD                     ConsumeToken(nsScanner& aScanner,PRBool& aFlushTokens)=0;
+   NS_IMETHOD                     DidTokenize(PRBool aIsFinalChunk)=0;
+   
+   NS_IMETHOD_(CToken*)           PushTokenFront(CToken* aToken)=0;
+   NS_IMETHOD_(CToken*)           PushToken(CToken* aToken)=0;
+   NS_IMETHOD_(CToken*)           PopToken(void)=0;
+   NS_IMETHOD_(CToken*)           PeekToken(void)=0;
+   NS_IMETHOD_(CToken*)           GetTokenAt(PRInt32 anIndex)=0;
+diff --git a/parser/htmlparser/src/nsExpatDriver.h b/parser/htmlparser/src/nsExpatDriver.h
+--- a/parser/htmlparser/src/nsExpatDriver.h
++++ b/parser/htmlparser/src/nsExpatDriver.h
+@@ -38,27 +38,27 @@
+ #ifndef NS_EXPAT_DRIVER__
+ #define NS_EXPAT_DRIVER__
+ 
+ #include "expat_config.h"
+ #include "expat.h"
+ #include "nsCOMPtr.h"
+ #include "nsString.h"
+ #include "nsIDTD.h"
+-#include "nsITokenizer.h"
++#include "nsTokenizer.h"
+ #include "nsIInputStream.h"
+ #include "nsIParser.h"
+ #include "nsCycleCollectionParticipant.h"
+ 
+ class nsIExpatSink;
+ class nsIExtendedExpatSink;
+ struct nsCatalogData;
+ 
+ class nsExpatDriver : public nsIDTD,
+-                      public nsITokenizer
++                      public nsTokenizer
+ {
+ public:
+   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+   NS_DECL_NSIDTD
+   NS_DECL_NSITOKENIZER
+   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsExpatDriver, nsIDTD)
+ 
+   nsExpatDriver();
+diff --git a/parser/htmlparser/src/nsHTMLTokenizer.cpp b/parser/htmlparser/src/nsHTMLTokenizer.cpp
+--- a/parser/htmlparser/src/nsHTMLTokenizer.cpp
++++ b/parser/htmlparser/src/nsHTMLTokenizer.cpp
+@@ -69,17 +69,17 @@ NS_IMPL_ISUPPORTS1(nsHTMLTokenizer, nsIT
+  * @param  aParseMode The current mode the document is in (quirks, etc.)
+  * @param  aDocType The document type of the current document
+  * @param  aCommand What we are trying to do (view-source, parse a fragment, etc.)
+  */
+ nsHTMLTokenizer::nsHTMLTokenizer(PRInt32 aParseMode,
+                                  eParserDocType aDocType,
+                                  eParserCommands aCommand,
+                                  PRUint16 aFlags) :
+-  nsITokenizer(), mTokenDeque(0), mFlags(aFlags)
++  mTokenDeque(0), mFlags(aFlags)
+ {
+   if (aParseMode == eDTDMode_full_standards ||
+       aParseMode == eDTDMode_almost_standards) {
+     mFlags |= NS_IPARSER_FLAG_STRICT_MODE;
+   } else if (aParseMode == eDTDMode_quirks)  {
+     mFlags |= NS_IPARSER_FLAG_QUIRKS_MODE;
+   } else if (aParseMode == eDTDMode_autodetect) {
+     mFlags |= NS_IPARSER_FLAG_AUTO_DETECT_MODE;
+diff --git a/parser/htmlparser/src/nsHTMLTokenizer.h b/parser/htmlparser/src/nsHTMLTokenizer.h
+--- a/parser/htmlparser/src/nsHTMLTokenizer.h
++++ b/parser/htmlparser/src/nsHTMLTokenizer.h
+@@ -41,33 +41,33 @@
+  * @update  gess 4/1/98
+  * 
+  */
+ 
+ #ifndef __NSHTMLTOKENIZER
+ #define __NSHTMLTOKENIZER
+ 
+ #include "nsISupports.h"
+-#include "nsITokenizer.h"
++#include "nsTokenizer.h"
+ #include "nsIDTD.h"
+ #include "prtypes.h"
+ #include "nsDeque.h"
+ #include "nsScanner.h"
+ #include "nsHTMLTokens.h"
+ #include "nsDTDUtils.h"
+ 
+ /***************************************************************
+   Notes: 
+  ***************************************************************/
+ 
+ #ifdef _MSC_VER
+ #pragma warning( disable : 4275 )
+ #endif
+ 
+-class nsHTMLTokenizer : public nsITokenizer {
++class nsHTMLTokenizer : public nsTokenizer {
+ public:
+   
+   NS_DECL_ISUPPORTS
+   NS_DECL_NSITOKENIZER
+   nsHTMLTokenizer(PRInt32 aParseMode = eDTDMode_quirks,
+                   eParserDocType aDocType = eHTML_Quirks,
+                   eParserCommands aCommand = eViewNormal,
+                   PRUint16 aFlags = 0);
+diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
+--- a/parser/htmlparser/src/nsParser.cpp
++++ b/parser/htmlparser/src/nsParser.cpp
+@@ -3010,48 +3010,42 @@ nsresult nsParser::Tokenize(PRBool aIsFi
+       if (theTokenizer->GetCount() != 0) {
+         return result;
+       }
+ 
+       // Reset since the tokens have been flushed.
+       mFlags &= ~NS_PARSER_FLAG_FLUSH_TOKENS;
+     }
+ 
++    MOZ_TIMER_START(mTokenizeTime);
++
++    WillTokenize(aIsFinalChunk);
++
++    mParserContext->mNumConsumed = 0;
+     PRBool flushTokens = PR_FALSE;
+ 
+-    MOZ_TIMER_START(mTokenizeTime);
++    result = theTokenizer->Tokenize(
++      *mParserContext->mScanner,
++      &mParserContext->mNumConsumed,
++      (mFlags & NS_PARSER_FLAG_OBSERVERS_ENABLED) ? &flushTokens
++                                                  : nsnull);
+ 
+-    mParserContext->mNumConsumed = 0;
++    // I added the extra test of NS_PARSER_FLAG_OBSERVERS_ENABLED to fix Bug# 23931.
++    // Flush tokens on seeing </SCRIPT> -- Ref: Bug# 22485 --
++    if (flushTokens) {
++      mFlags |= NS_PARSER_FLAG_FLUSH_TOKENS;
++    }
+ 
+     PRBool killSink = PR_FALSE;
+ 
+-    WillTokenize(aIsFinalChunk);
+-    while (NS_SUCCEEDED(result)) {
+-      mParserContext->mNumConsumed += mParserContext->mScanner->Mark();
+-      result = theTokenizer->ConsumeToken(*mParserContext->mScanner,
+-                                          flushTokens);
+-      if (NS_FAILED(result)) {
+-        mParserContext->mScanner->RewindToMark();
+-        if (kEOF == result){
+-          break;
+-        }
+-        if (NS_ERROR_HTMLPARSER_STOPPARSING == result) {
+-          killSink = PR_TRUE;
+-          result = Terminate();
+-          break;
+-        }
+-      } else if (flushTokens && (mFlags & NS_PARSER_FLAG_OBSERVERS_ENABLED)) {
+-        // I added the extra test of NS_PARSER_FLAG_OBSERVERS_ENABLED to fix Bug# 23931.
+-        // Flush tokens on seeing </SCRIPT> -- Ref: Bug# 22485 --
+-        // Also remember to update the marked position.
+-        mFlags |= NS_PARSER_FLAG_FLUSH_TOKENS;
+-        mParserContext->mNumConsumed += mParserContext->mScanner->Mark();
+-        break;
+-      }
++    if (NS_ERROR_HTMLPARSER_STOPPARSING == result) {
++      killSink = PR_TRUE;
++      result = Terminate();
+     }
++
+     DidTokenize(aIsFinalChunk);
+ 
+     MOZ_TIMER_STOP(mTokenizeTime);
+ 
+     if (killSink) {
+       mSink = nsnull;
+     }
+   } else {
+diff --git a/parser/htmlparser/src/nsTokenizer.h b/parser/htmlparser/src/nsTokenizer.h
+new file mode 100644
+--- /dev/null
++++ b/parser/htmlparser/src/nsTokenizer.h
+@@ -0,0 +1,40 @@
++#ifndef nsTokenizer_h__
++#define nsTokenizer_h__
++
++#include "nsITokenizer.h"
++#include "nsScanner.h"
++
++class nsTokenizer : public nsITokenizer
++{
++public:
++  virtual nsresult
++  Tokenize(nsScanner& aScanner,
++           PRUint32*  aNumConsumedPtr = nsnull,
++           PRBool*    aFlushTokensPtr = nsnull)
++  {
++    nsresult result = NS_OK;
++    PRUint32 numConsumed = 0;
++    PRBool flushTokens = PR_FALSE;
++    while (NS_SUCCEEDED(result)) {
++      numConsumed += aScanner.Mark();
++      result = ConsumeToken(aScanner, flushTokens);
++      if (NS_FAILED(result)) {
++        aScanner.RewindToMark();
++        if (kEOF == result ||
++            NS_ERROR_HTMLPARSER_STOPPARSING == result) {
++          break;
++        }
++      } else if (flushTokens && aFlushTokensPtr) {
++        numConsumed += aScanner.Mark();
++        break;
++      }
++    }
++    if (aNumConsumedPtr)
++      *aNumConsumedPtr += numConsumed;
++    if (aFlushTokensPtr)
++      *aFlushTokensPtr = flushTokens;
++    return result;
++  }
++};
++
++#endif

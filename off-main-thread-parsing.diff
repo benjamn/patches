@@ -20,7 +20,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  }
  
  void
-@@ -2346,16 +2346,19 @@ nsParser::ResumeParse(PRBool allowIterat
+@@ -2337,16 +2337,19 @@ nsParser::ResumeParse(PRBool allowIterat
          // Only allow parsing to be interrupted in the subsequent call to
          // build model.
          SetCanInterrupt(aCanInterrupt);
