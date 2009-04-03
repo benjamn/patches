@@ -1,0 +1,61 @@
+diff --git a/content/html/content/test/bug441930_iframe.html b/content/html/content/test/bug441930_iframe.html
+--- a/content/html/content/test/bug441930_iframe.html
++++ b/content/html/content/test/bug441930_iframe.html
+@@ -1,18 +1,16 @@
+ <html>
+ <body>
+   The content of this <code>textarea</code> should not disappear on page reload:<br />
+   <textarea>This text should not disappear on page reload!</textarea>
+   <script>
+     var ta = document.getElementsByTagName("textarea").item(0);
+-    if (!parent.reloaded) {
+-      parent.reloaded = true;
++    if (parent.reloadFrame.count < 1) {
+       ta.disabled = true;
+-      location.reload();
+     } else {
+       // Primary regression test:
+       parent.isnot(ta.value, "",
+         "Content of dynamically disabled textarea disappeared on page reload.");
+       
+       // Bonus regression test: changing the textarea's defaultValue after
+       // reloading should also update the textarea's value.
+       var newDefaultValue = "new default value";
+diff --git a/content/html/content/test/test_bug441930.html b/content/html/content/test/test_bug441930.html
+--- a/content/html/content/test/test_bug441930.html
++++ b/content/html/content/test/test_bug441930.html
+@@ -11,20 +11,30 @@ https://bugzilla.mozilla.org/show_bug.cg
+ </head>
+ <body>
+ <a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=441930">Mozilla Bug 441930</a>
+ <pre id="test">
+ <script class="testbody" type="text/javascript">
+ 
+ /** Test for Bug 441930: see bug441930_iframe.html **/
+ 
++function reloadFrame(frame) {
++  if (reloadFrame.count < 1) {
++    reloadFrame.count += 1;
++    frame.contentWindow.location.reload();
++  }
++}
++reloadFrame.count = 0;
++
+ SimpleTest.waitForExplicitFinish();
+ 
+ </script>
+ </pre>
+-<p id="display">
+-  <iframe src="bug441930_iframe.html"></iframe>
+-</p>
+-<div id="content" style="display: none">
++<div id="content">
++  <p id="display">
++    <iframe src="bug441930_iframe.html"
++            onload="reloadFrame(this)">
++    </iframe>
++  </p>
+ </div>
+ </body>
+ </html>
+ 

@@ -1,0 +1,343 @@
+diff --git a/js/src/jsapi.cpp b/js/src/jsapi.cpp
+--- a/js/src/jsapi.cpp
++++ b/js/src/jsapi.cpp
+@@ -5712,16 +5712,33 @@ JS_SetRegExpInput(JSContext *cx, JSStrin
+     /* No locking required, cx is thread-private and input must be live. */
+     res = &cx->regExpStatics;
+     res->input = input;
+     res->multiline = multiline;
+     cx->runtime->gcPoke = JS_TRUE;
+ }
+ 
+ JS_PUBLIC_API(void)
++JS_SaveRegExpStatics(JSContext *cx, JSRegExpStatics *statics)
++{
++  JS_ASSERT(statics);
++  CHECK_REQUEST(cx);
++  *statics = cx->regExpStatics;
++  JS_ClearRegExpStatics(cx);
++}
++
++JS_PUBLIC_API(void)
++JS_RestoreRegExpStatics(JSContext *cx, const JSRegExpStatics *statics)
++{
++  JS_ASSERT(statics);
++  CHECK_REQUEST(cx);
++  cx->regExpStatics = *statics;
++}
++
++JS_PUBLIC_API(void)
+ JS_ClearRegExpStatics(JSContext *cx)
+ {
+     JSRegExpStatics *res;
+ 
+     /* No locking required, cx is thread-private and input must be live. */
+     res = &cx->regExpStatics;
+     res->input = NULL;
+     res->multiline = JS_FALSE;
+diff --git a/js/src/jsapi.h b/js/src/jsapi.h
+--- a/js/src/jsapi.h
++++ b/js/src/jsapi.h
+@@ -2655,16 +2655,24 @@ extern JS_PUBLIC_API(JSObject *)
+ JS_NewRegExpObject(JSContext *cx, char *bytes, size_t length, uintN flags);
+ 
+ extern JS_PUBLIC_API(JSObject *)
+ JS_NewUCRegExpObject(JSContext *cx, jschar *chars, size_t length, uintN flags);
+ 
+ extern JS_PUBLIC_API(void)
+ JS_SetRegExpInput(JSContext *cx, JSString *input, JSBool multiline);
+ 
++struct JSRegExpStatics;
++
++extern JS_PUBLIC_API(void)
++JS_SaveRegExpStatics(JSContext *cx, struct JSRegExpStatics *statics);
++
++extern JS_PUBLIC_API(void)
++JS_RestoreRegExpStatics(JSContext *cx, const struct JSRegExpStatics *statics);
++
+ extern JS_PUBLIC_API(void)
+ JS_ClearRegExpStatics(JSContext *cx);
+ 
+ extern JS_PUBLIC_API(void)
+ JS_ClearRegExpRoots(JSContext *cx);
+ 
+ /* TODO: compile, exec, get/set other statics... */
+ 
+diff --git a/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp b/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp
+--- a/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp
++++ b/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp
+@@ -36,16 +36,17 @@
+  * the terms of any one of the MPL, the GPL or the LGPL.
+  *
+  * ***** END LICENSE BLOCK ***** */
+ 
+ #include "xpcprivate.h"
+ #include "jsdbgapi.h"
+ #include "jsscript.h" // for js_ScriptClass
+ #include "XPCWrapper.h"
++#include "jsregexp.h"
+ 
+ static JSBool
+ XPC_SJOW_AddProperty(JSContext *cx, JSObject *obj, jsval id, jsval *vp);
+ 
+ static JSBool
+ XPC_SJOW_DelProperty(JSContext *cx, JSObject *obj, jsval id, jsval *vp);
+ 
+ static JSBool
+@@ -517,31 +518,42 @@ XPC_SJOW_DelProperty(JSContext *cx, JSOb
+   if (!CanCallerAccess(cx, unsafeObj)) {
+     // CanCallerAccess() already threw for us.
+     return JS_FALSE;
+   }
+ 
+   return XPCWrapper::DelProperty(cx, unsafeObj, id, vp);
+ }
+ 
++static inline JSBool
++CallWithoutStatics(JSContext *cx, JSObject *obj, jsval fval, uintN argc,
++                   jsval *argv, jsval *rval)
++{
++  JSRegExpStatics statics;
++  JS_SaveRegExpStatics(cx, &statics);
++  JSBool ok = ::JS_CallFunctionValue(cx, obj, fval, argc, argv, rval);
++  JS_RestoreRegExpStatics(cx, &statics);
++  return ok;
++}
++
+ // Call wrapper to help with wrapping calls to functions or callable
+ // objects in a scripted function (see XPC_SJOW_Call()). The first
+ // argument passed to this method is the unsafe function to call, the
+ // rest are the arguments to pass to the function we're calling.
+ static JSBool
+ XPC_SJOW_CallWrapper(JSContext *cx, JSObject *obj, uintN argc, jsval *argv,
+                      jsval *rval)
+ {
+   // Make sure we've got at least one argument (which may not be the
+   // case if someone's monkeying with this function directly from JS).
+   if (argc < 1) {
+     return ThrowException(NS_ERROR_INVALID_ARG, cx);
+   }
+ 
+-  return ::JS_CallFunctionValue(cx, obj, argv[0], argc - 1, argv + 1, rval);
++  return CallWithoutStatics(cx, obj, argv[0], argc - 1, argv + 1, rval);
+ }
+ 
+ static JSBool
+ XPC_SJOW_GetOrSetProperty(JSContext *cx, JSObject *obj, jsval id, jsval *vp,
+                           JSBool aIsSet)
+ {
+   // We resolve toString to a function in our resolve hook.
+   if (id == GetRTStringByIndex(cx, XPCJSRuntime::IDX_TO_STRING)) {
+@@ -583,19 +595,18 @@ XPC_SJOW_GetOrSetProperty(JSContext *cx,
+ 
+   args[0] = id;
+ 
+   if (aIsSet) {
+     args[1] = UnwrapJSValue(*vp);
+   }
+ 
+   jsval val;
+-  JSBool ok = ::JS_CallFunctionValue(cx, unsafeObj, scriptedFunVal,
+-                                     aIsSet ? 2 : 1, args, &val);
+-
++  JSBool ok = CallWithoutStatics(cx, unsafeObj, scriptedFunVal,
++                                 aIsSet ? 2 : 1, args, &val);
+   return ok && WrapJSValue(cx, obj, val, vp);
+ }
+ 
+ static JSBool
+ XPC_SJOW_GetProperty(JSContext *cx, JSObject *obj, jsval id, jsval *vp)
+ {
+   return XPC_SJOW_GetOrSetProperty(cx, obj, id, vp, PR_FALSE);
+ }
+@@ -855,18 +866,18 @@ XPC_SJOW_Call(JSContext *cx, JSObject *o
+     return JS_FALSE;
+   }
+ 
+   for (uintN i = 0; i < argc; ++i) {
+     args[i + 2] = UnwrapJSValue(argv[i]);
+   }
+ 
+   jsval val;
+-  JSBool ok = ::JS_CallFunctionValue(cx, callThisObj, scriptedFunVal, argc + 2,
+-                                     args, &val);
++  JSBool ok = CallWithoutStatics(cx, callThisObj, scriptedFunVal, argc + 2,
++                                 args, &val);
+ 
+   if (args != argsBuf) {
+     nsMemory::Free(args);
+   }
+ 
+   return ok && WrapJSValue(cx, obj, val, rval);
+ }
+ 
+@@ -961,22 +972,19 @@ XPC_SJOW_Create(JSContext *cx, JSObject 
+   JSObject *unsafeObj = GetUnsafeObject(callee);
+ 
+   // Check that the caller can access the unsafe object.
+   if (!CanCallerAccess(cx, unsafeObj)) {
+     // CanCallerAccess() already threw for us.
+     return JS_FALSE;
+   }
+ 
+-  if (!JS_CallFunctionValue(cx, obj, OBJECT_TO_JSVAL(callee), argc, argv,
+-                            rval)) {
+-    return JS_FALSE;
+-  }
+-
+-  return WrapJSValue(cx, callee, *rval, rval);
++  JSBool ok = CallWithoutStatics(cx, obj, OBJECT_TO_JSVAL(callee), argc, argv,
++                                 rval);
++  return ok && WrapJSValue(cx, callee, *rval, rval);
+ }
+ 
+ static JSBool
+ XPC_SJOW_Equality(JSContext *cx, JSObject *obj, jsval v, JSBool *bp)
+ {
+   if (JSVAL_IS_PRIMITIVE(v)) {
+     *bp = JS_FALSE;
+   } else {
+@@ -1087,19 +1095,18 @@ XPC_SJOW_toString(JSContext *cx, JSObjec
+ 
+   jsval scriptedFunVal;
+   if (!GetScriptedFunction(cx, obj, unsafeObj, XPC_SJOW_SLOT_SCRIPTED_TOSTRING,
+                            funScript, &scriptedFunVal)) {
+     return JS_FALSE;
+   }
+ 
+   jsval val;
+-  JSBool ok = ::JS_CallFunctionValue(cx, unsafeObj, scriptedFunVal, 0, nsnull,
+-                                     &val);
+-
++  JSBool ok = CallWithoutStatics(cx, unsafeObj, scriptedFunVal, 0, nsnull,
++                                 &val);
+   return ok && WrapJSValue(cx, obj, val, rval);
+ }
+ 
+ PRBool
+ XPC_SJOW_AttachNewConstructorObject(XPCCallContext &ccx,
+                                     JSObject *aGlobalObject)
+ {
+   // Initialize sEvalNative the first time we attach a constructor.
+diff --git a/js/src/xpconnect/tests/mochitest/Makefile.in b/js/src/xpconnect/tests/mochitest/Makefile.in
+--- a/js/src/xpconnect/tests/mochitest/Makefile.in
++++ b/js/src/xpconnect/tests/mochitest/Makefile.in
+@@ -50,12 +50,13 @@ _TEST_FILES =	inner.html \
+ 		test_bug393269.html \
+ 		test_bug396851.html \
+ 		test_bug428021.html \
+ 		test_bug448587.html \
+ 		test_wrappers.html \
+ 		test_bug446584.html \
+ 		test_bug462428.html \
+ 		test_bug478438.html \
++		test_bug484107.html \
+ 		$(NULL)
+ 
+ libs:: $(_TEST_FILES)
+ 	$(INSTALL) $^ $(DEPTH)/_tests/testing/mochitest/tests/$(relativesrcdir)
+diff --git a/js/src/xpconnect/tests/mochitest/test_bug484107.html b/js/src/xpconnect/tests/mochitest/test_bug484107.html
+new file mode 100644
+--- /dev/null
++++ b/js/src/xpconnect/tests/mochitest/test_bug484107.html
+@@ -0,0 +1,100 @@
++<!DOCTYPE HTML>
++<html>
++<!--
++https://bugzilla.mozilla.org/show_bug.cgi?id=484107
++-->
++<head>
++  <title>Test for Bug 484107</title>
++  <script type="application/javascript" src="/MochiKit/MochiKit.js"></script>
++  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
++  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
++</head>
++<body>
++<a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=484107">Mozilla Bug 484107</a>
++<p id="display"></p>
++<div id="content" style="display: none">
++  
++</div>
++<pre id="test">
++<script type="application/javascript">
++
++/** Test for Bug 484107 **/
++
++  var text = "first group",
++      xpcWin = new XPCSafeJSObjectWrapper(window);
++  function get$1() { return RegExp.$1 };
++
++  function reset() {
++    var match = /(.*)/.exec(text);
++    if (!reset.skipStupidTests) {
++      reset.skipStupidTests = true;
++      ok(match, "No match?");
++      is(match[1], text, "Bad match?");
++      is(text, RegExp.$1, "RegExp.$1 missing?");
++      is(text, get$1(), "RegExp.$1 inaccessible?");
++    }
++  }
++
++  function test_XPC_SJOW_Call() {
++    isnot(text, xpcWin.get$1(), "Able to see RegExp.$1 from wrapped method.");
++    is("", xpcWin.get$1(), "Saw something other than an empty string for " +
++                           "RegExp.$1 from wrapped method.");
++    is(text, window.get$1(), "Unable to see RegExp.$1 from non-wrapped method.");
++  }
++
++  function test_XPC_SJOW_Call_foreign_obj() {
++    var obj = {
++      xpcGet: xpcWin.get$1,
++      rawGet: window.get$1
++    };
++    isnot(text, obj.xpcGet(), "obj.xpcGet() returned matched text.");
++    is("", obj.xpcGet(), "obj.xpcGet() returned something other than the empty string.");
++    is(text, obj.rawGet(), "obj.rawGet() did not return matched text.");
++  }
++
++  function test_XPC_SJOW_toString() {
++    var str = new XPCSafeJSObjectWrapper({
++      toString: function() { return RegExp.$1 }
++    }) + "";
++    isnot(text, str, "toString() returned the matched text.");
++    is("", str, "toString() returned something other than the empty string.");
++  }
++
++  function test_XPC_SJOW_GetOrSetProperty() {
++    window.__defineGetter__("firstMatch", function() { return RegExp.$1 });
++    isnot(text, xpcWin.firstMatch, "Getter xpcWin.firstMatch returned matched text.");
++    is("", xpcWin.firstMatch,
++       "Getter xpcWin.firstMatch returned something other than the empty string.");
++    is(text, window.firstMatch, "Getter window.firstMatch did not return matched text.");
++  }
++
++  function test_XPC_SJOW_Create() {
++    function ctor() {
++      this.match = RegExp.$1;
++      return this; // XXX Why is this necessary?
++    }
++    ctor.prototype.getMatch = function() { return this.match };
++    var xpcCtor = new XPCSafeJSObjectWrapper(ctor),
++        match = (new xpcCtor).getMatch();
++    isnot(text, match, "(new xpcCtor).getMatch() was the matched text.");
++    is("", match, "(new xpcCtor).getMatch() was not the empty string.");
++  }
++
++  var tests = [
++    test_XPC_SJOW_Call,
++    test_XPC_SJOW_Call_foreign_obj,
++    test_XPC_SJOW_toString,
++    test_XPC_SJOW_GetOrSetProperty,
++    test_XPC_SJOW_Create
++  ];
++
++  for (var i = 0; i < tests.length; i++) {
++    reset();
++    tests[i]();
++    is(text, RegExp.$1, "RegExp.$1 was clobbered.");
++  }
++
++</script>
++</pre>
++</body>
++</html>
