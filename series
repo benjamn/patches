@@ -1,3 +1,5 @@
+functor.diff
+runnable-functor.diff
 bug-467865.diff
 tokenizing-tokenizer.diff
 simplify-nsIDTD.diff
@@ -8,10 +10,7 @@ safe-suspect-forget.diff
 hdst-index-bound.diff
 suppress-title-change-events.diff
 parser-copy-data.diff
-functor.diff
-runnable-functor.diff
 parser-functor-barriers.diff
 off-main-thread-parsing.diff
-bug-470356.diff
 innerhtml.diff
 bug-468562.diff
