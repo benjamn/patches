@@ -2,41 +2,177 @@ diff --git a/xpcom/glue/Join.h b/xpcom/glue/Join.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Join.h
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,178 @@
 +#ifndef Join_h__
 +#define Join_h__
 +
-+#define JOIN0(PRED,SEP)
-+#define JOIN1(PRED,SEP) PRED(0)
 +// [[[cog
-+// rng = range(20+1)
++// MAX_RANGE_LENGTH = 20
++// rng = range(MAX_RANGE_LENGTH)
 +// ijs = zip(rng, rng[1:])
-+// template = "#define JOIN%(j)d(PRED,SEP) JOIN%(i)d(PRED,SEP) SEP() PRED(%(i)d)"
-+// cog.out("\n".join(template % locals() for (i, j) in ijs[1:]))
 +// ]]]
-+#define JOIN2(PRED,SEP) JOIN1(PRED,SEP) SEP() PRED(1)
-+#define JOIN3(PRED,SEP) JOIN2(PRED,SEP) SEP() PRED(2)
-+#define JOIN4(PRED,SEP) JOIN3(PRED,SEP) SEP() PRED(3)
-+#define JOIN5(PRED,SEP) JOIN4(PRED,SEP) SEP() PRED(4)
-+#define JOIN6(PRED,SEP) JOIN5(PRED,SEP) SEP() PRED(5)
-+#define JOIN7(PRED,SEP) JOIN6(PRED,SEP) SEP() PRED(6)
-+#define JOIN8(PRED,SEP) JOIN7(PRED,SEP) SEP() PRED(7)
-+#define JOIN9(PRED,SEP) JOIN8(PRED,SEP) SEP() PRED(8)
-+#define JOIN10(PRED,SEP) JOIN9(PRED,SEP) SEP() PRED(9)
-+#define JOIN11(PRED,SEP) JOIN10(PRED,SEP) SEP() PRED(10)
-+#define JOIN12(PRED,SEP) JOIN11(PRED,SEP) SEP() PRED(11)
-+#define JOIN13(PRED,SEP) JOIN12(PRED,SEP) SEP() PRED(12)
-+#define JOIN14(PRED,SEP) JOIN13(PRED,SEP) SEP() PRED(13)
-+#define JOIN15(PRED,SEP) JOIN14(PRED,SEP) SEP() PRED(14)
-+#define JOIN16(PRED,SEP) JOIN15(PRED,SEP) SEP() PRED(15)
-+#define JOIN17(PRED,SEP) JOIN16(PRED,SEP) SEP() PRED(16)
-+#define JOIN18(PRED,SEP) JOIN17(PRED,SEP) SEP() PRED(17)
-+#define JOIN19(PRED,SEP) JOIN18(PRED,SEP) SEP() PRED(18)
-+#define JOIN20(PRED,SEP) JOIN19(PRED,SEP) SEP() PRED(19)
 +// [[[end]]]
 +
-+#define COMMA() ,
-+#define SEMI()  ;
++#define CAR_HT(H, T) H
++#define CAR(LST) CAR_HT LST
++#define CDR_HT(H, T) T
++#define CDR(LST) CDR_HT LST
++
++#define CDR0(LST) LST
++// [[[cog
++// for (i, j) in ijs:
++//   cog.out("""
++// #define CDR%(j)d(LST) CDR(CDR%(i)d(LST))""" % locals())
++// ]]]
++
++#define CDR1(LST) CDR(CDR0(LST))
++#define CDR2(LST) CDR(CDR1(LST))
++#define CDR3(LST) CDR(CDR2(LST))
++#define CDR4(LST) CDR(CDR3(LST))
++#define CDR5(LST) CDR(CDR4(LST))
++#define CDR6(LST) CDR(CDR5(LST))
++#define CDR7(LST) CDR(CDR6(LST))
++#define CDR8(LST) CDR(CDR7(LST))
++#define CDR9(LST) CDR(CDR8(LST))
++#define CDR10(LST) CDR(CDR9(LST))
++#define CDR11(LST) CDR(CDR10(LST))
++#define CDR12(LST) CDR(CDR11(LST))
++#define CDR13(LST) CDR(CDR12(LST))
++#define CDR14(LST) CDR(CDR13(LST))
++#define CDR15(LST) CDR(CDR14(LST))
++#define CDR16(LST) CDR(CDR15(LST))
++#define CDR17(LST) CDR(CDR16(LST))
++#define CDR18(LST) CDR(CDR17(LST))
++#define CDR19(LST) CDR(CDR18(LST))
++// [[[end]]]
++
++#define ELT(POS, LST) CAR(CDR##POS(LST))
++
++#define ENUM0
++// [[[cog
++// def expand(n):
++//   s = str(n)
++//   while n > 0:
++//     n = n - 1
++//     s = "(%(n)d,%(s)s)" % locals()
++//   return s
++// for (i, j) in ijs:
++//   exp = expand(i)
++//   cog.out("""
++// #define ENUM%(j)d %(exp)s""" % locals())
++// ]]]
++
++#define ENUM1 0
++#define ENUM2 (0,1)
++#define ENUM3 (0,(1,2))
++#define ENUM4 (0,(1,(2,3)))
++#define ENUM5 (0,(1,(2,(3,4))))
++#define ENUM6 (0,(1,(2,(3,(4,5)))))
++#define ENUM7 (0,(1,(2,(3,(4,(5,6))))))
++#define ENUM8 (0,(1,(2,(3,(4,(5,(6,7)))))))
++#define ENUM9 (0,(1,(2,(3,(4,(5,(6,(7,8))))))))
++#define ENUM10 (0,(1,(2,(3,(4,(5,(6,(7,(8,9)))))))))
++#define ENUM11 (0,(1,(2,(3,(4,(5,(6,(7,(8,(9,10))))))))))
++#define ENUM12 (0,(1,(2,(3,(4,(5,(6,(7,(8,(9,(10,11)))))))))))
++#define ENUM13 (0,(1,(2,(3,(4,(5,(6,(7,(8,(9,(10,(11,12))))))))))))
++#define ENUM14 (0,(1,(2,(3,(4,(5,(6,(7,(8,(9,(10,(11,(12,13)))))))))))))
++#define ENUM15 (0,(1,(2,(3,(4,(5,(6,(7,(8,(9,(10,(11,(12,(13,14))))))))))))))
++#define ENUM16 (0,(1,(2,(3,(4,(5,(6,(7,(8,(9,(10,(11,(12,(13,(14,15)))))))))))))))
++#define ENUM17 (0,(1,(2,(3,(4,(5,(6,(7,(8,(9,(10,(11,(12,(13,(14,(15,16))))))))))))))))
++#define ENUM18 (0,(1,(2,(3,(4,(5,(6,(7,(8,(9,(10,(11,(12,(13,(14,(15,(16,17)))))))))))))))))
++#define ENUM19 (0,(1,(2,(3,(4,(5,(6,(7,(8,(9,(10,(11,(12,(13,(14,(15,(16,(17,18))))))))))))))))))
++// [[[end]]]
++#define ENUM(N) ENUM##N
++
++#define RANGE(B, E) CDR##B(ENUM##E)
++
++#define JOIN0(PRED, SEP, NOTHING)
++#define JOIN1(PRED, SEP, ATOM) PRED(ATOM)
++// [[[cog
++// slash = "\\"
++// for (i, j) in ijs[1:]:
++//   cog.out("""
++// #define JOIN%(j)d(PRED,SEP,LST) %(slash)s
++//         JOIN%(j)d_APPLY(PRED,(CAR(LST)))SEP() JOIN%(i)d(PRED,SEP,CDR(LST))
++// #define JOIN%(j)d_APPLY(PRED,ARGS) PRED ARGS
++// """ % locals())
++// ]]]
++
++#define JOIN2(PRED,SEP,LST) \
++        JOIN2_APPLY(PRED,(CAR(LST)))SEP() JOIN1(PRED,SEP,CDR(LST))
++#define JOIN2_APPLY(PRED,ARGS) PRED ARGS
++
++#define JOIN3(PRED,SEP,LST) \
++        JOIN3_APPLY(PRED,(CAR(LST)))SEP() JOIN2(PRED,SEP,CDR(LST))
++#define JOIN3_APPLY(PRED,ARGS) PRED ARGS
++
++#define JOIN4(PRED,SEP,LST) \
++        JOIN4_APPLY(PRED,(CAR(LST)))SEP() JOIN3(PRED,SEP,CDR(LST))
++#define JOIN4_APPLY(PRED,ARGS) PRED ARGS
++
++#define JOIN5(PRED,SEP,LST) \
++        JOIN5_APPLY(PRED,(CAR(LST)))SEP() JOIN4(PRED,SEP,CDR(LST))
++#define JOIN5_APPLY(PRED,ARGS) PRED ARGS
++
++#define JOIN6(PRED,SEP,LST) \
++        JOIN6_APPLY(PRED,(CAR(LST)))SEP() JOIN5(PRED,SEP,CDR(LST))
++#define JOIN6_APPLY(PRED,ARGS) PRED ARGS
++
++#define JOIN7(PRED,SEP,LST) \
++        JOIN7_APPLY(PRED,(CAR(LST)))SEP() JOIN6(PRED,SEP,CDR(LST))
++#define JOIN7_APPLY(PRED,ARGS) PRED ARGS
++
++#define JOIN8(PRED,SEP,LST) \
++        JOIN8_APPLY(PRED,(CAR(LST)))SEP() JOIN7(PRED,SEP,CDR(LST))
++#define JOIN8_APPLY(PRED,ARGS) PRED ARGS
++
++#define JOIN9(PRED,SEP,LST) \
++        JOIN9_APPLY(PRED,(CAR(LST)))SEP() JOIN8(PRED,SEP,CDR(LST))
++#define JOIN9_APPLY(PRED,ARGS) PRED ARGS
++
++#define JOIN10(PRED,SEP,LST) \
++        JOIN10_APPLY(PRED,(CAR(LST)))SEP() JOIN9(PRED,SEP,CDR(LST))
++#define JOIN10_APPLY(PRED,ARGS) PRED ARGS
++
++#define JOIN11(PRED,SEP,LST) \
++        JOIN11_APPLY(PRED,(CAR(LST)))SEP() JOIN10(PRED,SEP,CDR(LST))
++#define JOIN11_APPLY(PRED,ARGS) PRED ARGS
++
++#define JOIN12(PRED,SEP,LST) \
++        JOIN12_APPLY(PRED,(CAR(LST)))SEP() JOIN11(PRED,SEP,CDR(LST))
++#define JOIN12_APPLY(PRED,ARGS) PRED ARGS
++
++#define JOIN13(PRED,SEP,LST) \
++        JOIN13_APPLY(PRED,(CAR(LST)))SEP() JOIN12(PRED,SEP,CDR(LST))
++#define JOIN13_APPLY(PRED,ARGS) PRED ARGS
++
++#define JOIN14(PRED,SEP,LST) \
++        JOIN14_APPLY(PRED,(CAR(LST)))SEP() JOIN13(PRED,SEP,CDR(LST))
++#define JOIN14_APPLY(PRED,ARGS) PRED ARGS
++
++#define JOIN15(PRED,SEP,LST) \
++        JOIN15_APPLY(PRED,(CAR(LST)))SEP() JOIN14(PRED,SEP,CDR(LST))
++#define JOIN15_APPLY(PRED,ARGS) PRED ARGS
++
++#define JOIN16(PRED,SEP,LST) \
++        JOIN16_APPLY(PRED,(CAR(LST)))SEP() JOIN15(PRED,SEP,CDR(LST))
++#define JOIN16_APPLY(PRED,ARGS) PRED ARGS
++
++#define JOIN17(PRED,SEP,LST) \
++        JOIN17_APPLY(PRED,(CAR(LST)))SEP() JOIN16(PRED,SEP,CDR(LST))
++#define JOIN17_APPLY(PRED,ARGS) PRED ARGS
++
++#define JOIN18(PRED,SEP,LST) \
++        JOIN18_APPLY(PRED,(CAR(LST)))SEP() JOIN17(PRED,SEP,CDR(LST))
++#define JOIN18_APPLY(PRED,ARGS) PRED ARGS
++
++#define JOIN19(PRED,SEP,LST) \
++        JOIN19_APPLY(PRED,(CAR(LST)))SEP() JOIN18(PRED,SEP,CDR(LST))
++#define JOIN19_APPLY(PRED,ARGS) PRED ARGS
++// [[[end]]]
++
++#define COMMA(),
++#define SEMI();
 +#define EMPTY()
 +
 +// #define tnT(N) typename T##N

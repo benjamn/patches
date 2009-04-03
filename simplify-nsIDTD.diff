@@ -1,7 +1,7 @@
 diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD.h
 --- a/parser/htmlparser/public/nsIDTD.h
 +++ b/parser/htmlparser/public/nsIDTD.h
-@@ -98,28 +98,25 @@ public:
+@@ -98,56 +98,41 @@ public:
  
      /**
       * Called by the parser after the parsing process has concluded
@@ -23,17 +23,19 @@ diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD
 -    NS_IMETHOD BuildModel(nsIParser* aParser, nsITokenizer* aTokenizer,
 -                          nsITokenObserver* anObserver,
 -                          nsIContentSink* aSink) = 0;
+-
+-    /**
+-     * Called during model building phase of parse process. Each token
+-     * created during the parse phase is stored in a deque (in the
+-     * parser) and are passed to this method so that the DTD can
+-     * process the token. Ultimately, the DTD will transform given
+-     * token into calls onto a contentsink.
+-     * @update  gess 3/25/98
+-     * @param   aToken -- token object to be put into content model
+-     * @return error code (usually 0)
+-     */
+-    NS_IMETHOD HandleToken(CToken* aToken,nsIParser* aParser) = 0;
 +    NS_IMETHOD BuildModel(nsIParser* aParser, nsITokenizer* aTokenizer) = 0;
- 
-     /**
-      * Called during model building phase of parse process. Each token
-      * created during the parse phase is stored in a deque (in the
-      * parser) and are passed to this method so that the DTD can
-      * process the token. Ultimately, the DTD will transform given
-      * token into calls onto a contentsink.
-      * @update  gess 3/25/98
-@@ -129,25 +126,25 @@ public:
-     NS_IMETHOD HandleToken(CToken* aToken,nsIParser* aParser) = 0;
  
      /**
       * If the parse process gets interrupted midway, this method is
@@ -60,7 +62,7 @@ diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD
       * @update  gess 3/25/98
       * @param   aParent -- int tag of parent container
       * @param   aChild -- int tag of child container
-@@ -173,24 +170,27 @@ public:
+@@ -173,24 +158,26 @@ public:
       *
       * @update  harishd 07/22/99
       * @param
@@ -84,7 +86,6 @@ diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD
 -    NS_IMETHOD WillInterruptParse(nsIContentSink* aSink = 0);\
 +    NS_IMETHOD DidBuildModel(nsresult anErrorCode, PRBool aNotifySink, nsIParser* aParser);\
 +    NS_IMETHOD BuildModel(nsIParser* aParser, nsITokenizer* aTokenizer);\
-+    NS_IMETHOD HandleToken(CToken* aToken, nsIParser* aParser);\
 +    NS_IMETHOD WillResumeParse();\
 +    NS_IMETHOD WillInterruptParse();\
      NS_IMETHOD_(PRBool) CanContain(PRInt32 aParent,PRInt32 aChild) const;\
@@ -285,25 +286,6 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
   * @param aTokenizer A tokenizer that we can get the tags attributes off of.
   * @return PR_TRUE if aToken does indeed force the body to open.
   */
-@@ -581,17 +583,17 @@ HasOpenTagOfType(PRInt32 aType, const ns
-     if (gHTMLElements[aContext.TagAt(count)].IsMemberOf(aType)) {
-       return PR_TRUE;
-     }
-   }
- 
-   return PR_FALSE;
- }
- 
--nsresult
-+NS_IMETHODIMP
- CNavDTD::HandleToken(CToken* aToken, nsIParser* aParser)
- {
-   if (!aToken) {
-     return NS_OK;
-   }
- 
-   nsresult        result   = NS_OK;
-   CHTMLToken*     theToken = static_cast<CHTMLToken*>(aToken);
 @@ -2134,17 +2136,17 @@ CNavDTD::CollectAttributes(nsIParserNode
   *  This method is called to determine whether or not a tag
   *  of one type can contain a tag of another type.
@@ -388,7 +370,26 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
 diff --git a/parser/htmlparser/src/CNavDTD.h b/parser/htmlparser/src/CNavDTD.h
 --- a/parser/htmlparser/src/CNavDTD.h
 +++ b/parser/htmlparser/src/CNavDTD.h
-@@ -290,17 +290,17 @@ private:
+@@ -253,16 +253,18 @@ private:
+     /**
+      * Finds the topmost occurrence of given tag within context vector stack.
+      *
+      * @param   tag to be found
+      * @return  index of topmost tag occurrence -- may be -1 (kNotFound).
+      */
+     PRInt32 LastOf(eHTMLTags aTagSet[], PRInt32 aCount) const;
+ 
++    nsresult HandleToken(CToken* aToken, nsIParser* aParser);
++
+     /**
+      *  This method gets called when a start token has been
+      *  encountered in the parse process. If the current container
+      *  can contain this tag, then add it. Otherwise, you have
+      *  two choices: 1) create an implicit container for this tag
+      *                  to be stored in
+      *               2) close the top container, and add this to
+      *                  whatever container ends up on top.
+@@ -290,17 +292,17 @@ private:
                                          nsCParserNode *aNode);
      nsresult    HandleEndToken(CToken* aToken);
      nsresult    HandleEntityToken(CToken* aToken);
@@ -647,10 +648,48 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
    return 0;
  }
  
+@@ -1417,17 +1431,17 @@ nsExpatDriver::PrependTokens(nsDeque& aD
+ }
+ 
+ NS_IMETHODIMP
+ nsExpatDriver::CopyState(nsITokenizer* aTokenizer)
+ {
+   return NS_OK;
+ }
+ 
+-NS_IMETHODIMP
++nsresult
+ nsExpatDriver::HandleToken(CToken* aToken,nsIParser* aParser)
+ {
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP_(PRBool)
+ nsExpatDriver::IsContainer(PRInt32 aTag) const
+ {
 diff --git a/parser/htmlparser/src/nsExpatDriver.h b/parser/htmlparser/src/nsExpatDriver.h
 --- a/parser/htmlparser/src/nsExpatDriver.h
 +++ b/parser/htmlparser/src/nsExpatDriver.h
-@@ -151,15 +151,20 @@ private:
+@@ -59,16 +59,18 @@ public:
+   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+   NS_DECL_NSIDTD
+   NS_DECL_NSITOKENIZER
+   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsExpatDriver, nsIDTD)
+ 
+   nsExpatDriver();
+   virtual ~nsExpatDriver();
+ 
++  nsresult HandleToken(CToken* aToken, nsIParser* aParser);
++
+   int HandleExternalEntityRef(const PRUnichar *aOpenEntityNames,
+                               const PRUnichar *aBase,
+                               const PRUnichar *aSystemId,
+                               const PRUnichar *aPublicId);
+   nsresult HandleStartElement(const PRUnichar *aName, const PRUnichar **aAtts);
+   nsresult HandleEndElement(const PRUnichar *aName);
+   nsresult HandleCharacterData(const PRUnichar *aCData, const PRUint32 aLength);
+   nsresult HandleComment(const PRUnichar *aName);
+@@ -151,15 +153,20 @@ private:
    // Necko
    PRPackedBool     mIsFinalChunk;
  
@@ -1078,7 +1117,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
   */
 -PRBool CViewSourceHTML::CanContain(PRInt32 aParent,PRInt32 aChild) const{
 +NS_IMETHODIMP_(PRBool)
-+CViewSourceHTML::CanContain(PRInt32 aParent,PRInt32 aChild) const
++CViewSourceHTML::CanContain(PRInt32 aParent, PRInt32 aChild) const
 +{
    PRBool result=PR_TRUE;
    return result;
@@ -1104,3 +1143,45 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
   *  This method gets called when a tag needs to write it's attributes
   *
   *  @update  gess 3/25/98
+@@ -855,17 +873,18 @@ nsresult CViewSourceHTML::WriteTag(PRInt
+ }
+ 
+ /**
+  *
+  *  @update  gess 3/25/98
+  *  @param   aToken -- token object to be put into content model
+  *  @return  0 if all is well; non-zero is an error
+  */
+-NS_IMETHODIMP CViewSourceHTML::HandleToken(CToken* aToken,nsIParser* aParser)
++nsresult
++CViewSourceHTML::HandleToken(CToken* aToken,nsIParser* aParser)
+ {
+   nsresult        result=NS_OK;
+   CHTMLToken*     theToken= (CHTMLToken*)(aToken);
+   eHTMLTokenTypes theType= (eHTMLTokenTypes)theToken->GetTokenType();
+ 
+   mParser=(nsParser*)aParser;
+   mSink=(nsIHTMLContentSink*)aParser->GetContentSink();
+ 
+diff --git a/parser/htmlparser/src/nsViewSourceHTML.h b/parser/htmlparser/src/nsViewSourceHTML.h
+--- a/parser/htmlparser/src/nsViewSourceHTML.h
++++ b/parser/htmlparser/src/nsViewSourceHTML.h
+@@ -90,16 +90,18 @@ public:
+      * context stack.
+      * @update  gess 7/23/98
+      * @param
+      * @return
+      */
+     virtual void SetVerification(PRBool aEnable);
+ 
+ private:
++    nsresult HandleToken(CToken* aToken, nsIParser* aParser);
++
+     nsresult WriteTag(PRInt32 tagType,
+                       const nsSubstring &aText,
+                       PRInt32 attrCount,
+                       PRBool aTagInError);
+ 
+     nsresult WriteAttributes(const nsAString& tagName, 
+         nsTokenAllocator* allocator, PRInt32 attrCount, PRBool aOwnerInError);
+     void StartNewPreBlock(void);

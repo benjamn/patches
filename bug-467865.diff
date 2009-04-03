@@ -1,0 +1,172 @@
+diff --git a/js/src/xpconnect/idl/xpcexception.idl b/js/src/xpconnect/idl/xpcexception.idl
+--- a/js/src/xpconnect/idl/xpcexception.idl
++++ b/js/src/xpconnect/idl/xpcexception.idl
+@@ -37,27 +37,38 @@
+  * the provisions above, a recipient may use your version of this file under
+  * the terms of any one of the MPL, the GPL or the LGPL.
+  *
+  * ***** END LICENSE BLOCK ***** */
+ 
+ #include "nsISupports.idl"
+ #include "nsIException.idl"
+ 
+-[scriptable, uuid(b2a34010-3983-11d3-9888-006008962422)]
++%{ C++
++#include "jspubtd.h"
++%}
++
++[ptr] native xpcexJSContextPtr(JSContext);
++      native xpcexJSVal(jsval);
++
++[scriptable, uuid(cac29630-7bf2-4e22-811b-46855a7d5af0)]
+ interface nsIXPCException : nsIException
+ {
+     // inherits methods from nsIException
+ 
+     void initialize(in string           aMessage,
+                     in nsresult         aResult,
+                     in string           aName,
+                     in nsIStackFrame    aLocation,
+                     in nsISupports      aData,
+                     in nsIException     aInner);
++
++    [noscript] xpcexJSVal stealJSVal();
++    [noscript] void stowJSVal(in xpcexJSContextPtr cx,
++                              in xpcexJSVal val);
+ };
+ 
+ /* this goes into the C++ header verbatim. */
+ %{ C++
+ /********************************************************/
+ // {5632BF70-51EC-11d3-9896-006008962422}
+ #define NS_XPCEXCEPTION_CID  \
+ { 0x5632bf70, 0x51ec, 0x11d3, \
+diff --git a/js/src/xpconnect/src/xpcconvert.cpp b/js/src/xpconnect/src/xpcconvert.cpp
+--- a/js/src/xpconnect/src/xpcconvert.cpp
++++ b/js/src/xpconnect/src/xpcconvert.cpp
+@@ -1423,19 +1423,19 @@ XPCConvert::ConstructException(nsresult 
+             msg = "<error>";
+     if(ifaceName && methodName)
+         msg = sz = JS_smprintf(format, msg, ifaceName, methodName);
+ 
+     nsresult res = nsXPCException::NewException(msg, rv, nsnull, data, exceptn);
+ 
+     if(NS_SUCCEEDED(res) && cx && jsExceptionPtr && *exceptn)
+     {
+-        nsCOMPtr<nsXPCException> xpcEx = do_QueryInterface(*exceptn);
++        nsCOMPtr<nsIXPCException> xpcEx = do_QueryInterface(*exceptn);
+         if(xpcEx)
+-            xpcEx->StowThrownJSVal(cx, *jsExceptionPtr);
++            xpcEx->StowJSVal(cx, *jsExceptionPtr);
+     }
+ 
+     if(sz)
+         JS_smprintf_free(sz);
+     return res;
+ }
+ 
+ /********************************/
+diff --git a/js/src/xpconnect/src/xpcexception.cpp b/js/src/xpconnect/src/xpcexception.cpp
+--- a/js/src/xpconnect/src/xpcexception.cpp
++++ b/js/src/xpconnect/src/xpcexception.cpp
+@@ -146,32 +146,38 @@ nsXPCException::nsXPCException()
+ }
+ 
+ nsXPCException::~nsXPCException()
+ {
+     MOZ_COUNT_DTOR(nsXPCException);
+     Reset();
+ }
+ 
+-PRBool
+-nsXPCException::StealThrownJSVal(jsval *vp)
++/* [noscript] xpcexJSVal stealJSVal (); */
++NS_IMETHODIMP
++nsXPCException::StealJSVal(jsval *vp NS_OUTPARAM)
+ {
+     if(mThrownJSVal.IsHeld())
+     {
+         *vp = mThrownJSVal.Release();
+-        return PR_TRUE;
++        return NS_OK;
+     }
+-    return PR_FALSE;
++    return NS_ERROR_FAILURE;
+ }
+ 
+-void
+-nsXPCException::StowThrownJSVal(JSContext *cx, jsval v)
++/* [noscript] void stowJSVal (in xpcexJSContextPtr cx, in xpcexJSVal val); */
++NS_IMETHODIMP
++nsXPCException::StowJSVal(JSContext* cx, jsval v)
+ {
+-    if (mThrownJSVal.Hold(cx))
++    if(mThrownJSVal.Hold(cx))
++    {
+         mThrownJSVal = v;
++        return NS_OK;
++    }
++    return NS_ERROR_FAILURE;
+ }
+ 
+ void
+ nsXPCException::Reset()
+ {
+     if(mMessage)
+     {
+         nsMemory::Free(mMessage);
+diff --git a/js/src/xpconnect/src/xpcprivate.h b/js/src/xpconnect/src/xpcprivate.h
+--- a/js/src/xpconnect/src/xpcprivate.h
++++ b/js/src/xpconnect/src/xpcprivate.h
+@@ -2978,19 +2978,16 @@ public:
+ 
+     static PRUint32 GetNSResultCount();
+ 
+     nsXPCException();
+     virtual ~nsXPCException();
+ 
+     static void InitStatics() { sEverMadeOneFromFactory = JS_FALSE; }
+ 
+-    PRBool StealThrownJSVal(jsval* vp);
+-    void StowThrownJSVal(JSContext* cx, jsval v);
+-
+ protected:
+     void Reset();
+ private:
+     char*           mMessage;
+     nsresult        mResult;
+     char*           mName;
+     nsIStackFrame*  mLocation;
+     nsISupports*    mData;
+diff --git a/js/src/xpconnect/src/xpcthrower.cpp b/js/src/xpconnect/src/xpcthrower.cpp
+--- a/js/src/xpconnect/src/xpcthrower.cpp
++++ b/js/src/xpconnect/src/xpcthrower.cpp
+@@ -296,26 +296,26 @@ IsCallerChrome(JSContext* cx)
+ 
+ // static
+ JSBool
+ XPCThrower::ThrowExceptionObject(JSContext* cx, nsIException* e)
+ {
+     JSBool success = JS_FALSE;
+     if(e)
+     {
+-        nsCOMPtr<nsXPCException> xpcEx;
++        nsCOMPtr<nsIXPCException> xpcEx;
+         jsval thrown;
+         nsXPConnect* xpc;
+ 
+         // If we stored the original thrown JS value in the exception
+         // (see XPCConvert::ConstructException) and we are in a web
+         // context (i.e., not chrome), rethrow the original value.
+         if(!IsCallerChrome(cx) &&
+            (xpcEx = do_QueryInterface(e)) &&
+-           xpcEx->StealThrownJSVal(&thrown))
++           NS_SUCCEEDED(xpcEx->StealJSVal(&thrown)))
+         {
+             JS_SetPendingException(cx, thrown);
+             success = JS_TRUE;
+         }
+         else if((xpc = nsXPConnect::GetXPConnect()))
+         {
+             JSObject* glob = JS_GetScopeChain(cx);
+             if(!glob)

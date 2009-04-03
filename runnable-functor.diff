@@ -1,7 +1,8 @@
 diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 --- a/xpcom/glue/Functor.h
 +++ b/xpcom/glue/Functor.h
-@@ -1,16 +1,17 @@
+@@ -38,16 +38,17 @@
+ 
  #ifndef Functor_h__
  #define Functor_h__
  
@@ -9,18 +10,16 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
  #include "nsIRunnable.h"
  #include "nsAutoPtr.h"
  #include "TList.h"
- #include "Join.h"
 +#include "nsRunnableFunctor.h"
  
- class FunctorSupports : public nsISupports {
- public:
-   // nsISupports implementation must be inlined so that this file can be
-   // included across modules.  Because NS_IMPL_ISUPPORTS0 appears inline,
-   // the method prototypes for AddRef, Release, and QueryInterface provided by
-   // NS_DECL_ISUPPORTS are not needed, but the nsAutoRefCnt and
-   // NS_DECL_OWNINGTHREAD members (also provided by NS_DECL_ISUPPORTS)
-@@ -74,16 +75,20 @@ public:
-   typedef P1  first_argument_type;
+ /**
+  * For an overview of Functor usage, see bug 486440.
+  *
+  * This implementation was inspired by Andrei Alexandrescu's book
+  *
+  *   Modern C++ Design: Generic Programming and Design Patterns Applied,
+  *
+@@ -213,16 +214,20 @@ public:
    typedef P2 second_argument_type;
    typedef Result      result_type;
  
@@ -28,11 +27,11 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
    Functor(const Functor& f) : mImpl(f.mImpl) {}
    Functor(ImplType* impl)   : mImpl(impl) {}
   ~Functor() {}
-+
+ 
 +  nsRefPtr<nsRunnableFunctor<Result, Functor> >
 +  proxy(nsIThread* target,
 +        PRUint32 flags = NS_DISPATCH_SYNC);
- 
++
    template <typename Callable>
    static Functor callable(Callable c) {
      return Functor(new CallableHandler<Functor, Callable>(c));
@@ -40,14 +39,15 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
  
    template <typename Method>
    static Functor method(Method m) {
-@@ -283,9 +288,35 @@ JOIN16(DGFA,EMPTY)
- #undef DECL_GLOBAL_FUNCTION_ADAPTERS
- #undef DECL_GLOBAL_METHOD_ADAPTER
- #undef DGMA
- #undef DGFA
- #undef ctnP
- #undef P
- #undef cP
+     return Functor(new MethodHandler<Functor, Method>(m));
+@@ -646,9 +651,27 @@ template <typename R, typename P0, typen
+ Functor<R, TLIST9(P0, P1, P2, P3, P4, P5, P6, P7, P8)>
+ functor(R (*f)(P0, P1, P2, P3, P4, P5, P6, P7, P8)) {
+   return Functor<R, TLIST9(P0, P1, P2, P3, P4, P5, P6, P7, P8)>::callable(f);
+ }
+ 
+ // [[[end]]]
+ 
  
 +template <typename Result, class Params>
 +nsRefPtr<nsRunnableFunctor<Result, Functor<Result, Params> > >
@@ -60,43 +60,35 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 +  typedef nsRunnableFunctor<Result, Functor> Event;
 +  nsRefPtr<Event> event(new Event(*this));
 +
-+#if DEBUG
-+  nsIThread* currentThread = nsnull;
-+  NS_GetCurrentThread(&currentThread);
-+  if (currentThread == target) {
-+    NS_ERROR("OYEZ Proxying to same thread!!");
-+    NS_ABORT();
-+  }
- #endif
-+
 +  PRBool dispatched = target && NS_SUCCEEDED(target->Dispatch(event, flags));
 +  NS_ASSERTION(dispatched, "Failed to dispatch event to thread.");
 +
 +  return event; // event->Wait() will block forever if Dispatch failed
 +}
 +
-+#endif
++
+ #endif
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
-@@ -124,16 +124,17 @@ EXPORTS = \
+@@ -121,16 +121,17 @@ SDK_HEADERS = \
+ 		nsDeque.h \
+ 		$(NULL)
+ 
  EXPORTS = \
  		nsThreadUtils.h \
  		nsProxyRelease.h \
  		nsXPTCUtils.h \
- 		Join.h \
  		TList.h \
++		nsRunnableFunctor.h \
  		Functor.h \
  		Bind.h \
-+		nsRunnableFunctor.h \
  		$(NULL)
  
  SDK_LIBRARY     =                        \
  		$(LIB_PREFIX)xpcomglue_s.$(LIB_SUFFIX) \
  		$(NULL)
  
- # we don't want the shared lib, but we want to force the creation of a static lib.
- FORCE_STATIC_LIB = 1
 diff --git a/xpcom/glue/nsRunnableFunctor.h b/xpcom/glue/nsRunnableFunctor.h
 new file mode 100644
 --- /dev/null

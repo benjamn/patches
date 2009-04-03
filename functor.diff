@@ -1,41 +1,391 @@
-* * *
-* * *
-
 diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Bind.h
-@@ -0,0 +1,230 @@
+@@ -0,0 +1,449 @@
++/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is BIND/bind.
++ *
++ * The Initial Developer of the Original Code is
++ *   Mozilla Corporation.
++ * Portions created by the Initial Developer are Copyright (C) 2009
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *   Ben Newman <b{enjam,newma}n@mozilla.com> (Original Author)
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
 +#ifndef Bind_h__
 +#define Bind_h__
 +
 +#include "Functor.h"
 +
++/**
++ * For an overview of BIND usage, see bug 486440.
++ *
++ * This implementation was inspired by Andrei Alexandrescu's book
++ *
++ *   Modern C++ Design: Generic Programming and Design Patterns Applied,
++ *
++ * which has a great deal more to say on the topic.
++ *
++ * Instructions pertaining to the cog.py code generation tool are available
++ * here: http://nedbatchelder.com/code/cog/
++ *
++ * Once you have installed cog.py, run
++ *
++ *   cog.py -r Bind.h
++ *
++ * to regenerate the portions of this file delimited by the // ]]] and
++ * // [[[end]]] markers.  The file changes in place, but the python generating
++ * code remains, so repeatedly regenerating the file is really very easy.
++ */
++
 +// [[[cog
-+// from cogutil import tlist, MAX_FUNCTOR_ARITY
++// from functor_cog_utils import tlist, MAX_FUNCTOR_ARITY
 +// rng = range(MAX_FUNCTOR_ARITY+1)
 +// ijs = zip(rng, rng[1:])
 +// ]]]
 +// [[[end]]]
 +
-+// cf. boost::reference_wrapper
++// [[[cog
++// cog.out("#define COOPT_OUTGOING_PARAM_TYPEDEFS \\\n")
++// cog.out(tlist("  typedef typename Outgoing::P P;",
++//               MAX_FUNCTOR_ARITY, sep=" \\\n"))
++// ]]]
++#define COOPT_OUTGOING_PARAM_TYPEDEFS \
++  typedef typename Outgoing::P0 P0; \
++  typedef typename Outgoing::P1 P1; \
++  typedef typename Outgoing::P2 P2; \
++  typedef typename Outgoing::P3 P3; \
++  typedef typename Outgoing::P4 P4; \
++  typedef typename Outgoing::P5 P5; \
++  typedef typename Outgoing::P6 P6; \
++  typedef typename Outgoing::P7 P7; \
++  typedef typename Outgoing::P8 P8; \
++  typedef typename Outgoing::P9 P9;
++// [[[end]]]
++
++/**
++ * Binder class for use with bind (below).
++ */
++template <typename Result, typename Params, typename Bound>
++class Binder
++  : public FunctorImpl<Result, typename Params::Tail>
++{
++public:
++  typedef Functor<Result, Params> Incoming;
++  typedef typename Incoming::ResultType ResultType;
++  typedef Functor<Result, typename Params::Tail> Outgoing;
++
++  COOPT_OUTGOING_PARAM_TYPEDEFS
++
++  Binder(Incoming fun, Bound bound)
++    : mFun(fun)
++    , mBound(bound)
++  {}
++
++  // [[[cog
++  // for i in rng:
++  //   Pps = tlist("P p", i)
++  //   cps = tlist(", p", i, sep="")
++  //   cog.out("""
++  // ResultType operator()(%(Pps)s) {
++  //   return mFun(mBound%(cps)s);
++  // }""" % locals())
++  // ]]]
++
++  ResultType operator()() {
++    return mFun(mBound);
++  }
++  ResultType operator()(P0 p0) {
++    return mFun(mBound, p0);
++  }
++  ResultType operator()(P0 p0, P1 p1) {
++    return mFun(mBound, p0, p1);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2) {
++    return mFun(mBound, p0, p1, p2);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3) {
++    return mFun(mBound, p0, p1, p2, p3);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4) {
++    return mFun(mBound, p0, p1, p2, p3, p4);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5) {
++    return mFun(mBound, p0, p1, p2, p3, p4, p5);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6) {
++    return mFun(mBound, p0, p1, p2, p3, p4, p5, p6);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7) {
++    return mFun(mBound, p0, p1, p2, p3, p4, p5, p6, p7);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
++    return mFun(mBound, p0, p1, p2, p3, p4, p5, p6, p7, p8);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
++    return mFun(mBound, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9);
++  }
++  // [[[end]]]
++
++private:
++  Incoming mFun;
++  Bound mBound;
++};
++
++/**
++ * Binder class for use with bind_result (below).
++ */
++template <typename NewResult, typename ParentFunctor>
++class ResultBinder
++  : public FunctorImpl<NewResult, typename ParentFunctor::ParamList>
++{
++public:
++  typedef ParentFunctor Incoming;
++  typedef NewResult ResultType;
++  typedef Functor<NewResult, typename ParentFunctor::ParamList>
++          Outgoing;
++
++  COOPT_OUTGOING_PARAM_TYPEDEFS
++
++  ResultBinder(Incoming fun, NewResult bound)
++    : mFun(fun)
++    , mBound(bound)
++  {}
++
++  // [[[cog
++  // for i in rng:
++  //   Pps = tlist("P p", i)
++  //   ps = tlist("p", i)
++  //   cog.out("""
++  // ResultType operator()(%(Pps)s) {
++  //   mFun(%(ps)s);
++  //   return mBound;
++  // }""" % locals())
++  // ]]]
++
++  ResultType operator()() {
++    mFun();
++    return mBound;
++  }
++  ResultType operator()(P0 p0) {
++    mFun(p0);
++    return mBound;
++  }
++  ResultType operator()(P0 p0, P1 p1) {
++    mFun(p0, p1);
++    return mBound;
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2) {
++    mFun(p0, p1, p2);
++    return mBound;
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3) {
++    mFun(p0, p1, p2, p3);
++    return mBound;
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4) {
++    mFun(p0, p1, p2, p3, p4);
++    return mBound;
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5) {
++    mFun(p0, p1, p2, p3, p4, p5);
++    return mBound;
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6) {
++    mFun(p0, p1, p2, p3, p4, p5, p6);
++    return mBound;
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7) {
++    mFun(p0, p1, p2, p3, p4, p5, p6, p7);
++    return mBound;
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
++    mFun(p0, p1, p2, p3, p4, p5, p6, p7, p8);
++    return mBound;
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
++    mFun(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9);
++    return mBound;
++  }
++  // [[[end]]]
++
++private:
++  Incoming mFun;
++  NewResult mBound;
++};
++
++/**
++ * Binder class for use with void_result (below).  Total specialization is
++ * necessary both because the operator() methods cannot return a value and
++ * because void would be an invalid type for the mBound data member.
++ */
++template <typename ParentFunctor>
++class ResultBinder<void, ParentFunctor>
++  : public FunctorImpl<void, typename ParentFunctor::ParamList>
++{
++public:
++  typedef ParentFunctor Incoming;
++  typedef void ResultType;
++  typedef Functor<void, typename ParentFunctor::ParamList>
++          Outgoing;
++
++  COOPT_OUTGOING_PARAM_TYPEDEFS
++
++  ResultBinder(Incoming fun)
++    : mFun(fun)
++  {}
++
++  // [[[cog
++  // for i in rng:
++  //   Pps = tlist("P p", i)
++  //   ps = tlist("p", i)
++  //   cog.out("""
++  // void operator()(%(Pps)s) {
++  //   mFun(%(ps)s);
++  // }""" % locals())
++  // ]]]
++
++  void operator()() {
++    mFun();
++  }
++  void operator()(P0 p0) {
++    mFun(p0);
++  }
++  void operator()(P0 p0, P1 p1) {
++    mFun(p0, p1);
++  }
++  void operator()(P0 p0, P1 p1, P2 p2) {
++    mFun(p0, p1, p2);
++  }
++  void operator()(P0 p0, P1 p1, P2 p2, P3 p3) {
++    mFun(p0, p1, p2, p3);
++  }
++  void operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4) {
++    mFun(p0, p1, p2, p3, p4);
++  }
++  void operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5) {
++    mFun(p0, p1, p2, p3, p4, p5);
++  }
++  void operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6) {
++    mFun(p0, p1, p2, p3, p4, p5, p6);
++  }
++  void operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7) {
++    mFun(p0, p1, p2, p3, p4, p5, p6, p7);
++  }
++  void operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
++    mFun(p0, p1, p2, p3, p4, p5, p6, p7, p8);
++  }
++  void operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
++    mFun(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9);
++  }
++  // [[[end]]]
++
++private:
++  Incoming mFun;
++};
++
++// We should all strive for macro neutrality.  Leave no trace!
++#undef COOPT_OUTGOING_PARAM_TYPEDEFS
++
++/**
++ * The bind function returns a Functor with one less parameter than the given
++ * Functor.  When the resulting Functor is invoked, the bound argument will be
++ * passed as the first argument to the original Functor.
++ *
++ * Note that the type used for storing the bound value is determined by the
++ * value passed to bind, not by the Functor's first parameter type.  This
++ * distinction becomes important when the stored value needs to be copied or
++ * AddRefed but the actual parameter type is just a bare pointer.
++ */
++template <typename Result, class Params, typename Bound>
++typename Binder<Result, Params, Bound>::Outgoing
++bind(Functor<Result, Params> fun, Bound bound) {
++  typedef Binder<Result, Params, Bound> B;
++  typedef typename B::Outgoing O;
++  typedef typename O::ImplType I;
++  I* binder = new B(fun, bound);
++  return O(binder);
++}
++
++/**
++ * Whereas bind binds arguments to a Functor, bind_result fixes the return
++ * value to a constant, ignoring whatever the Functor actually returns.
++ */
++template <typename NewResult, typename Functor>
++typename ResultBinder<NewResult, Functor>::Outgoing
++bind_result(Functor fun, NewResult bound) {
++  typedef ResultBinder<NewResult, Functor> B;
++  typedef typename B::Outgoing O;
++  typedef typename O::ImplType I;
++  I* binder = new B(fun, bound);
++  return O(binder);
++}
++
++/**
++ * Whereas bind_result fixes a Functor's return value to a constant,
++ * void_result renders the Functor void.  The ResultBinder object is
++ * specialized for the void case so that no storage will be allocated for the
++ * result.
++ */
++template <typename Functor>
++typename ResultBinder<void, Functor>::Outgoing
++void_result(Functor fun) {
++  typedef ResultBinder<void, Functor> B;
++  typedef typename B::Outgoing O;
++  typedef typename O::ImplType I;
++  I* binder = new B(fun);
++  return O(binder);
++}
++
++
++/**
++ * Template type inference prefers non-reference types to reference types, so
++ * references passed to bind will be stored by VALUE unless explicitly coerced
++ * using the ref and cref (const reference) functions below.
++ *
++ * The reference_wrapper<T> interface is identical to the one found in Boost.
++ */
 +template <typename T>
 +class reference_wrapper {
 +  T* mPtr;
 +public:
-+  // types
 +  typedef T type;
-+
-+  // construct/copy/destruct
 +  explicit reference_wrapper(T& t) : mPtr(&t) {}
 +
-+  // access
 +  operator T&() const { return *mPtr; }
 +  T& get() const { return *mPtr; };
 +  T* get_pointer() const { return mPtr; };
 +};
 +
-+// constructors
 +template <typename T>
 +reference_wrapper<T>
 +ref(T& t) {
@@ -48,200 +398,103 @@ new file mode 100644
 +  return reference_wrapper<T const>(t);
 +}
 +
-+#define COOPT(N) typedef typename Outgoing::P##N P##N
-+#define Pp(N) P##N p##N
-+#define COOPT_OUTGOING_PARAM_TYPEDEFS(N) JOIN##N(COOPT,SEMI)
 +
-+template <typename Result, typename Params, typename Bound>
-+class Binder
-+  : public FunctorImpl<Result, typename Params::Tail>
-+{
-+public:
-+  typedef Functor<Result, Params> Incoming;
-+  typedef typename Incoming::ResultType ResultType;
-+  typedef Functor<Result, typename Params::Tail> Outgoing;
-+
-+  COOPT_OUTGOING_PARAM_TYPEDEFS(16);
-+
-+  Binder(Incoming fun, Bound bound)
-+    : mFun(fun)
-+    , mBound(bound)
-+  {}
-+
-+  #define cp(N) , p##N
-+  #define DECL_BINDER_CALL_OP(N)                                              \
-+    ResultType operator()(JOIN##N(Pp,COMMA)) {                                \
-+      return mFun(mBound JOIN##N(cp,EMPTY));                                  \
-+    }
-+  JOIN16(DECL_BINDER_CALL_OP,EMPTY)
-+  #undef DECL_BINDER_CALL_OP
-+  #undef cp
-+
-+private:
-+  Incoming mFun;
-+  Bound mBound;
-+};
-+
-+#define p(N) p##N
-+
-+template <typename NewResult, typename ParentFunctor>
-+class ResultBinder
-+  : public FunctorImpl<NewResult, typename ParentFunctor::ParamList>
-+{
-+public:
-+  typedef ParentFunctor Incoming;
-+  typedef NewResult ResultType;
-+  typedef Functor<NewResult, typename ParentFunctor::ParamList>
-+          Outgoing;
-+
-+  COOPT_OUTGOING_PARAM_TYPEDEFS(16);
-+
-+  ResultBinder(Incoming fun, NewResult bound)
-+    : mFun(fun)
-+    , mBound(bound)
-+  {}
-+
-+  #define DECL_RESULT_BINDER_CALL_OP(N)                                       \
-+    NewResult operator()(JOIN##N(Pp,COMMA)) {                                 \
-+      mFun(JOIN##N(p,COMMA));                                                 \
-+      return mBound;                                                          \
-+    }
-+  JOIN16(DECL_RESULT_BINDER_CALL_OP,EMPTY)
-+  #undef DECL_RESULT_BINDER_CALL_OP
-+
-+private:
-+  Incoming mFun;
-+  NewResult mBound;
-+};
-+
-+template <typename ParentFunctor>
-+class ResultBinder<void, ParentFunctor>
-+  : public FunctorImpl<void, typename ParentFunctor::ParamList>
-+{
-+public:
-+  typedef ParentFunctor Incoming;
-+  typedef void ResultType;
-+  typedef Functor<void, typename ParentFunctor::ParamList>
-+          Outgoing;
-+
-+  COOPT_OUTGOING_PARAM_TYPEDEFS(16);
-+
-+  ResultBinder(Incoming fun)
-+    : mFun(fun)
-+  {}
-+
-+  #define DECL_VOID_RESULT_BINDER_CALL_OP(N)                                  \
-+    void operator()(JOIN##N(Pp,COMMA)) {                                      \
-+      mFun(JOIN##N(p,COMMA));                                                 \
-+    }
-+  JOIN16(DECL_VOID_RESULT_BINDER_CALL_OP,EMPTY)
-+  #undef DECL_VOID_RESULT_BINDER_CALL_OP
-+
-+private:
-+  Incoming mFun;
-+};
-+
-+// Used in the ResultBinder classes, now no longer needed:
-+#undef p
-+// Used in every *Binder class, now no longer needed:
-+#undef Pp
-+#undef COOPT
-+
-+template <typename Result, class Params, typename Bound>
-+typename Binder<Result, Params, Bound>::Outgoing
-+bind(Functor<Result, Params> fun, Bound bound) {
-+  typedef Binder<Result, Params, Bound> B;
-+  typedef typename B::Outgoing O;
-+  typedef typename O::ImplType I;
-+  I* binder = new B(fun, bound);
-+  return O(binder);
-+}
-+
-+template <typename NewResult, typename Functor>
-+typename ResultBinder<NewResult, Functor>::Outgoing
-+bind_result(Functor fun, NewResult bound) {
-+  typedef ResultBinder<NewResult, Functor> B;
-+  typedef typename B::Outgoing O;
-+  typedef typename O::ImplType I;
-+  I* binder = new B(fun, bound);
-+  return O(binder);
-+}
-+
-+template <typename Functor>
-+typename ResultBinder<void, Functor>::Outgoing
-+void_result(Functor fun) {
-+  typedef ResultBinder<void, Functor> B;
-+  typedef typename B::Outgoing O;
-+  typedef typename O::ImplType I;
-+  I* binder = new B(fun);
-+  return O(binder);
-+}
-+
-+
-+#define BIND1(F, A) bind(functor(F), A)
-+
++/**
++ * The BIND{1,2,...} macros save some typing by linearizing the syntax for
++ * binding multiple arguments.  Additionally, the BIND0 macro ensures that the
++ * first argument is converted to a Functor.  There is no reason to use BIND0
++ * directly instead of the global functor function(s), but you know what? do
++ * whatever you want. Life is short.
++ */
++#define BIND0(F) functor(F)
 +// [[[cog
 +// slash = "\\"
-+// for (i, j) in ijs[1:]:
++// for (i, j) in ijs:
 +//   alist = tlist("A", j)
-+//   ainit = tlist("A", i)
-+//   alast = "A%d" % j;
++//   ainit = tlist(", A", i, sep="")
++//   alast = "A%d" % i;
 +//   cog.out(r"""
 +// #define BIND%(j)d(F, %(alist)s) %(slash)s
-+//    bind(BIND%(i)d(F, %(ainit)s), %(alast)s)
++//    bind(BIND%(i)d(F%(ainit)s), %(alast)s)
 +// """ % locals())
 +// ]]]
 +
-+#define BIND2(F, A1, A2) \
-+   bind(BIND1(F, A1), A2)
++#define BIND1(F, A0) \
++   bind(BIND0(F), A0)
 +
-+#define BIND3(F, A1, A2, A3) \
-+   bind(BIND2(F, A1, A2), A3)
++#define BIND2(F, A0, A1) \
++   bind(BIND1(F, A0), A1)
 +
-+#define BIND4(F, A1, A2, A3, A4) \
-+   bind(BIND3(F, A1, A2, A3), A4)
++#define BIND3(F, A0, A1, A2) \
++   bind(BIND2(F, A0, A1), A2)
 +
-+#define BIND5(F, A1, A2, A3, A4, A5) \
-+   bind(BIND4(F, A1, A2, A3, A4), A5)
++#define BIND4(F, A0, A1, A2, A3) \
++   bind(BIND3(F, A0, A1, A2), A3)
 +
-+#define BIND6(F, A1, A2, A3, A4, A5, A6) \
-+   bind(BIND5(F, A1, A2, A3, A4, A5), A6)
++#define BIND5(F, A0, A1, A2, A3, A4) \
++   bind(BIND4(F, A0, A1, A2, A3), A4)
 +
-+#define BIND7(F, A1, A2, A3, A4, A5, A6, A7) \
-+   bind(BIND6(F, A1, A2, A3, A4, A5, A6), A7)
++#define BIND6(F, A0, A1, A2, A3, A4, A5) \
++   bind(BIND5(F, A0, A1, A2, A3, A4), A5)
 +
-+#define BIND8(F, A1, A2, A3, A4, A5, A6, A7, A8) \
-+   bind(BIND7(F, A1, A2, A3, A4, A5, A6, A7), A8)
++#define BIND7(F, A0, A1, A2, A3, A4, A5, A6) \
++   bind(BIND6(F, A0, A1, A2, A3, A4, A5), A6)
 +
-+#define BIND9(F, A1, A2, A3, A4, A5, A6, A7, A8, A9) \
-+   bind(BIND8(F, A1, A2, A3, A4, A5, A6, A7, A8), A9)
++#define BIND8(F, A0, A1, A2, A3, A4, A5, A6, A7) \
++   bind(BIND7(F, A0, A1, A2, A3, A4, A5, A6), A7)
 +
-+#define BIND10(F, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10) \
-+   bind(BIND9(F, A1, A2, A3, A4, A5, A6, A7, A8, A9), A10)
++#define BIND9(F, A0, A1, A2, A3, A4, A5, A6, A7, A8) \
++   bind(BIND8(F, A0, A1, A2, A3, A4, A5, A6, A7), A8)
 +
-+#define BIND11(F, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11) \
-+   bind(BIND10(F, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10), A11)
-+
-+#define BIND12(F, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12) \
-+   bind(BIND11(F, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11), A12)
-+
-+#define BIND13(F, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13) \
-+   bind(BIND12(F, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12), A13)
-+
-+#define BIND14(F, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14) \
-+   bind(BIND13(F, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13), A14)
-+
-+#define BIND15(F, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14, A15) \
-+   bind(BIND14(F, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14), A15)
++#define BIND10(F, A0, A1, A2, A3, A4, A5, A6, A7, A8, A9) \
++   bind(BIND9(F, A0, A1, A2, A3, A4, A5, A6, A7, A8), A9)
 +// [[[end]]]
 +
++
 +#endif
-\ No newline at end of file
 diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Functor.h
-@@ -0,0 +1,291 @@
+@@ -0,0 +1,654 @@
++/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is Functor.
++ *
++ * The Initial Developer of the Original Code is
++ *   Mozilla Corporation.
++ * Portions created by the Initial Developer are Copyright (C) 2009
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *   Ben Newman <b{enjam,newma}n@mozilla.com> (Original Author)
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
 +#ifndef Functor_h__
 +#define Functor_h__
 +
@@ -249,7 +502,34 @@ new file mode 100644
 +#include "nsIRunnable.h"
 +#include "nsAutoPtr.h"
 +#include "TList.h"
-+#include "Join.h"
++
++/**
++ * For an overview of Functor usage, see bug 486440.
++ *
++ * This implementation was inspired by Andrei Alexandrescu's book
++ *
++ *   Modern C++ Design: Generic Programming and Design Patterns Applied,
++ *
++ * which has a great deal more to say on the topic.
++ *
++ * Instructions pertaining to the cog.py code generation tool are available
++ * here: http://nedbatchelder.com/code/cog/
++ *
++ * Once you have installed cog.py, run
++ *
++ *   cog.py -r Functor.h
++ *
++ * to regenerate the portions of this file delimited by the // ]]] and
++ * // [[[end]]] markers.  The file changes in place, but the python generating
++ * code remains, so repeatedly regenerating the file is really very easy.
++ */
++
++// [[[cog
++// from functor_cog_utils import tlist, MAX_FUNCTOR_ARITY
++// rng = range(MAX_FUNCTOR_ARITY+1)
++// ijs = zip(rng, rng[1:])
++// ]]]
++// [[[end]]]
 +
 +class FunctorSupports : public nsISupports {
 +public:
@@ -265,33 +545,83 @@ new file mode 100644
 +  nsAutoRefCnt mRefCnt;
 +};
 +
-+
-+// [[[cog
-+// from cogutil import tlist, MAX_FUNCTOR_ARITY
-+// rng = range(MAX_FUNCTOR_ARITY+1)
-+// ijs = zip(rng, rng[1:])
-+// ]]]
-+// [[[end]]]
-+
-+
++/**
++ * Abstract interface for the heap-allocated functor objects (CallableHandler,
++ * MethodHandler, Binder, &c.) to which Functors hold references. Since
++ * FunctorImpl inherits from FunctorSupports, derived classes inherit the
++ * AddRef and Release methods required by nsRefPtr<FunctorImpl>.
++ */
 +template <typename Result, class Params>
 +class FunctorImpl;
 +
-+#define ctnT(N) , typename T##N
-+#define T(N) T##N
-+#define DECL_FUNCTORIMPL_CLASS(N, TS)                                         \
-+  template <typename R JOIN##N(ctnT,EMPTY)>                                   \
-+  class FunctorImpl<R, TLIST##N TS> : public FunctorSupports {                \
-+  public:                                                                     \
-+    virtual R operator()TS = 0;                                               \
-+  }
++// [[[cog
++// for i in rng:
++//   ctnTs = tlist(", typename T", i, sep="")
++//   Ts = tlist("T", i)
++//   cog.out("""
++// template <typename R%(ctnTs)s>
++// class FunctorImpl<R, TLIST%(i)d(%(Ts)s)> : public FunctorSupports {
++// public:
++//   virtual R operator()(%(Ts)s) = 0;
++// };""" % locals())
++// ]]]
 +
-+#define DFC(N) DECL_FUNCTORIMPL_CLASS(N, (JOIN##N(T,COMMA)))
-+JOIN16(DFC,SEMI);
-+#undef DFC
-+#undef DECL_FUNCTORIMPL_CLASS
-+#undef ctnT
-+#undef T
++template <typename R>
++class FunctorImpl<R, TLIST0()> : public FunctorSupports {
++public:
++  virtual R operator()() = 0;
++};
++template <typename R, typename T0>
++class FunctorImpl<R, TLIST1(T0)> : public FunctorSupports {
++public:
++  virtual R operator()(T0) = 0;
++};
++template <typename R, typename T0, typename T1>
++class FunctorImpl<R, TLIST2(T0, T1)> : public FunctorSupports {
++public:
++  virtual R operator()(T0, T1) = 0;
++};
++template <typename R, typename T0, typename T1, typename T2>
++class FunctorImpl<R, TLIST3(T0, T1, T2)> : public FunctorSupports {
++public:
++  virtual R operator()(T0, T1, T2) = 0;
++};
++template <typename R, typename T0, typename T1, typename T2, typename T3>
++class FunctorImpl<R, TLIST4(T0, T1, T2, T3)> : public FunctorSupports {
++public:
++  virtual R operator()(T0, T1, T2, T3) = 0;
++};
++template <typename R, typename T0, typename T1, typename T2, typename T3, typename T4>
++class FunctorImpl<R, TLIST5(T0, T1, T2, T3, T4)> : public FunctorSupports {
++public:
++  virtual R operator()(T0, T1, T2, T3, T4) = 0;
++};
++template <typename R, typename T0, typename T1, typename T2, typename T3, typename T4, typename T5>
++class FunctorImpl<R, TLIST6(T0, T1, T2, T3, T4, T5)> : public FunctorSupports {
++public:
++  virtual R operator()(T0, T1, T2, T3, T4, T5) = 0;
++};
++template <typename R, typename T0, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6>
++class FunctorImpl<R, TLIST7(T0, T1, T2, T3, T4, T5, T6)> : public FunctorSupports {
++public:
++  virtual R operator()(T0, T1, T2, T3, T4, T5, T6) = 0;
++};
++template <typename R, typename T0, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7>
++class FunctorImpl<R, TLIST8(T0, T1, T2, T3, T4, T5, T6, T7)> : public FunctorSupports {
++public:
++  virtual R operator()(T0, T1, T2, T3, T4, T5, T6, T7) = 0;
++};
++template <typename R, typename T0, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8>
++class FunctorImpl<R, TLIST9(T0, T1, T2, T3, T4, T5, T6, T7, T8)> : public FunctorSupports {
++public:
++  virtual R operator()(T0, T1, T2, T3, T4, T5, T6, T7, T8) = 0;
++};
++template <typename R, typename T0, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9>
++class FunctorImpl<R, TLIST10(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9)> : public FunctorSupports {
++public:
++  virtual R operator()(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9) = 0;
++};
++// [[[end]]]
 +
 +
 +template <class ParentFunctor, typename Callable>
@@ -300,7 +630,34 @@ new file mode 100644
 +template <class ParentFunctor, typename Method>
 +class MethodHandler;
 +
++// [[[cog
++// cog.out("#define EXTRACT_TYPEDEFS(LIST) \\\n")
++// cog.out(tlist("  typedef typename tlist::TypeAt<LIST, 0>::type P;",
++//               MAX_FUNCTOR_ARITY, sep=" \\\n"))
++// ]]]
++#define EXTRACT_TYPEDEFS(LIST) \
++  typedef typename tlist::TypeAt<LIST, 0>::type P0; \
++  typedef typename tlist::TypeAt<LIST, 1>::type P1; \
++  typedef typename tlist::TypeAt<LIST, 2>::type P2; \
++  typedef typename tlist::TypeAt<LIST, 3>::type P3; \
++  typedef typename tlist::TypeAt<LIST, 4>::type P4; \
++  typedef typename tlist::TypeAt<LIST, 5>::type P5; \
++  typedef typename tlist::TypeAt<LIST, 6>::type P6; \
++  typedef typename tlist::TypeAt<LIST, 7>::type P7; \
++  typedef typename tlist::TypeAt<LIST, 8>::type P8; \
++  typedef typename tlist::TypeAt<LIST, 9>::type P9;
++// [[[end]]]
 +
++/**
++ * The Functor class is just a value-type wrapper around the reference-type
++ * FunctorImpl object mImpl.  It isn't meant to be inherited from, so none of
++ * its methods are virtual.  It doesn't even need a virtual destructor.  You
++ * can and should copy Functors by value.
++ *
++ * TODO The parameter types should be made references when possible.
++ * Unfortunately, references to references are illegal, so getting this right
++ * would require some additional template trickery.
++ */
 +template <typename Result, class Params>
 +class Functor
 +{
@@ -308,11 +665,7 @@ new file mode 100644
 +  typedef FunctorImpl<Result, Params> ImplType;
 +  typedef Result ResultType;
 +  typedef Params ParamList;
-+
-+  #define EXTRACT_TYPE(N)                                                     \
-+    typedef typename tlist::TypeAtNS<Params, N>::type P##N
-+  JOIN16(EXTRACT_TYPE,SEMI);
-+  #undef EXTRACT_TYPE
++  EXTRACT_TYPEDEFS(Params)
 +
 +  // for compatibility with std::bind{1st,2nd}
 +  typedef P1  first_argument_type;
@@ -334,22 +687,62 @@ new file mode 100644
 +    return Functor(new MethodHandler<Functor, Method>(m));
 +  }
 +
-+  #define Pp(N) P##N p##N
-+  #define p(N) p##N
-+  #define DECL_FUNCTOR_CALL_OP(N)                                             \
-+    ResultType operator()(JOIN##N(Pp,COMMA)) {                                \
-+      return (*mImpl)(JOIN##N(p,COMMA));                                      \
-+    }
-+  JOIN16(DECL_FUNCTOR_CALL_OP,EMPTY)
-+  #undef DECL_FUNCTOR_CALL_OP
-+  #undef Pp
-+  #undef p
++  // [[[cog
++  // for i in rng:
++  //   Pps = tlist("P p", i)
++  //   ps = tlist("p", i)
++  //   cog.out("""
++  // ResultType operator()(%(Pps)s) {
++  //   return (*mImpl)(%(ps)s);
++  // }""" % locals())
++  // ]]]
++
++  ResultType operator()() {
++    return (*mImpl)();
++  }
++  ResultType operator()(P0 p0) {
++    return (*mImpl)(p0);
++  }
++  ResultType operator()(P0 p0, P1 p1) {
++    return (*mImpl)(p0, p1);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2) {
++    return (*mImpl)(p0, p1, p2);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3) {
++    return (*mImpl)(p0, p1, p2, p3);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4) {
++    return (*mImpl)(p0, p1, p2, p3, p4);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5) {
++    return (*mImpl)(p0, p1, p2, p3, p4, p5);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6) {
++    return (*mImpl)(p0, p1, p2, p3, p4, p5, p6);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7) {
++    return (*mImpl)(p0, p1, p2, p3, p4, p5, p6, p7);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
++    return (*mImpl)(p0, p1, p2, p3, p4, p5, p6, p7, p8);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
++    return (*mImpl)(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9);
++  }
++  // [[[end]]]
 +
 +private:
 +  nsRefPtr<ImplType> mImpl;
 +};
 +
-+
++/**
++ * Callable entities include global functions, objects that support operator(),
++ * and static member functions.  The implementation of this class is generic
++ * with respect to these possibilities: as long as mCallable can be called with
++ * some number of arguments between zero and MAX_FUNCTOR_ARITY (inclusive),
++ * your code will compile.
++ */
 +template <class ParentFunctor, typename Callable>
 +class CallableHandler
 +  : public FunctorImpl<
@@ -358,29 +751,63 @@ new file mode 100644
 +{
 +public:
 +  typedef typename ParentFunctor::ResultType ResultType;
-+
-+  #define COOPT(N) typedef typename ParentFunctor::P##N P##N
-+  JOIN16(COOPT,SEMI);
-+  #undef COOPT
++  EXTRACT_TYPEDEFS(typename ParentFunctor::ParamList)
 +
 +  CallableHandler(Callable c) : mCallable(c) {}
 +
-+  #define Pp(N) P##N p##N
-+  #define p(N) p##N
-+  #define DECL_CALLABLE_CALL_OP(N)                                            \
-+    ResultType operator()(JOIN##N(Pp,COMMA)) {                                \
-+      return mCallable(JOIN##N(p,COMMA));                                     \
-+    }
-+  JOIN16(DECL_CALLABLE_CALL_OP,EMPTY)
-+  #undef DECL_CALLABLE_CALL_OP
-+  #undef Pp
-+  #undef p
++  // [[[cog
++  // for i in rng:
++  //   Pps = tlist("P p", i)
++  //   ps = tlist("p", i)
++  //   cog.out("""
++  // ResultType operator()(%(Pps)s) {
++  //   return mCallable(%(ps)s);
++  // }""" % locals())
++  // ]]]
++
++  ResultType operator()() {
++    return mCallable();
++  }
++  ResultType operator()(P0 p0) {
++    return mCallable(p0);
++  }
++  ResultType operator()(P0 p0, P1 p1) {
++    return mCallable(p0, p1);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2) {
++    return mCallable(p0, p1, p2);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3) {
++    return mCallable(p0, p1, p2, p3);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4) {
++    return mCallable(p0, p1, p2, p3, p4);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5) {
++    return mCallable(p0, p1, p2, p3, p4, p5);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6) {
++    return mCallable(p0, p1, p2, p3, p4, p5, p6);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7) {
++    return mCallable(p0, p1, p2, p3, p4, p5, p6, p7);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
++    return mCallable(p0, p1, p2, p3, p4, p5, p6, p7, p8);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
++    return mCallable(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9);
++  }
++  // [[[end]]]
 +
 +private:
 +  Callable mCallable;
 +};
 +
-+
++/**
++ * Methods of n parameters become Functors of n+1 parameters, where the first
++ * parameter names the object to receive the method invocation.
++ */
 +template <class ParentFunctor, typename Method>
 +class MethodHandler
 +  : public FunctorImpl<
@@ -389,154 +816,305 @@ new file mode 100644
 +{
 +public:
 +  typedef typename ParentFunctor::ResultType ResultType;
-+
-+  #define COOPT(N) typedef typename ParentFunctor::P##N P##N
-+  JOIN16(COOPT,SEMI);
-+  #undef COOPT
++  EXTRACT_TYPEDEFS(typename ParentFunctor::ParamList)
 +
 +  MethodHandler(Method m) : mMethod(m) {}
 +
-+  #define Pp(N) P##N p##N
-+
 +  // [[[cog
-+  // for i in [i+1 for i in rng]:
-+  //   ps1 = tlist("p", rfirst=1, rlast=i-1)
++  // for i in rng[1:]:
++  //   Pps = tlist("P p", i)
++  //   ps1 = tlist("p", rbegin=1, rend=i)
 +  //   cog.out("""
-+  // ResultType operator()(JOIN%(i)d(Pp,COMMA)) {
++  // ResultType operator()(%(Pps)s) {
 +  //   return ((*p0).*mMethod)(%(ps1)s);
 +  // }""" % locals())
 +  // ]]]
 +
-+  ResultType operator()(JOIN1(Pp,COMMA)) {
++  ResultType operator()(P0 p0) {
 +    return ((*p0).*mMethod)();
 +  }
-+  ResultType operator()(JOIN2(Pp,COMMA)) {
++  ResultType operator()(P0 p0, P1 p1) {
 +    return ((*p0).*mMethod)(p1);
 +  }
-+  ResultType operator()(JOIN3(Pp,COMMA)) {
++  ResultType operator()(P0 p0, P1 p1, P2 p2) {
 +    return ((*p0).*mMethod)(p1, p2);
 +  }
-+  ResultType operator()(JOIN4(Pp,COMMA)) {
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3) {
 +    return ((*p0).*mMethod)(p1, p2, p3);
 +  }
-+  ResultType operator()(JOIN5(Pp,COMMA)) {
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4) {
 +    return ((*p0).*mMethod)(p1, p2, p3, p4);
 +  }
-+  ResultType operator()(JOIN6(Pp,COMMA)) {
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5) {
 +    return ((*p0).*mMethod)(p1, p2, p3, p4, p5);
 +  }
-+  ResultType operator()(JOIN7(Pp,COMMA)) {
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6) {
 +    return ((*p0).*mMethod)(p1, p2, p3, p4, p5, p6);
 +  }
-+  ResultType operator()(JOIN8(Pp,COMMA)) {
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7) {
 +    return ((*p0).*mMethod)(p1, p2, p3, p4, p5, p6, p7);
 +  }
-+  ResultType operator()(JOIN9(Pp,COMMA)) {
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
 +    return ((*p0).*mMethod)(p1, p2, p3, p4, p5, p6, p7, p8);
 +  }
-+  ResultType operator()(JOIN10(Pp,COMMA)) {
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
 +    return ((*p0).*mMethod)(p1, p2, p3, p4, p5, p6, p7, p8, p9);
 +  }
-+  ResultType operator()(JOIN11(Pp,COMMA)) {
-+    return ((*p0).*mMethod)(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10);
-+  }
-+  ResultType operator()(JOIN12(Pp,COMMA)) {
-+    return ((*p0).*mMethod)(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11);
-+  }
-+  ResultType operator()(JOIN13(Pp,COMMA)) {
-+    return ((*p0).*mMethod)(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12);
-+  }
-+  ResultType operator()(JOIN14(Pp,COMMA)) {
-+    return ((*p0).*mMethod)(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13);
-+  }
-+  ResultType operator()(JOIN15(Pp,COMMA)) {
-+    return ((*p0).*mMethod)(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14);
-+  }
-+  ResultType operator()(JOIN16(Pp,COMMA)) {
-+    return ((*p0).*mMethod)(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15);
-+  }
 +  // [[[end]]]
-+
-+  #undef Pp
 +
 +private:
 +  Method mMethod;
 +};
 +
-+// Just pass Functors through:
++// Sayonara, macro scum!
++#undef EXTRACT_TYPEDEFS
++
++/**
++ * Herebelow lies a jungle of functor adapter functions.  I did not write them;
++ * I generated them.  Even the comments are auto-generated.  If you need to
++ * modify them, you really, really should change and re-run the generator code
++ * rather than editing the functions themselves.
++ */
++
++// Pass already-Functors through unmodified:
 +template <typename Result, class Params>
 +Functor<Result, Params>
 +functor(Functor<Result, Params> f) {
 +  return f;
 +}
 +
-+#define ctnP(N) , typename P##N
-+#define P(N) P##N
-+#define cP(N) , P(N)
-+
-+// Being able to declare the const version at the same time as the non-const
-+// version makes all of this macro abstraction worthwhile.
-+#define DECL_GLOBAL_METHOD_ADAPTERS(TLIST, CPs, N)                            \
-+  template <typename R, class C JOIN##N(ctnP,EMPTY)>                          \
-+  Functor<R, TLIST CPs> functor(R (C::*m)(JOIN##N(P,COMMA))) {                \
-+    return Functor<R, TLIST CPs>::method(m);                                  \
-+  }                                                                           \
-+  template <typename R, class C JOIN##N(ctnP,EMPTY)>                          \
-+  Functor<R, TLIST CPs> functor(R (C::*m)(JOIN##N(P,COMMA)) const) {          \
-+    return Functor<R, TLIST CPs>::method(m);                                  \
-+  }
-+
-+#define DECL_GLOBAL_FUNCTION_ADAPTER(TLIST, Ps, N)                            \
-+  template <typename R JOIN##N(ctnP,EMPTY)>                                   \
-+  Functor<R, TLIST Ps> functor(R (*f)Ps) {                                    \
-+    return Functor<R, TLIST Ps>::callable(f);                                 \
-+  }
-+
-+#define DGMA(Np1, N)                                                          \
-+  DECL_GLOBAL_METHOD_ADAPTERS(TLIST##Np1, (C* JOIN##N(cP,EMPTY)), N)
-+
-+#define DGFA(N)                                                               \
-+  DECL_GLOBAL_FUNCTION_ADAPTER(TLIST##N, (JOIN##N(P,COMMA)), N)
-+
-+  ;
 +// [[[cog
-+// cog.out("\n".join("DGMA(%(j)d, %(i)d)" % locals() for (i, j) in ijs))
++// for (i, j) in ijs:
++//   const = ""
++//   ctnPs = tlist(", typename P", i, sep="")
++//   cPs = tlist(", P", i, sep="")
++//   Ps = tlist("P", i)
++//
++//   tmpl = """
++// template <typename R, class C%(ctnPs)s>
++// Functor<R, TLIST%(j)d(C*%(cPs)s)>
++// functor(R (C::*m)(%(Ps)s)%(const)s) {
++//   return Functor<R, TLIST%(j)d(C*%(cPs)s)>::method(m);
++// }"""
++//
++//   plural = "s"[int(i==1):]
++//
++//   cog.out("""
++// // Adapters for methods with %d parameter%s:""" % (i, plural))
++//   cog.out(tmpl % locals())
++//
++//   const = " const"
++//   cog.out(tmpl % locals())
++//
++//   cog.out("""
++// // Adapter for global functions with %d parameter%s:""" % (i, plural))
++//   cog.out("""
++// template <typename R%(ctnPs)s>
++// Functor<R, TLIST%(i)d(%(Ps)s)>
++// functor(R (*f)(%(Ps)s)) {
++//   return Functor<R, TLIST%(i)d(%(Ps)s)>::callable(f);
++// }
++//
++// """ % locals())
 +// ]]]
-+DGMA(1, 0)
-+DGMA(2, 1)
-+DGMA(3, 2)
-+DGMA(4, 3)
-+DGMA(5, 4)
-+DGMA(6, 5)
-+DGMA(7, 6)
-+DGMA(8, 7)
-+DGMA(9, 8)
-+DGMA(10, 9)
-+DGMA(11, 10)
-+DGMA(12, 11)
-+DGMA(13, 12)
-+DGMA(14, 13)
-+DGMA(15, 14)
++
++// Adapters for methods with 0 parameters:
++template <typename R, class C>
++Functor<R, TLIST1(C*)>
++functor(R (C::*m)()) {
++  return Functor<R, TLIST1(C*)>::method(m);
++}
++template <typename R, class C>
++Functor<R, TLIST1(C*)>
++functor(R (C::*m)() const) {
++  return Functor<R, TLIST1(C*)>::method(m);
++}
++// Adapter for global functions with 0 parameters:
++template <typename R>
++Functor<R, TLIST0()>
++functor(R (*f)()) {
++  return Functor<R, TLIST0()>::callable(f);
++}
++
++
++// Adapters for methods with 1 parameter:
++template <typename R, class C, typename P0>
++Functor<R, TLIST2(C*, P0)>
++functor(R (C::*m)(P0)) {
++  return Functor<R, TLIST2(C*, P0)>::method(m);
++}
++template <typename R, class C, typename P0>
++Functor<R, TLIST2(C*, P0)>
++functor(R (C::*m)(P0) const) {
++  return Functor<R, TLIST2(C*, P0)>::method(m);
++}
++// Adapter for global functions with 1 parameter:
++template <typename R, typename P0>
++Functor<R, TLIST1(P0)>
++functor(R (*f)(P0)) {
++  return Functor<R, TLIST1(P0)>::callable(f);
++}
++
++
++// Adapters for methods with 2 parameters:
++template <typename R, class C, typename P0, typename P1>
++Functor<R, TLIST3(C*, P0, P1)>
++functor(R (C::*m)(P0, P1)) {
++  return Functor<R, TLIST3(C*, P0, P1)>::method(m);
++}
++template <typename R, class C, typename P0, typename P1>
++Functor<R, TLIST3(C*, P0, P1)>
++functor(R (C::*m)(P0, P1) const) {
++  return Functor<R, TLIST3(C*, P0, P1)>::method(m);
++}
++// Adapter for global functions with 2 parameters:
++template <typename R, typename P0, typename P1>
++Functor<R, TLIST2(P0, P1)>
++functor(R (*f)(P0, P1)) {
++  return Functor<R, TLIST2(P0, P1)>::callable(f);
++}
++
++
++// Adapters for methods with 3 parameters:
++template <typename R, class C, typename P0, typename P1, typename P2>
++Functor<R, TLIST4(C*, P0, P1, P2)>
++functor(R (C::*m)(P0, P1, P2)) {
++  return Functor<R, TLIST4(C*, P0, P1, P2)>::method(m);
++}
++template <typename R, class C, typename P0, typename P1, typename P2>
++Functor<R, TLIST4(C*, P0, P1, P2)>
++functor(R (C::*m)(P0, P1, P2) const) {
++  return Functor<R, TLIST4(C*, P0, P1, P2)>::method(m);
++}
++// Adapter for global functions with 3 parameters:
++template <typename R, typename P0, typename P1, typename P2>
++Functor<R, TLIST3(P0, P1, P2)>
++functor(R (*f)(P0, P1, P2)) {
++  return Functor<R, TLIST3(P0, P1, P2)>::callable(f);
++}
++
++
++// Adapters for methods with 4 parameters:
++template <typename R, class C, typename P0, typename P1, typename P2, typename P3>
++Functor<R, TLIST5(C*, P0, P1, P2, P3)>
++functor(R (C::*m)(P0, P1, P2, P3)) {
++  return Functor<R, TLIST5(C*, P0, P1, P2, P3)>::method(m);
++}
++template <typename R, class C, typename P0, typename P1, typename P2, typename P3>
++Functor<R, TLIST5(C*, P0, P1, P2, P3)>
++functor(R (C::*m)(P0, P1, P2, P3) const) {
++  return Functor<R, TLIST5(C*, P0, P1, P2, P3)>::method(m);
++}
++// Adapter for global functions with 4 parameters:
++template <typename R, typename P0, typename P1, typename P2, typename P3>
++Functor<R, TLIST4(P0, P1, P2, P3)>
++functor(R (*f)(P0, P1, P2, P3)) {
++  return Functor<R, TLIST4(P0, P1, P2, P3)>::callable(f);
++}
++
++
++// Adapters for methods with 5 parameters:
++template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4>
++Functor<R, TLIST6(C*, P0, P1, P2, P3, P4)>
++functor(R (C::*m)(P0, P1, P2, P3, P4)) {
++  return Functor<R, TLIST6(C*, P0, P1, P2, P3, P4)>::method(m);
++}
++template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4>
++Functor<R, TLIST6(C*, P0, P1, P2, P3, P4)>
++functor(R (C::*m)(P0, P1, P2, P3, P4) const) {
++  return Functor<R, TLIST6(C*, P0, P1, P2, P3, P4)>::method(m);
++}
++// Adapter for global functions with 5 parameters:
++template <typename R, typename P0, typename P1, typename P2, typename P3, typename P4>
++Functor<R, TLIST5(P0, P1, P2, P3, P4)>
++functor(R (*f)(P0, P1, P2, P3, P4)) {
++  return Functor<R, TLIST5(P0, P1, P2, P3, P4)>::callable(f);
++}
++
++
++// Adapters for methods with 6 parameters:
++template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5>
++Functor<R, TLIST7(C*, P0, P1, P2, P3, P4, P5)>
++functor(R (C::*m)(P0, P1, P2, P3, P4, P5)) {
++  return Functor<R, TLIST7(C*, P0, P1, P2, P3, P4, P5)>::method(m);
++}
++template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5>
++Functor<R, TLIST7(C*, P0, P1, P2, P3, P4, P5)>
++functor(R (C::*m)(P0, P1, P2, P3, P4, P5) const) {
++  return Functor<R, TLIST7(C*, P0, P1, P2, P3, P4, P5)>::method(m);
++}
++// Adapter for global functions with 6 parameters:
++template <typename R, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5>
++Functor<R, TLIST6(P0, P1, P2, P3, P4, P5)>
++functor(R (*f)(P0, P1, P2, P3, P4, P5)) {
++  return Functor<R, TLIST6(P0, P1, P2, P3, P4, P5)>::callable(f);
++}
++
++
++// Adapters for methods with 7 parameters:
++template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6>
++Functor<R, TLIST8(C*, P0, P1, P2, P3, P4, P5, P6)>
++functor(R (C::*m)(P0, P1, P2, P3, P4, P5, P6)) {
++  return Functor<R, TLIST8(C*, P0, P1, P2, P3, P4, P5, P6)>::method(m);
++}
++template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6>
++Functor<R, TLIST8(C*, P0, P1, P2, P3, P4, P5, P6)>
++functor(R (C::*m)(P0, P1, P2, P3, P4, P5, P6) const) {
++  return Functor<R, TLIST8(C*, P0, P1, P2, P3, P4, P5, P6)>::method(m);
++}
++// Adapter for global functions with 7 parameters:
++template <typename R, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6>
++Functor<R, TLIST7(P0, P1, P2, P3, P4, P5, P6)>
++functor(R (*f)(P0, P1, P2, P3, P4, P5, P6)) {
++  return Functor<R, TLIST7(P0, P1, P2, P3, P4, P5, P6)>::callable(f);
++}
++
++
++// Adapters for methods with 8 parameters:
++template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7>
++Functor<R, TLIST9(C*, P0, P1, P2, P3, P4, P5, P6, P7)>
++functor(R (C::*m)(P0, P1, P2, P3, P4, P5, P6, P7)) {
++  return Functor<R, TLIST9(C*, P0, P1, P2, P3, P4, P5, P6, P7)>::method(m);
++}
++template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7>
++Functor<R, TLIST9(C*, P0, P1, P2, P3, P4, P5, P6, P7)>
++functor(R (C::*m)(P0, P1, P2, P3, P4, P5, P6, P7) const) {
++  return Functor<R, TLIST9(C*, P0, P1, P2, P3, P4, P5, P6, P7)>::method(m);
++}
++// Adapter for global functions with 8 parameters:
++template <typename R, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7>
++Functor<R, TLIST8(P0, P1, P2, P3, P4, P5, P6, P7)>
++functor(R (*f)(P0, P1, P2, P3, P4, P5, P6, P7)) {
++  return Functor<R, TLIST8(P0, P1, P2, P3, P4, P5, P6, P7)>::callable(f);
++}
++
++
++// Adapters for methods with 9 parameters:
++template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7, typename P8>
++Functor<R, TLIST10(C*, P0, P1, P2, P3, P4, P5, P6, P7, P8)>
++functor(R (C::*m)(P0, P1, P2, P3, P4, P5, P6, P7, P8)) {
++  return Functor<R, TLIST10(C*, P0, P1, P2, P3, P4, P5, P6, P7, P8)>::method(m);
++}
++template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7, typename P8>
++Functor<R, TLIST10(C*, P0, P1, P2, P3, P4, P5, P6, P7, P8)>
++functor(R (C::*m)(P0, P1, P2, P3, P4, P5, P6, P7, P8) const) {
++  return Functor<R, TLIST10(C*, P0, P1, P2, P3, P4, P5, P6, P7, P8)>::method(m);
++}
++// Adapter for global functions with 9 parameters:
++template <typename R, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7, typename P8>
++Functor<R, TLIST9(P0, P1, P2, P3, P4, P5, P6, P7, P8)>
++functor(R (*f)(P0, P1, P2, P3, P4, P5, P6, P7, P8)) {
++  return Functor<R, TLIST9(P0, P1, P2, P3, P4, P5, P6, P7, P8)>::callable(f);
++}
++
 +// [[[end]]]
 +
-+// This becomes easy:
-+JOIN16(DGFA,EMPTY)
-+
-+// Sayonara, macro scum!
-+
-+#undef DECL_GLOBAL_FUNCTION_ADAPTERS
-+#undef DECL_GLOBAL_METHOD_ADAPTER
-+#undef DGMA
-+#undef DGFA
-+#undef ctnP
-+#undef P
-+#undef cP
 +
 +#endif
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
-@@ -66,16 +66,17 @@ CSRCS		= \
+@@ -66,16 +66,17 @@ LOCAL_INCLUDES	= \
  CSRCS		= \
  		$(XPCOM_GLUE_SRC_LCSRCS) \
  		$(NULL)  
@@ -554,7 +1132,8 @@ diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
  		nsArrayUtils.h \
  		nsAutoLock.h \
  		nsBaseHashtable.h \
-@@ -120,16 +121,19 @@ SDK_HEADERS = \
+@@ -119,16 +120,19 @@ SDK_HEADERS = \
+ 		nsCycleCollectionParticipant.h \
  		nsDeque.h \
  		$(NULL)
  
@@ -562,7 +1141,6 @@ diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
  		nsThreadUtils.h \
  		nsProxyRelease.h \
  		nsXPTCUtils.h \
- 		Join.h \
 +		TList.h \
 +		Functor.h \
 +		Bind.h \
@@ -578,12 +1156,74 @@ diff --git a/xpcom/glue/TList.h b/xpcom/glue/TList.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/TList.h
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,159 @@
++/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is TList/TLIST{0,1,...}.
++ *
++ * The Initial Developer of the Original Code is
++ *   Mozilla Corporation.
++ * Portions created by the Initial Developer are Copyright (C) 2009
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *   Ben Newman <b{enjam,newma}n@mozilla.com> (Original Author)
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
 +#ifndef __tlist_h__
 +#define __tlist_h__
 +
++/**
++ * TLists, or type lists, are Lisp-style linked lists of types.  This file only
++ * scratches the surface of what is possible with type lists, but I only needed
++ * to calculate lengths and access types by index, so that's all I bothered
++ * implementing.
++ *
++ * Andrei Alexandrescu's book
++ *
++ *   Modern C++ Design: Generic Programming and Design Patterns Applied
++ *
++ * has a great deal more to say on this topic.
++ *
++ * Instructions pertaining to the cog.py code generation tool are available
++ * here: http://nedbatchelder.com/code/cog/
++ *
++ * Once you have installed cog.py, run
++ *
++ *   cog.py -r TList.h
++ *
++ * to regenerate the portions of this file delimited by the // ]]] and
++ * // [[[end]]] markers.  The file changes in place, but the python generating
++ * code remains, so repeatedly regenerating the file is really very easy.
++ */
++
 +// [[[cog
-+// from cogutil import tlist, MAX_FUNCTOR_ARITY
++// from functor_cog_utils import tlist, MAX_FUNCTOR_ARITY
 +// rng = range(MAX_FUNCTOR_ARITY+1)
 +// ijs = zip(rng, rng[1:])
 +// ]]]
@@ -603,58 +1243,43 @@ new file mode 100644
 +// [[[cog
 +// for (i, j) in ijs:
 +//   Ts = tlist("T", j)
-+//   Tcdr = tlist("T", rfirst=2, rlast=j)
++//   Tcdr = tlist("T", rbegin=1, rend=j)
 +//   slash = "\\"
-+//   cog.out(r"""
++//   cog.out("""
 +// #define TLIST%(j)d(%(Ts)s) %(slash)s
-+//   TList<T1, TLIST%(i)d(%(Tcdr)s)>
++//   TList<T0, TLIST%(i)d(%(Tcdr)s)>
 +// """ % locals())
 +// ]]]
 +
-+#define TLIST1(T1) \
-+  TList<T1, TLIST0()>
++#define TLIST1(T0) \
++  TList<T0, TLIST0()>
 +
-+#define TLIST2(T1, T2) \
-+  TList<T1, TLIST1(T2)>
++#define TLIST2(T0, T1) \
++  TList<T0, TLIST1(T1)>
 +
-+#define TLIST3(T1, T2, T3) \
-+  TList<T1, TLIST2(T2, T3)>
++#define TLIST3(T0, T1, T2) \
++  TList<T0, TLIST2(T1, T2)>
 +
-+#define TLIST4(T1, T2, T3, T4) \
-+  TList<T1, TLIST3(T2, T3, T4)>
++#define TLIST4(T0, T1, T2, T3) \
++  TList<T0, TLIST3(T1, T2, T3)>
 +
-+#define TLIST5(T1, T2, T3, T4, T5) \
-+  TList<T1, TLIST4(T2, T3, T4, T5)>
++#define TLIST5(T0, T1, T2, T3, T4) \
++  TList<T0, TLIST4(T1, T2, T3, T4)>
 +
-+#define TLIST6(T1, T2, T3, T4, T5, T6) \
-+  TList<T1, TLIST5(T2, T3, T4, T5, T6)>
++#define TLIST6(T0, T1, T2, T3, T4, T5) \
++  TList<T0, TLIST5(T1, T2, T3, T4, T5)>
 +
-+#define TLIST7(T1, T2, T3, T4, T5, T6, T7) \
-+  TList<T1, TLIST6(T2, T3, T4, T5, T6, T7)>
++#define TLIST7(T0, T1, T2, T3, T4, T5, T6) \
++  TList<T0, TLIST6(T1, T2, T3, T4, T5, T6)>
 +
-+#define TLIST8(T1, T2, T3, T4, T5, T6, T7, T8) \
-+  TList<T1, TLIST7(T2, T3, T4, T5, T6, T7, T8)>
++#define TLIST8(T0, T1, T2, T3, T4, T5, T6, T7) \
++  TList<T0, TLIST7(T1, T2, T3, T4, T5, T6, T7)>
 +
-+#define TLIST9(T1, T2, T3, T4, T5, T6, T7, T8, T9) \
-+  TList<T1, TLIST8(T2, T3, T4, T5, T6, T7, T8, T9)>
++#define TLIST9(T0, T1, T2, T3, T4, T5, T6, T7, T8) \
++  TList<T0, TLIST8(T1, T2, T3, T4, T5, T6, T7, T8)>
 +
-+#define TLIST10(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10) \
-+  TList<T1, TLIST9(T2, T3, T4, T5, T6, T7, T8, T9, T10)>
-+
-+#define TLIST11(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11) \
-+  TList<T1, TLIST10(T2, T3, T4, T5, T6, T7, T8, T9, T10, T11)>
-+
-+#define TLIST12(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12) \
-+  TList<T1, TLIST11(T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12)>
-+
-+#define TLIST13(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13) \
-+  TList<T1, TLIST12(T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13)>
-+
-+#define TLIST14(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14) \
-+  TList<T1, TLIST13(T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14)>
-+
-+#define TLIST15(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15) \
-+  TList<T1, TLIST14(T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15)>
++#define TLIST10(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9) \
++  TList<T0, TLIST9(T1, T2, T3, T4, T5, T6, T7, T8, T9)>
 +// [[[end]]]
 +
 +namespace tlist {
@@ -667,39 +1292,20 @@ new file mode 100644
 +    enum { value = 1 + Length<U>::value };
 +  };
 +
-+
-+  template <typename List, unsigned N> struct TypeAt_;
-+  template <typename T, typename U>
-+  struct TypeAt_<TList<T, U>, 0> { typedef T type; };
-+  template <typename T, typename U, unsigned N>
-+  struct TypeAt_<TList<T, U>, N> {
-+    typedef typename TypeAt_<U, N-1>::type type;
-+  };
-+
-+  // allows negative indices
-+  template <typename List, int N>
-+  struct TypeAt {
-+    typedef typename TypeAt_<
-+        List,
-+        N < 0 ? Length<List>::value + N : N
-+      >::type type;
-+  };
-+
-+
-+  template <typename List, unsigned N, typename D> struct TypeAtNS_;
++  template <typename List, unsigned N, typename D> struct TypeAt_;
 +  template <unsigned N, typename D>
-+  struct TypeAtNS_<NullType, N, D> { typedef D type; };
++  struct TypeAt_<NullType, N, D> { typedef D type; };
 +  template <typename T, typename U, unsigned N, typename D>
-+  struct TypeAtNS_<TList<T, U>, N, D> {
-+    typedef typename TypeAtNS_<U, N-1, D>::type type;
++  struct TypeAt_<TList<T, U>, N, D> {
++    typedef typename TypeAt_<U, N-1, D>::type type;
 +  };
 +  template <typename T, typename U, typename D>
-+  struct TypeAtNS_<TList<T, U>, 0, D> { typedef T type; };
++  struct TypeAt_<TList<T, U>, 0, D> { typedef T type; };
 +
-+  // allows negative indices
++  // allows negative indices, a la python
 +  template <typename List, int N, typename Default=EmptyType>
-+  struct TypeAtNS {
-+    typedef typename TypeAtNS_<
++  struct TypeAt {
++    typedef typename TypeAt_<
 +        List,
 +        N < 0 ? Length<List>::value + N : N,
 +        Default
@@ -710,25 +1316,65 @@ new file mode 100644
 +};
 +
 +#endif
-diff --git a/xpcom/glue/cogutil.py b/xpcom/glue/cogutil.py
+diff --git a/xpcom/glue/functor_cog_utils.py b/xpcom/glue/functor_cog_utils.py
 new file mode 100644
 --- /dev/null
-+++ b/xpcom/glue/cogutil.py
-@@ -0,0 +1,14 @@
++++ b/xpcom/glue/functor_cog_utils.py
+@@ -0,0 +1,54 @@
 +#!/usr/bin/env python
++"""
++-*- Mode: python; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
++***** BEGIN LICENSE BLOCK *****
++Version: MPL 1.1/GPL 2.0/LGPL 2.1
 +
++The contents of this file are subject to the Mozilla Public License Version
++1.1 (the "License"); you may not use this file except in compliance with
++the License. You may obtain a copy of the License at
++http://www.mozilla.org/MPL/
++
++Software distributed under the License is distributed on an "AS IS" basis,
++WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++for the specific language governing rights and limitations under the
++License.
++
++The Original Code is tlist.
++
++The Initial Developer of the Original Code is
++  Mozilla Corporation.
++Portions created by the Initial Developer are Copyright (C) 2009
++the Initial Developer. All Rights Reserved.
++
++Contributor(s):
++  Ben Newman <b{enjam,newma}n@mozilla.com> (Original Author)
++
++Alternatively, the contents of this file may be used under the terms of
++either the GNU General Public License Version 2 or later (the "GPL"), or
++the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++in which case the provisions of the GPL or the LGPL are applicable instead
++of those above. If you wish to allow use of your version of this file only
++under the terms of either the GPL or the LGPL, and not to allow others to
++use your version of this file under the terms of the MPL, indicate your
++decision by deleting the provisions above and replace them with the notice
++and other provisions required by the GPL or the LGPL. If you do not delete
++the provisions above, a recipient may use your version of this file under
++the terms of any one of the MPL, the GPL or the LGPL.
++
++***** END LICENSE BLOCK *****
++"""
 +import cog
 +import re
 +
++# Generate code for functors of up to this many parameters:
++MAX_FUNCTOR_ARITY = 10
++
++# A versatile list-generation tool.
++# TODO More explanation?
 +tpat = re.compile(r"\b[a-z]\b", re.I)
 +npat = re.compile(r"\b0\b")
-+def tlist(tmpl, rlast, rfirst=1, sep=", "):
++def tlist(tmpl, rend, rbegin=0, sep=", "):
 +  return sep.join(tpat.sub("\g<0>%u" % i,
 +                           npat.sub("%u" % i, tmpl))
-+                  for i in range(rfirst, rlast+1))
-+
-+MAX_FUNCTOR_ARITY = 15
-+
++                  for i in range(rbegin, rend))
 diff --git a/xpcom/glue/test.cpp b/xpcom/glue/test.cpp
 new file mode 100644
 --- /dev/null

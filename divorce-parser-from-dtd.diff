@@ -1,7 +1,7 @@
 diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD.h
 --- a/parser/htmlparser/public/nsIDTD.h
 +++ b/parser/htmlparser/public/nsIDTD.h
-@@ -97,38 +97,40 @@ public:
+@@ -97,26 +97,28 @@ public:
                                nsIContentSink* aSink) = 0;
  
      /**
@@ -27,26 +27,13 @@ diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD
 +                          const nsCString* aCharsetPtr) = 0;
  
      /**
-      * Called during model building phase of parse process. Each token
-      * created during the parse phase is stored in a deque (in the
-      * parser) and are passed to this method so that the DTD can
-      * process the token. Ultimately, the DTD will transform given
-      * token into calls onto a contentsink.
-      * @update  gess 3/25/98
-      * @param   aToken -- token object to be put into content model
-      * @return error code (usually 0)
-      */
--    NS_IMETHOD HandleToken(CToken* aToken,nsIParser* aParser) = 0;
-+    NS_IMETHOD HandleToken(CToken* aToken) = 0;
- 
-     /**
       * If the parse process gets interrupted midway, this method is
       * called by the parser prior to resuming the process.
       * @update  gess5/18/98
       * @return ignored
       */
      NS_IMETHOD WillResumeParse() = 0;
-@@ -178,19 +180,19 @@ public:
+@@ -166,18 +168,18 @@ public:
  
      NS_IMETHOD_(nsITokenizer*) CreateTokenizer() = 0;
  };
@@ -57,10 +44,8 @@ diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD
      NS_IMETHOD WillBuildModel(  const CParserContext& aParserContext, nsITokenizer* aTokenizer, nsIContentSink* aSink);\
 -    NS_IMETHOD DidBuildModel(nsresult anErrorCode, PRBool aNotifySink, nsIParser* aParser);\
 -    NS_IMETHOD BuildModel(nsIParser* aParser, nsITokenizer* aTokenizer);\
--    NS_IMETHOD HandleToken(CToken* aToken, nsIParser* aParser);\
 +    NS_IMETHOD DidBuildModel(nsresult anErrorCode, PRBool aNotifySink);\
 +    NS_IMETHOD BuildModel(nsITokenizer* aTokenizer, PRBool aCanInterrupt, PRBool aCountLines, const nsCString* aCharsetPtr);\
-+    NS_IMETHOD HandleToken(CToken* aToken);\
      NS_IMETHOD WillResumeParse();\
      NS_IMETHOD WillInterruptParse();\
      NS_IMETHOD_(PRBool) CanContain(PRInt32 aParent,PRInt32 aChild) const;\
@@ -284,7 +269,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
    return PR_FALSE;
  }
  
- NS_IMETHODIMP
+ nsresult
 -CNavDTD::HandleToken(CToken* aToken, nsIParser* aParser)
 +CNavDTD::HandleToken(CToken* aToken)
  {
@@ -498,7 +483,26 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
 diff --git a/parser/htmlparser/src/CNavDTD.h b/parser/htmlparser/src/CNavDTD.h
 --- a/parser/htmlparser/src/CNavDTD.h
 +++ b/parser/htmlparser/src/CNavDTD.h
-@@ -289,18 +289,17 @@ private:
+@@ -253,17 +253,17 @@ private:
+     /**
+      * Finds the topmost occurrence of given tag within context vector stack.
+      *
+      * @param   tag to be found
+      * @return  index of topmost tag occurrence -- may be -1 (kNotFound).
+      */
+     PRInt32 LastOf(eHTMLTags aTagSet[], PRInt32 aCount) const;
+ 
+-    nsresult HandleToken(CToken* aToken, nsIParser* aParser);
++    nsresult HandleToken(CToken* aToken);
+ 
+     /**
+      *  This method gets called when a start token has been
+      *  encountered in the parse process. If the current container
+      *  can contain this tag, then add it. Otherwise, you have
+      *  two choices: 1) create an implicit container for this tag
+      *                  to be stored in
+      *               2) close the top container, and add this to
+@@ -291,18 +291,17 @@ private:
      nsresult    HandleDefaultStartToken(CToken* aToken, eHTMLTags aChildTag,
                                          nsCParserNode *aNode);
      nsresult    HandleEndToken(CToken* aToken);
@@ -518,7 +522,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.h b/parser/htmlparser/src/CNavDTD.h
       * The special purpose methods automatically close
       * one or more open containers.
       * @return  error code - 0 if all went well.
-@@ -370,31 +369,23 @@ protected:
+@@ -372,31 +371,23 @@ protected:
      void            HandleOmittedTag(CToken* aToken, eHTMLTags aChildTag,
                                       eHTMLTags aParent, nsIParserNode *aNode);
      nsresult        HandleSavedTokens(PRInt32 anIndex);
@@ -612,7 +616,7 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
    return NS_OK;
  }
  
- NS_IMETHODIMP
+ nsresult
 -nsExpatDriver::HandleToken(CToken* aToken,nsIParser* aParser)
 +nsExpatDriver::HandleToken(CToken* aToken)
  {
@@ -623,6 +627,28 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
  nsExpatDriver::IsContainer(PRInt32 aTag) const
  {
    return PR_TRUE;
+diff --git a/parser/htmlparser/src/nsExpatDriver.h b/parser/htmlparser/src/nsExpatDriver.h
+--- a/parser/htmlparser/src/nsExpatDriver.h
++++ b/parser/htmlparser/src/nsExpatDriver.h
+@@ -59,17 +59,17 @@ public:
+   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+   NS_DECL_NSIDTD
+   NS_DECL_NSITOKENIZER
+   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsExpatDriver, nsIDTD)
+ 
+   nsExpatDriver();
+   virtual ~nsExpatDriver();
+ 
+-  nsresult HandleToken(CToken* aToken, nsIParser* aParser);
++  nsresult HandleToken(CToken* aToken);
+ 
+   int HandleExternalEntityRef(const PRUnichar *aOpenEntityNames,
+                               const PRUnichar *aBase,
+                               const PRUnichar *aSystemId,
+                               const PRUnichar *aPublicId);
+   nsresult HandleStartElement(const PRUnichar *aName, const PRUnichar **aAtts);
+   nsresult HandleEndElement(const PRUnichar *aName);
+   nsresult HandleCharacterData(const PRUnichar *aCData, const PRUint32 aLength);
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
@@ -901,8 +927,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
      return NS_ERROR_FAILURE;
  
    // Highlight all parts of all erroneous tags.
-@@ -873,35 +864,34 @@ nsresult CViewSourceHTML::WriteTag(PRInt
- }
+@@ -874,35 +865,34 @@ nsresult CViewSourceHTML::WriteTag(PRInt
  
  /**
   *
@@ -910,8 +935,9 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
   *  @param   aToken -- token object to be put into content model
   *  @return  0 if all is well; non-zero is an error
   */
--NS_IMETHODIMP CViewSourceHTML::HandleToken(CToken* aToken,nsIParser* aParser)
-+NS_IMETHODIMP CViewSourceHTML::HandleToken(CToken* aToken)
+ nsresult
+-CViewSourceHTML::HandleToken(CToken* aToken,nsIParser* aParser)
++CViewSourceHTML::HandleToken(CToken* aToken)
  {
    nsresult        result=NS_OK;
    CHTMLToken*     theToken= (CHTMLToken*)(aToken);
@@ -940,7 +966,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
      case eToken_end:
        {
          const nsSubstring& endValue = aToken->GetStringValue();
-@@ -1086,31 +1076,26 @@ void CViewSourceHTML::WriteHrefAttribute
+@@ -1087,31 +1077,26 @@ void CViewSourceHTML::WriteHrefAttribute
  nsresult CViewSourceHTML::CreateViewSourceURL(const nsAString& linkUrl,
                                                nsString& viewSourceUrl) {
    nsCOMPtr<nsIURI> baseURI;
@@ -973,7 +999,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
  
    // URLs that execute script (e.g. "javascript:" URLs) should just be
    // ignored.  There's nothing reasonable we can do with them, and allowing
-@@ -1238,24 +1223,19 @@ nsresult CViewSourceHTML::GetBaseURI(nsI
+@@ -1239,24 +1224,19 @@ nsresult CViewSourceHTML::GetBaseURI(nsI
    if (!mBaseURI) {
      rv = SetBaseURI(mFilename);
    }
@@ -1002,7 +1028,26 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
 diff --git a/parser/htmlparser/src/nsViewSourceHTML.h b/parser/htmlparser/src/nsViewSourceHTML.h
 --- a/parser/htmlparser/src/nsViewSourceHTML.h
 +++ b/parser/htmlparser/src/nsViewSourceHTML.h
-@@ -129,17 +129,17 @@ private:
+@@ -90,17 +90,17 @@ public:
+      * context stack.
+      * @update  gess 7/23/98
+      * @param
+      * @return
+      */
+     virtual void SetVerification(PRBool aEnable);
+ 
+ private:
+-    nsresult HandleToken(CToken* aToken, nsIParser* aParser);
++    nsresult HandleToken(CToken* aToken);
+ 
+     nsresult WriteTag(PRInt32 tagType,
+                       const nsSubstring &aText,
+                       PRInt32 attrCount,
+                       PRBool aTagInError);
+ 
+     nsresult WriteAttributes(const nsAString& tagName, 
+         nsTokenAllocator* allocator, PRInt32 attrCount, PRBool aOwnerInError);
+@@ -131,17 +131,17 @@ private:
      static void ExpandEntities(const nsAString& textIn, nsString& textOut);
      static void CopyPossibleEntity(nsAString::const_iterator& iter,
                                     const nsAString::const_iterator& end,
