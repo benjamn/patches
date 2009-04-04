@@ -12,18 +12,18 @@ diff --git a/js/src/jsapi.cpp b/js/src/jsapi.cpp
  JS_PUBLIC_API(void)
 +JS_SaveRegExpStatics(JSContext *cx, JSRegExpStatics *statics)
 +{
-+  JS_ASSERT(statics);
 +  CHECK_REQUEST(cx);
 +  *statics = cx->regExpStatics;
++  statics->root(cx);
 +  JS_ClearRegExpStatics(cx);
 +}
 +
 +JS_PUBLIC_API(void)
-+JS_RestoreRegExpStatics(JSContext *cx, const JSRegExpStatics *statics)
++JS_RestoreRegExpStatics(JSContext *cx, JSRegExpStatics *statics)
 +{
-+  JS_ASSERT(statics);
 +  CHECK_REQUEST(cx);
 +  cx->regExpStatics = *statics;
++  statics->unroot(cx);
 +}
 +
 +JS_PUBLIC_API(void)
@@ -38,8 +38,7 @@ diff --git a/js/src/jsapi.cpp b/js/src/jsapi.cpp
 diff --git a/js/src/jsapi.h b/js/src/jsapi.h
 --- a/js/src/jsapi.h
 +++ b/js/src/jsapi.h
-@@ -2655,16 +2655,24 @@ extern JS_PUBLIC_API(JSObject *)
- JS_NewRegExpObject(JSContext *cx, char *bytes, size_t length, uintN flags);
+@@ -2656,16 +2656,22 @@ JS_NewRegExpObject(JSContext *cx, char *
  
  extern JS_PUBLIC_API(JSObject *)
  JS_NewUCRegExpObject(JSContext *cx, jschar *chars, size_t length, uintN flags);
@@ -47,15 +46,13 @@ diff --git a/js/src/jsapi.h b/js/src/jsapi.h
  extern JS_PUBLIC_API(void)
  JS_SetRegExpInput(JSContext *cx, JSString *input, JSBool multiline);
  
-+struct JSRegExpStatics;
-+
-+extern JS_PUBLIC_API(void)
-+JS_SaveRegExpStatics(JSContext *cx, struct JSRegExpStatics *statics);
-+
-+extern JS_PUBLIC_API(void)
-+JS_RestoreRegExpStatics(JSContext *cx, const struct JSRegExpStatics *statics);
-+
  extern JS_PUBLIC_API(void)
++JS_SaveRegExpStatics(JSContext *cx, JSRegExpStatics *statics);
++
++extern JS_PUBLIC_API(void)
++JS_RestoreRegExpStatics(JSContext *cx, JSRegExpStatics *statics);
++
++extern JS_PUBLIC_API(void)
  JS_ClearRegExpStatics(JSContext *cx);
  
  extern JS_PUBLIC_API(void)
@@ -63,6 +60,103 @@ diff --git a/js/src/jsapi.h b/js/src/jsapi.h
  
  /* TODO: compile, exec, get/set other statics... */
  
+ /************************************************************************/
+diff --git a/js/src/jsprvtd.h b/js/src/jsprvtd.h
+--- a/js/src/jsprvtd.h
++++ b/js/src/jsprvtd.h
+@@ -115,17 +115,16 @@ typedef struct JSWeakRoots          JSWe
+ typedef struct JSAtom               JSAtom;
+ typedef struct JSAtomList           JSAtomList;
+ typedef struct JSAtomListElement    JSAtomListElement;
+ typedef struct JSAtomMap            JSAtomMap;
+ typedef struct JSAtomState          JSAtomState;
+ typedef struct JSCodeSpec           JSCodeSpec;
+ typedef struct JSPrinter            JSPrinter;
+ typedef struct JSRegExp             JSRegExp;
+-typedef struct JSRegExpStatics      JSRegExpStatics;
+ typedef struct JSScope              JSScope;
+ typedef struct JSScopeOps           JSScopeOps;
+ typedef struct JSScopeProperty      JSScopeProperty;
+ typedef struct JSStackHeader        JSStackHeader;
+ typedef struct JSStringBuffer       JSStringBuffer;
+ typedef struct JSSubString          JSSubString;
+ typedef struct JSTraceableNative    JSTraceableNative;
+ typedef struct JSXML                JSXML;
+diff --git a/js/src/jspubtd.h b/js/src/jspubtd.h
+--- a/js/src/jspubtd.h
++++ b/js/src/jspubtd.h
+@@ -150,16 +150,17 @@ typedef struct JSRuntime         JSTaskS
+ typedef struct JSScript          JSScript;
+ typedef struct JSStackFrame      JSStackFrame;
+ typedef struct JSString          JSString;
+ typedef struct JSXDRState        JSXDRState;
+ typedef struct JSExceptionState  JSExceptionState;
+ typedef struct JSLocaleCallbacks JSLocaleCallbacks;
+ typedef struct JSSecurityCallbacks JSSecurityCallbacks;
+ typedef struct JSONParser        JSONParser;
++typedef struct JSRegExpStatics   JSRegExpStatics;
+ 
+ /* JSClass (and JSObjectOps where appropriate) function pointer typedefs. */
+ 
+ /*
+  * Add, delete, get or set a property named by id in obj.  Note the jsval id
+  * type -- id may be a string (Unicode property identifier) or an int (element
+  * index).  The *vp out parameter, on success, is the new property value after
+  * an add, get, or set.  After a successful delete, *vp is JSVAL_FALSE iff
+diff --git a/js/src/jsregexp.cpp b/js/src/jsregexp.cpp
+--- a/js/src/jsregexp.cpp
++++ b/js/src/jsregexp.cpp
+@@ -4370,16 +4370,26 @@ js_InitRegExpStatics(JSContext *cx)
+      */
+     JS_INIT_ARENA_POOL(&cx->regexpPool, "regexp",
+                        12 * 1024 - 40,  /* FIXME: bug 421435 */
+                        sizeof(void *), &cx->scriptStackQuota);
+ 
+     JS_ClearRegExpStatics(cx);
+ }
+ 
++void JSRegExpStatics::root(JSContext *cx)
++{
++  JS_PUSH_TEMP_ROOT_STRING(cx, input, &mTvr);
++}
++
++void JSRegExpStatics::unroot(JSContext *cx)
++{
++  JS_POP_TEMP_ROOT(cx, &mTvr);
++}
++
+ void
+ js_TraceRegExpStatics(JSTracer *trc, JSContext *acx)
+ {
+     JSRegExpStatics *res = &acx->regExpStatics;
+ 
+     if (res->input)
+         JS_CALL_STRING_TRACER(trc, res->input, "res->input");
+ }
+diff --git a/js/src/jsregexp.h b/js/src/jsregexp.h
+--- a/js/src/jsregexp.h
++++ b/js/src/jsregexp.h
+@@ -58,16 +58,20 @@ struct JSRegExpStatics {
+     uint16      parenCount;     /* number of valid elements in parens[] */
+     uint16      moreLength;     /* number of allocated elements in moreParens */
+     JSSubString parens[9];      /* last set of parens matched (perl $1, $2) */
+     JSSubString *moreParens;    /* null or realloc'd vector for $10, etc. */
+     JSSubString lastMatch;      /* last string matched (perl $&) */
+     JSSubString lastParen;      /* last paren matched (perl $+) */
+     JSSubString leftContext;    /* input to left of last match (perl $`) */
+     JSSubString rightContext;   /* input to right of last match (perl $') */
++
++    void   root(JSContext *cx);
++    void unroot(JSContext *cx);
++    JSTempValueRooter mTvr;
+ };
+ 
+ /*
+  * This struct holds a bitmap representation of a class from a regexp.
+  * There's a list of these referenced by the classList field in the JSRegExp
+  * struct below. The initial state has startIndex set to the offset in the
+  * original regexp source of the beginning of the class contents. The first
+  * use of the class converts the source representation into a bitmap.
 diff --git a/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp b/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp
 --- a/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp
 +++ b/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp
