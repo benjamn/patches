@@ -1,181 +1,53 @@
 Bug 484107 - XPCSafeJSObjectWrapper allows regexp variables to be clobbered.
 
-diff --git a/js/src/jsapi.cpp b/js/src/jsapi.cpp
---- a/js/src/jsapi.cpp
-+++ b/js/src/jsapi.cpp
-@@ -5714,16 +5714,31 @@ JS_SetRegExpInput(JSContext *cx, JSStrin
-     /* No locking required, cx is thread-private and input must be live. */
-     res = &cx->regExpStatics;
-     res->input = input;
-     res->multiline = multiline;
-     cx->runtime->gcPoke = JS_TRUE;
- }
- 
- JS_PUBLIC_API(void)
-+JS_SaveRegExpStatics(JSContext *cx, JSRegExpStatics *statics)
-+{
-+  CHECK_REQUEST(cx);
-+  js_SaveRegExpStatics(cx, statics);
-+  JS_ClearRegExpStatics(cx);
-+}
-+
-+JS_PUBLIC_API(void)
-+JS_RestoreRegExpStatics(JSContext *cx, JSRegExpStatics *statics)
-+{
-+  CHECK_REQUEST(cx);
-+  js_RestoreRegExpStatics(cx, statics);
-+}
-+
-+JS_PUBLIC_API(void)
- JS_ClearRegExpStatics(JSContext *cx)
- {
-     JSRegExpStatics *res;
- 
-     /* No locking required, cx is thread-private and input must be live. */
-     res = &cx->regExpStatics;
-     res->input = NULL;
-     res->multiline = JS_FALSE;
-diff --git a/js/src/jsapi.h b/js/src/jsapi.h
---- a/js/src/jsapi.h
-+++ b/js/src/jsapi.h
-@@ -2611,16 +2611,22 @@ JS_NewRegExpObject(JSContext *cx, char *
- 
- extern JS_PUBLIC_API(JSObject *)
- JS_NewUCRegExpObject(JSContext *cx, jschar *chars, size_t length, uintN flags);
- 
- extern JS_PUBLIC_API(void)
- JS_SetRegExpInput(JSContext *cx, JSString *input, JSBool multiline);
- 
- extern JS_PUBLIC_API(void)
-+JS_SaveRegExpStatics(JSContext *cx, JSRegExpStatics *statics);
-+
-+extern JS_PUBLIC_API(void)
-+JS_RestoreRegExpStatics(JSContext *cx, JSRegExpStatics *statics);
-+
-+extern JS_PUBLIC_API(void)
- JS_ClearRegExpStatics(JSContext *cx);
- 
- extern JS_PUBLIC_API(void)
- JS_ClearRegExpRoots(JSContext *cx);
- 
- /* TODO: compile, exec, get/set other statics... */
- 
- /************************************************************************/
-diff --git a/js/src/jsprvtd.h b/js/src/jsprvtd.h
---- a/js/src/jsprvtd.h
-+++ b/js/src/jsprvtd.h
-@@ -116,17 +116,16 @@ typedef struct JSWeakRoots          JSWe
- typedef struct JSAtom               JSAtom;
- typedef struct JSAtomList           JSAtomList;
- typedef struct JSAtomListElement    JSAtomListElement;
- typedef struct JSAtomMap            JSAtomMap;
- typedef struct JSAtomState          JSAtomState;
- typedef struct JSCodeSpec           JSCodeSpec;
- typedef struct JSPrinter            JSPrinter;
- typedef struct JSRegExp             JSRegExp;
--typedef struct JSRegExpStatics      JSRegExpStatics;
- typedef struct JSScope              JSScope;
- typedef struct JSScopeOps           JSScopeOps;
- typedef struct JSScopeProperty      JSScopeProperty;
- typedef struct JSStackHeader        JSStackHeader;
- typedef struct JSStringBuffer       JSStringBuffer;
- typedef struct JSSubString          JSSubString;
- typedef struct JSTraceableNative    JSTraceableNative;
- typedef struct JSXML                JSXML;
-diff --git a/js/src/jspubtd.h b/js/src/jspubtd.h
---- a/js/src/jspubtd.h
-+++ b/js/src/jspubtd.h
-@@ -149,16 +149,17 @@ typedef struct JSRuntime         JSTaskS
- typedef struct JSScript          JSScript;
- typedef struct JSStackFrame      JSStackFrame;
- typedef struct JSString          JSString;
- typedef struct JSXDRState        JSXDRState;
- typedef struct JSExceptionState  JSExceptionState;
- typedef struct JSLocaleCallbacks JSLocaleCallbacks;
- typedef struct JSSecurityCallbacks JSSecurityCallbacks;
- typedef struct JSONParser        JSONParser;
-+typedef struct JSRegExpStatics   JSRegExpStatics;
- 
- /* JSClass (and JSObjectOps where appropriate) function pointer typedefs. */
- 
- /*
-  * Add, delete, get or set a property named by id in obj.  Note the jsval id
-  * type -- id may be a string (Unicode property identifier) or an int (element
-  * index).  The *vp out parameter, on success, is the new property value after
-  * an add, get, or set.  After a successful delete, *vp is JSVAL_FALSE iff
 diff --git a/js/src/jsregexp.cpp b/js/src/jsregexp.cpp
 --- a/js/src/jsregexp.cpp
 +++ b/js/src/jsregexp.cpp
-@@ -4375,16 +4375,30 @@ js_InitRegExpStatics(JSContext *cx)
-     JS_INIT_ARENA_POOL(&cx->regexpPool, "regexp",
-                        12 * 1024 - 40,  /* FIXME: bug 421435 */
-                        sizeof(void *), &cx->scriptStackQuota);
- 
+@@ -4379,6 +4379,22 @@
      JS_ClearRegExpStatics(cx);
  }
  
- void
-+js_SaveRegExpStatics(JSContext *cx, JSRegExpStatics *statics)
++JS_FRIEND_API(void)
++js_SaveRegExpStatics(JSContext *cx, JSRegExpStatics *statics,
++                     JSTempValueRooter *tvr)
 +{
 +  *statics = cx->regExpStatics;
-+  JS_PUSH_TEMP_ROOT_STRING(cx, statics->input, &statics->mTvr);
++  JS_PUSH_TEMP_ROOT_STRING(cx, statics->input, tvr);
 +}
 +
-+void
-+js_RestoreRegExpStatics(JSContext *cx, JSRegExpStatics *statics)
++JS_FRIEND_API(void)
++js_RestoreRegExpStatics(JSContext *cx, JSRegExpStatics *statics,
++                        JSTempValueRooter *tvr)
 +{
 +  cx->regExpStatics = *statics;
-+  JS_POP_TEMP_ROOT(cx, &statics->mTvr);
++  JS_POP_TEMP_ROOT(cx, tvr);
 +}
 +
-+void
+ void
  js_TraceRegExpStatics(JSTracer *trc, JSContext *acx)
  {
-     JSRegExpStatics *res = &acx->regExpStatics;
- 
-     if (res->input)
-         JS_CALL_STRING_TRACER(trc, res->input, "res->input");
- }
- 
 diff --git a/js/src/jsregexp.h b/js/src/jsregexp.h
 --- a/js/src/jsregexp.h
 +++ b/js/src/jsregexp.h
-@@ -58,18 +58,26 @@ struct JSRegExpStatics {
-     uint16      parenCount;     /* number of valid elements in parens[] */
-     uint16      moreLength;     /* number of allocated elements in moreParens */
-     JSSubString parens[9];      /* last set of parens matched (perl $1, $2) */
-     JSSubString *moreParens;    /* null or realloc'd vector for $10, etc. */
-     JSSubString lastMatch;      /* last string matched (perl $&) */
-     JSSubString lastParen;      /* last paren matched (perl $+) */
-     JSSubString leftContext;    /* input to left of last match (perl $`) */
+@@ -65,6 +65,14 @@
      JSSubString rightContext;   /* input to right of last match (perl $') */
-+
-+    JSTempValueRooter mTvr;     /* used by js_{Save,Restore}RegExpStatics */
  };
  
-+extern void
-+js_SaveRegExpStatics(JSContext *cx, JSRegExpStatics *statics);
++extern JS_FRIEND_API(void)
++js_SaveRegExpStatics(JSContext *cx, JSRegExpStatics *statics,
++                     JSTempValueRooter *tvr);
 +
-+extern void
-+js_RestoreRegExpStatics(JSContext *cx, JSRegExpStatics *statics);
++extern JS_FRIEND_API(void)
++js_RestoreRegExpStatics(JSContext *cx, JSRegExpStatics *statics,
++                        JSTempValueRooter *tvr);
 +
  /*
   * This struct holds a bitmap representation of a class from a regexp.
   * There's a list of these referenced by the classList field in the JSRegExp
-  * struct below. The initial state has startIndex set to the offset in the
-  * original regexp source of the beginning of the class contents. The first
-  * use of the class converts the source representation into a bitmap.
-  *
-  */
 diff --git a/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp b/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp
 --- a/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp
 +++ b/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp
-@@ -36,16 +36,17 @@
-  * the terms of any one of the MPL, the GPL or the LGPL.
-  *
-  * ***** END LICENSE BLOCK ***** */
- 
- #include "xpcprivate.h"
+@@ -41,6 +41,7 @@
  #include "jsdbgapi.h"
  #include "jsscript.h" // for js_ScriptClass
  #include "XPCWrapper.h"
@@ -183,17 +55,7 @@ diff --git a/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp b/js/src/xpconnect/
  
  static JSBool
  XPC_SJOW_AddProperty(JSContext *cx, JSObject *obj, jsval id, jsval *vp);
- 
- static JSBool
- XPC_SJOW_DelProperty(JSContext *cx, JSObject *obj, jsval id, jsval *vp);
- 
- static JSBool
-@@ -517,31 +518,42 @@ XPC_SJOW_DelProperty(JSContext *cx, JSOb
-   if (!CanCallerAccess(cx, unsafeObj)) {
-     // CanCallerAccess() already threw for us.
-     return JS_FALSE;
-   }
- 
+@@ -522,6 +523,19 @@
    return XPCWrapper::DelProperty(cx, unsafeObj, id, vp);
  }
  
@@ -202,23 +64,18 @@ diff --git a/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp b/js/src/xpconnect/
 +                   jsval *argv, jsval *rval)
 +{
 +  JSRegExpStatics statics;
-+  JS_SaveRegExpStatics(cx, &statics);
++  JSTempValueRooter tvr;
++  js_SaveRegExpStatics(cx, &statics, &tvr);
++  JS_ClearRegExpStatics(cx);
 +  JSBool ok = ::JS_CallFunctionValue(cx, obj, fval, argc, argv, rval);
-+  JS_RestoreRegExpStatics(cx, &statics);
++  js_RestoreRegExpStatics(cx, &statics, &tvr);
 +  return ok;
 +}
 +
  // Call wrapper to help with wrapping calls to functions or callable
  // objects in a scripted function (see XPC_SJOW_Call()). The first
  // argument passed to this method is the unsafe function to call, the
- // rest are the arguments to pass to the function we're calling.
- static JSBool
- XPC_SJOW_CallWrapper(JSContext *cx, JSObject *obj, uintN argc, jsval *argv,
-                      jsval *rval)
- {
-   // Make sure we've got at least one argument (which may not be the
-   // case if someone's monkeying with this function directly from JS).
-   if (argc < 1) {
+@@ -536,7 +550,7 @@
      return ThrowException(NS_ERROR_INVALID_ARG, cx);
    }
  
@@ -227,17 +84,7 @@ diff --git a/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp b/js/src/xpconnect/
  }
  
  static JSBool
- XPC_SJOW_GetOrSetProperty(JSContext *cx, JSObject *obj, jsval id, jsval *vp,
-                           JSBool aIsSet)
- {
-   // We resolve toString to a function in our resolve hook.
-   if (id == GetRTStringByIndex(cx, XPCJSRuntime::IDX_TO_STRING)) {
-@@ -583,19 +595,18 @@ XPC_SJOW_GetOrSetProperty(JSContext *cx,
- 
-   args[0] = id;
- 
-   if (aIsSet) {
-     args[1] = UnwrapJSValue(*vp);
+@@ -588,9 +602,8 @@
    }
  
    jsval val;
@@ -249,17 +96,7 @@ diff --git a/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp b/js/src/xpconnect/
    return ok && WrapJSValue(cx, obj, val, vp);
  }
  
- static JSBool
- XPC_SJOW_GetProperty(JSContext *cx, JSObject *obj, jsval id, jsval *vp)
- {
-   return XPC_SJOW_GetOrSetProperty(cx, obj, id, vp, PR_FALSE);
- }
-@@ -855,18 +866,18 @@ XPC_SJOW_Call(JSContext *cx, JSObject *o
-     return JS_FALSE;
-   }
- 
-   for (uintN i = 0; i < argc; ++i) {
-     args[i + 2] = UnwrapJSValue(argv[i]);
+@@ -860,8 +873,8 @@
    }
  
    jsval val;
@@ -270,17 +107,7 @@ diff --git a/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp b/js/src/xpconnect/
  
    if (args != argsBuf) {
      nsMemory::Free(args);
-   }
- 
-   return ok && WrapJSValue(cx, obj, val, rval);
- }
- 
-@@ -961,22 +972,19 @@ XPC_SJOW_Create(JSContext *cx, JSObject 
-   JSObject *unsafeObj = GetUnsafeObject(callee);
- 
-   // Check that the caller can access the unsafe object.
-   if (!CanCallerAccess(cx, unsafeObj)) {
-     // CanCallerAccess() already threw for us.
+@@ -966,12 +979,9 @@
      return JS_FALSE;
    }
  
@@ -296,17 +123,7 @@ diff --git a/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp b/js/src/xpconnect/
  }
  
  static JSBool
- XPC_SJOW_Equality(JSContext *cx, JSObject *obj, jsval v, JSBool *bp)
- {
-   if (JSVAL_IS_PRIMITIVE(v)) {
-     *bp = JS_FALSE;
-   } else {
-@@ -1087,19 +1095,18 @@ XPC_SJOW_toString(JSContext *cx, JSObjec
- 
-   jsval scriptedFunVal;
-   if (!GetScriptedFunction(cx, obj, unsafeObj, XPC_SJOW_SLOT_SCRIPTED_TOSTRING,
-                            funScript, &scriptedFunVal)) {
-     return JS_FALSE;
+@@ -1092,9 +1102,8 @@
    }
  
    jsval val;
@@ -318,20 +135,10 @@ diff --git a/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp b/js/src/xpconnect/
    return ok && WrapJSValue(cx, obj, val, rval);
  }
  
- PRBool
- XPC_SJOW_AttachNewConstructorObject(XPCCallContext &ccx,
-                                     JSObject *aGlobalObject)
- {
-   // Initialize sEvalNative the first time we attach a constructor.
 diff --git a/js/src/xpconnect/tests/mochitest/Makefile.in b/js/src/xpconnect/tests/mochitest/Makefile.in
 --- a/js/src/xpconnect/tests/mochitest/Makefile.in
 +++ b/js/src/xpconnect/tests/mochitest/Makefile.in
-@@ -50,12 +50,13 @@ _TEST_FILES =	inner.html \
- 		test_bug393269.html \
- 		test_bug396851.html \
- 		test_bug428021.html \
- 		test_bug448587.html \
- 		test_wrappers.html \
+@@ -55,6 +55,7 @@
  		test_bug446584.html \
  		test_bug462428.html \
  		test_bug478438.html \
@@ -339,7 +146,6 @@ diff --git a/js/src/xpconnect/tests/mochitest/Makefile.in b/js/src/xpconnect/tes
  		$(NULL)
  
  libs:: $(_TEST_FILES)
- 	$(INSTALL) $^ $(DEPTH)/_tests/testing/mochitest/tests/$(relativesrcdir)
 diff --git a/js/src/xpconnect/tests/mochitest/test_bug484107.html b/js/src/xpconnect/tests/mochitest/test_bug484107.html
 new file mode 100644
 --- /dev/null
