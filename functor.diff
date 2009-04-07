@@ -62,9 +62,9 @@ new file mode 100644
 + *
 + *   cog.py -r Bind.h
 + *
-+ * to regenerate the portions of this file delimited by the // ]]] and
-+ * // [[[end]]] markers.  The file changes in place, but the python generating
-+ * code remains, so repeatedly regenerating the file is really very easy.
++ * to regenerate the portions of this file delimited by the triple square
++ * bracket markers.  The file changes in place, but the python generating code
++ * remains, so repeatedly regenerating the file is really very easy.
 + */
 +
 +// [[[cog
@@ -456,7 +456,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Functor.h
-@@ -0,0 +1,652 @@
+@@ -0,0 +1,664 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -519,9 +519,9 @@ new file mode 100644
 + *
 + *   cog.py -r Functor.h
 + *
-+ * to regenerate the portions of this file delimited by the // ]]] and
-+ * // [[[end]]] markers.  The file changes in place, but the python generating
-+ * code remains, so repeatedly regenerating the file is really very easy.
++ * to regenerate the portions of this file delimited by the triple square
++ * bracket markers.  The file changes in place, but the python generating code
++ * remains, so repeatedly regenerating the file is really very easy.
 + */
 +
 +// [[[cog
@@ -531,19 +531,28 @@ new file mode 100644
 +// ]]]
 +// [[[end]]]
 +
-+class FunctorSupports : public nsISupports {
-+public:
-+  // nsISupports implementation must be inlined so that this file can be
-+  // included across modules.  Because NS_IMPL_ISUPPORTS0 appears inline,
-+  // the method prototypes for AddRef, Release, and QueryInterface provided by
-+  // NS_DECL_ISUPPORTS are not needed, but the nsAutoRefCnt and
-+  // NS_DECL_OWNINGTHREAD members (also provided by NS_DECL_ISUPPORTS)
-+  // must now be declared manually.
-+  NS_IMPL_THREADSAFE_ISUPPORTS0(FunctorSupports)
-+protected:
-+  virtual ~FunctorSupports() {}
-+  nsAutoRefCnt mRefCnt;
-+};
++/**
++ * I don't imagine the Interface template parameter will ever be anything other
++ * than nsISupports, but making Supports a templatized class allows us to inline
++ * the nsISupports method implementations.
++ */
++namespace functors {
++  template <class Interface = nsISupports>
++  class Supports : public Interface {
++    NS_DECL_ISUPPORTS
++  protected:
++    virtual ~Supports() {}
++  };
++
++  template <class Interface>
++  NS_IMPL_THREADSAFE_ADDREF(Supports<Interface>)
++  template <class Interface>
++  NS_IMPL_THREADSAFE_RELEASE(Supports<Interface>)
++  template <class Interface>
++  NS_IMPL_THREADSAFE_QUERY_INTERFACE0(Supports<Interface>)
++
++  // TODO move more into this namespace
++}
 +
 +/**
 + * Abstract interface for the heap-allocated functor objects (CallableHandler,
@@ -553,6 +562,9 @@ new file mode 100644
 + */
 +template <typename Result, class Params>
 +class FunctorImpl;
++
++typedef functors::Supports<nsISupports>
++        FunctorSupports;
 +
 +// [[[cog
 +// for i in rng:
@@ -1197,9 +1209,9 @@ new file mode 100644
 + *
 + *   cog.py -r TList.h
 + *
-+ * to regenerate the portions of this file delimited by the // ]]] and
-+ * // [[[end]]] markers.  The file changes in place, but the python generating
-+ * code remains, so repeatedly regenerating the file is really very easy.
++ * to regenerate the portions of this file delimited by the triple square
++ * bracket markers.  The file changes in place, but the python generating code
++ * remains, so repeatedly regenerating the file is really very easy.
 + */
 +
 +// [[[cog

@@ -1,3 +1,5 @@
+Bug 467865 - [@ js_RemoveRoot - ... - XPCThrower::ThrowExceptionObject] xpconnect is misusing nsCOMPtr.
+
 diff --git a/js/src/xpconnect/idl/xpcexception.idl b/js/src/xpconnect/idl/xpcexception.idl
 --- a/js/src/xpconnect/idl/xpcexception.idl
 +++ b/js/src/xpconnect/idl/xpcexception.idl

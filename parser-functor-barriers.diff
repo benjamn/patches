@@ -1068,22 +1068,17 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -67,31 +67,47 @@
- #include "nsHTMLTokenizer.h"
- #include "nsIDocument.h"
- #include "nsNetUtil.h"
- #include "nsScriptLoader.h"
- #include "nsDataHashtable.h"
- #include "nsIThreadPool.h"
- #include "nsXPCOMCIDInternal.h"
+@@ -74,27 +74,43 @@
+ #include "nsICSSStyleSheet.h"
+ #include "nsICSSLoaderObserver.h"
+ #include "nsICSSLoader.h"
  
-+#include "Bind.h"
-+#include "nsRunnableFunctor.h"
-+
  #ifdef MOZ_VIEW_SOURCE
  #include "nsViewSourceHTML.h"
  #endif
  
++#include "Bind.h"
++
  #define NS_PARSER_FLAG_PARSER_ENABLED         0x00000002
  #define NS_PARSER_FLAG_OBSERVERS_ENABLED      0x00000004
  #define NS_PARSER_FLAG_PENDING_CONTINUE_EVENT 0x00000008
@@ -1108,6 +1103,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +  PROXY_SYNC(BIND1(&nsParser::METHOD,                                         \
 +                   nsRefPtr<nsParser>(const_cast<nsParser*>(this))))
 +
++
  //-------------------------------------------------------------------
  
  nsCOMArray<nsIUnicharStreamListener> *nsParser::sParserDataListeners;
@@ -1116,7 +1112,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  /*
  The parser can be explicitly interrupted by passing a return value of
  NS_ERROR_HTMLPARSER_INTERRUPTED from BuildModel on the DTD. This will cause
-@@ -806,16 +822,18 @@ nsParser::Initialize(PRBool aConstructor
+@@ -812,16 +828,18 @@ nsParser::Initialize(PRBool aConstructor
    mInternalState = NS_OK;
    mStreamStatus = 0;
    mCommand = eViewNormal;
@@ -1135,7 +1131,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
  void
  nsParser::Cleanup()
-@@ -907,16 +925,19 @@ nsParser::PostContinueEvent()
+@@ -913,16 +931,19 @@ nsParser::PostContinueEvent()
      }
    }
    return NS_OK;
@@ -1155,7 +1151,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  {
    aCommand = mCommandStr;
  }
-@@ -926,16 +947,22 @@ nsParser::GetCommand(nsCString& aCommand
+@@ -932,16 +953,22 @@ nsParser::GetCommand(nsCString& aCommand
   *  about the command which caused the parser to be constructed. For example,
   *  this allows us to select a DTD which can do, say, view-source.
   *
@@ -1178,7 +1174,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    } else {
      mCommand = eViewNormal;
    }
-@@ -946,29 +973,39 @@ nsParser::SetCommand(const char* aComman
+@@ -952,29 +979,39 @@ nsParser::SetCommand(const char* aComman
   *  about the command which caused the parser to be constructed. For example,
   *  this allows us to select a DTD which can do, say, view-source.
   *
@@ -1218,7 +1214,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  }
  
  void
-@@ -983,31 +1020,36 @@ nsParser::SetSinkCharset(nsACString& aCh
+@@ -989,31 +1026,36 @@ nsParser::SetSinkCharset(nsACString& aCh
   *  This method gets called in order to set the content
   *  sink for this parser to dump nodes to.
   *
@@ -1255,7 +1251,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
   *
   *  @return  parsemode
   */
-@@ -1621,16 +1663,18 @@ void
+@@ -1627,16 +1669,18 @@ void
  nsParser::SetUnusedInput(nsString& aBuffer)
  {
    mUnusedInput = aBuffer;
@@ -1274,7 +1270,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    while (pc->mPrevContext) {
      pc = pc->mPrevContext;
    }
-@@ -1641,16 +1685,18 @@ nsParser::GetRootContextKey()
+@@ -1647,16 +1691,18 @@ nsParser::GetRootContextKey()
  /**
   *  Call this when you want to *force* the parser to terminate the
   *  parsing process altogether. This is binary -- so once you terminate
@@ -1293,7 +1289,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
    nsresult result = NS_OK;
    // XXX - [ until we figure out a way to break parser-sink circularity ]
-@@ -1876,33 +1922,55 @@ nsParser::SetCanInterrupt(PRBool aCanInt
+@@ -1882,33 +1928,55 @@ nsParser::SetCanInterrupt(PRBool aCanInt
   *  of this method.
   */
  NS_IMETHODIMP
@@ -1358,7 +1354,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
        pc->mDTDMode = aMode;
        PushContext(*pc);
  
-@@ -1923,23 +1991,40 @@ nsParser::Parse(nsIURI* aURL,
+@@ -1929,23 +1997,40 @@ nsParser::Parse(nsIURI* aURL,
  /**
   * Call this method if all you want to do is parse 1 string full of HTML text.
   * In particular, this method should be called by the DOM when it has an HTML
@@ -1404,7 +1400,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    if (!aLastCall && aSourceBuffer.IsEmpty()) {
-@@ -2057,16 +2142,25 @@ nsParser::Parse(const nsAString& aSource
+@@ -2063,16 +2148,25 @@ nsParser::Parse(const nsAString& aSource
  NS_IMETHODIMP
  nsParser::ParseFragment(const nsAString& aSourceBuffer,
                          void* aKey,
@@ -1430,7 +1426,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    // Disable observers for fragments
    mFlags &= ~NS_PARSER_FLAG_OBSERVERS_ENABLED;
  
-@@ -2381,16 +2475,21 @@ nsParser::BuildModel()
+@@ -2387,16 +2481,21 @@ nsParser::BuildModel()
  
  /*******************************************************************
    These methods are used to talk to the netlib system...
@@ -1452,7 +1448,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
    mParserContext->mStreamListenerState = eOnStart;
    mParserContext->mAutoDetectStatus = eUnknownDetect;
-@@ -2806,33 +2905,51 @@ CheckCharset(const char* aBytes,
+@@ -2812,33 +2911,51 @@ CheckCharset(const char* aBytes,
    }
  }
  
@@ -1510,7 +1506,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
    if (theContext) {
      theContext->mStreamListenerState = eOnDataAvail;
-@@ -2878,16 +2995,22 @@ nsParser::OnDataAvailable(nsIRequest *re
+@@ -2884,16 +3001,22 @@ nsParser::OnDataAvailable(nsIRequest *re
  /**
   *  This is called by the networking library once the last block of data
   *  has been collected from the net.

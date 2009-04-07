@@ -1,7 +1,9 @@
+Bug 484107 - XPCSafeJSObjectWrapper allows regexp variables to be clobbered.
+
 diff --git a/js/src/jsapi.cpp b/js/src/jsapi.cpp
 --- a/js/src/jsapi.cpp
 +++ b/js/src/jsapi.cpp
-@@ -5712,16 +5712,33 @@ JS_SetRegExpInput(JSContext *cx, JSStrin
+@@ -5714,16 +5714,31 @@ JS_SetRegExpInput(JSContext *cx, JSStrin
      /* No locking required, cx is thread-private and input must be live. */
      res = &cx->regExpStatics;
      res->input = input;
@@ -13,8 +15,7 @@ diff --git a/js/src/jsapi.cpp b/js/src/jsapi.cpp
 +JS_SaveRegExpStatics(JSContext *cx, JSRegExpStatics *statics)
 +{
 +  CHECK_REQUEST(cx);
-+  *statics = cx->regExpStatics;
-+  statics->root(cx);
++  js_SaveRegExpStatics(cx, statics);
 +  JS_ClearRegExpStatics(cx);
 +}
 +
@@ -22,8 +23,7 @@ diff --git a/js/src/jsapi.cpp b/js/src/jsapi.cpp
 +JS_RestoreRegExpStatics(JSContext *cx, JSRegExpStatics *statics)
 +{
 +  CHECK_REQUEST(cx);
-+  cx->regExpStatics = *statics;
-+  statics->unroot(cx);
++  js_RestoreRegExpStatics(cx, statics);
 +}
 +
 +JS_PUBLIC_API(void)
@@ -38,7 +38,7 @@ diff --git a/js/src/jsapi.cpp b/js/src/jsapi.cpp
 diff --git a/js/src/jsapi.h b/js/src/jsapi.h
 --- a/js/src/jsapi.h
 +++ b/js/src/jsapi.h
-@@ -2656,16 +2656,22 @@ JS_NewRegExpObject(JSContext *cx, char *
+@@ -2611,16 +2611,22 @@ JS_NewRegExpObject(JSContext *cx, char *
  
  extern JS_PUBLIC_API(JSObject *)
  JS_NewUCRegExpObject(JSContext *cx, jschar *chars, size_t length, uintN flags);
@@ -64,7 +64,7 @@ diff --git a/js/src/jsapi.h b/js/src/jsapi.h
 diff --git a/js/src/jsprvtd.h b/js/src/jsprvtd.h
 --- a/js/src/jsprvtd.h
 +++ b/js/src/jsprvtd.h
-@@ -115,17 +115,16 @@ typedef struct JSWeakRoots          JSWe
+@@ -116,17 +116,16 @@ typedef struct JSWeakRoots          JSWe
  typedef struct JSAtom               JSAtom;
  typedef struct JSAtomList           JSAtomList;
  typedef struct JSAtomListElement    JSAtomListElement;
@@ -85,7 +85,7 @@ diff --git a/js/src/jsprvtd.h b/js/src/jsprvtd.h
 diff --git a/js/src/jspubtd.h b/js/src/jspubtd.h
 --- a/js/src/jspubtd.h
 +++ b/js/src/jspubtd.h
-@@ -150,16 +150,17 @@ typedef struct JSRuntime         JSTaskS
+@@ -149,16 +149,17 @@ typedef struct JSRuntime         JSTaskS
  typedef struct JSScript          JSScript;
  typedef struct JSStackFrame      JSStackFrame;
  typedef struct JSString          JSString;
@@ -106,8 +106,7 @@ diff --git a/js/src/jspubtd.h b/js/src/jspubtd.h
 diff --git a/js/src/jsregexp.cpp b/js/src/jsregexp.cpp
 --- a/js/src/jsregexp.cpp
 +++ b/js/src/jsregexp.cpp
-@@ -4370,16 +4370,26 @@ js_InitRegExpStatics(JSContext *cx)
-      */
+@@ -4375,16 +4375,30 @@ js_InitRegExpStatics(JSContext *cx)
      JS_INIT_ARENA_POOL(&cx->regexpPool, "regexp",
                         12 * 1024 - 40,  /* FIXME: bug 421435 */
                         sizeof(void *), &cx->scriptStackQuota);
@@ -115,17 +114,21 @@ diff --git a/js/src/jsregexp.cpp b/js/src/jsregexp.cpp
      JS_ClearRegExpStatics(cx);
  }
  
-+void JSRegExpStatics::root(JSContext *cx)
-+{
-+  JS_PUSH_TEMP_ROOT_STRING(cx, input, &mTvr);
-+}
-+
-+void JSRegExpStatics::unroot(JSContext *cx)
-+{
-+  JS_POP_TEMP_ROOT(cx, &mTvr);
-+}
-+
  void
++js_SaveRegExpStatics(JSContext *cx, JSRegExpStatics *statics)
++{
++  *statics = cx->regExpStatics;
++  JS_PUSH_TEMP_ROOT_STRING(cx, statics->input, &statics->mTvr);
++}
++
++void
++js_RestoreRegExpStatics(JSContext *cx, JSRegExpStatics *statics)
++{
++  cx->regExpStatics = *statics;
++  JS_POP_TEMP_ROOT(cx, &statics->mTvr);
++}
++
++void
  js_TraceRegExpStatics(JSTracer *trc, JSContext *acx)
  {
      JSRegExpStatics *res = &acx->regExpStatics;
@@ -133,10 +136,11 @@ diff --git a/js/src/jsregexp.cpp b/js/src/jsregexp.cpp
      if (res->input)
          JS_CALL_STRING_TRACER(trc, res->input, "res->input");
  }
+ 
 diff --git a/js/src/jsregexp.h b/js/src/jsregexp.h
 --- a/js/src/jsregexp.h
 +++ b/js/src/jsregexp.h
-@@ -58,16 +58,20 @@ struct JSRegExpStatics {
+@@ -58,18 +58,26 @@ struct JSRegExpStatics {
      uint16      parenCount;     /* number of valid elements in parens[] */
      uint16      moreLength;     /* number of allocated elements in moreParens */
      JSSubString parens[9];      /* last set of parens matched (perl $1, $2) */
@@ -146,17 +150,23 @@ diff --git a/js/src/jsregexp.h b/js/src/jsregexp.h
      JSSubString leftContext;    /* input to left of last match (perl $`) */
      JSSubString rightContext;   /* input to right of last match (perl $') */
 +
-+    void   root(JSContext *cx);
-+    void unroot(JSContext *cx);
-+    JSTempValueRooter mTvr;
++    JSTempValueRooter mTvr;     /* used by js_{Save,Restore}RegExpStatics */
  };
  
++extern void
++js_SaveRegExpStatics(JSContext *cx, JSRegExpStatics *statics);
++
++extern void
++js_RestoreRegExpStatics(JSContext *cx, JSRegExpStatics *statics);
++
  /*
   * This struct holds a bitmap representation of a class from a regexp.
   * There's a list of these referenced by the classList field in the JSRegExp
   * struct below. The initial state has startIndex set to the offset in the
   * original regexp source of the beginning of the class contents. The first
   * use of the class converts the source representation into a bitmap.
+  *
+  */
 diff --git a/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp b/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp
 --- a/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp
 +++ b/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp
