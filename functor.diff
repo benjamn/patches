@@ -456,7 +456,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Functor.h
-@@ -0,0 +1,664 @@
+@@ -0,0 +1,641 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -499,6 +499,7 @@ new file mode 100644
 +#define Functor_h__
 +
 +#include "nsISupports.h"
++#include "ThreadsafeSupports.h"
 +#include "nsIRunnable.h"
 +#include "nsAutoPtr.h"
 +#include "TList.h"
@@ -532,29 +533,6 @@ new file mode 100644
 +// [[[end]]]
 +
 +/**
-+ * I don't imagine the Interface template parameter will ever be anything other
-+ * than nsISupports, but making Supports a templatized class allows us to inline
-+ * the nsISupports method implementations.
-+ */
-+namespace functors {
-+  template <class Interface = nsISupports>
-+  class Supports : public Interface {
-+    NS_DECL_ISUPPORTS
-+  protected:
-+    virtual ~Supports() {}
-+  };
-+
-+  template <class Interface>
-+  NS_IMPL_THREADSAFE_ADDREF(Supports<Interface>)
-+  template <class Interface>
-+  NS_IMPL_THREADSAFE_RELEASE(Supports<Interface>)
-+  template <class Interface>
-+  NS_IMPL_THREADSAFE_QUERY_INTERFACE0(Supports<Interface>)
-+
-+  // TODO move more into this namespace
-+}
-+
-+/**
 + * Abstract interface for the heap-allocated functor objects (CallableHandler,
 + * MethodHandler, Binder, &c.) to which Functors hold references. Since
 + * FunctorImpl inherits from FunctorSupports, derived classes inherit the
@@ -563,8 +541,7 @@ new file mode 100644
 +template <typename Result, class Params>
 +class FunctorImpl;
 +
-+typedef functors::Supports<nsISupports>
-+        FunctorSupports;
++typedef ThreadsafeSupports<nsISupports> FunctorSupports;
 +
 +// [[[cog
 +// for i in rng:
@@ -1124,26 +1101,16 @@ new file mode 100644
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
-@@ -119,16 +119,19 @@ SDK_HEADERS = \
- 		nsCycleCollectionParticipant.h \
- 		nsDeque.h \
- 		$(NULL)
- 
- EXPORTS = \
- 		nsThreadUtils.h \
+@@ -125,6 +125,9 @@
  		nsProxyRelease.h \
  		nsXPTCUtils.h \
+ 		ThreadsafeSupports.h \
 +		TList.h \
 +		Functor.h \
 +		Bind.h \
  		$(NULL)
  
  SDK_LIBRARY     =                        \
- 		$(LIB_PREFIX)xpcomglue_s.$(LIB_SUFFIX) \
- 		$(NULL)
- 
- # we don't want the shared lib, but we want to force the creation of a static lib.
- FORCE_STATIC_LIB = 1
 diff --git a/xpcom/glue/TList.h b/xpcom/glue/TList.h
 new file mode 100644
 --- /dev/null
@@ -1370,12 +1337,7 @@ new file mode 100644
 diff --git a/xpcom/tests/Makefile.in b/xpcom/tests/Makefile.in
 --- a/xpcom/tests/Makefile.in
 +++ b/xpcom/tests/Makefile.in
-@@ -68,16 +68,17 @@ CPPSRCS		= \
- 		TestRacingServiceManager.cpp \
- 		TestRegistrationOrder.cpp \
- 		TestThreadPoolListener.cpp \
- 		TestTimers.cpp \
- 		TestOOM.cpp \
+@@ -73,6 +73,7 @@
  		TestBlockingProcess.cpp \
  		TestQuickReturn.cpp \
  		TestArguments.cpp \
@@ -1383,11 +1345,6 @@ diff --git a/xpcom/tests/Makefile.in b/xpcom/tests/Makefile.in
  		$(NULL)
  
  ifndef MOZ_ENABLE_LIBXUL
- CPPSRCS += \
- 		TestAtoms.cpp \
- 		TestPermanentAtoms.cpp \
- 		$(NULL)
- endif
 diff --git a/xpcom/tests/TestFunctor.cpp b/xpcom/tests/TestFunctor.cpp
 new file mode 100644
 --- /dev/null

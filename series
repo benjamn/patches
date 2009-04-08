@@ -1,7 +1,8 @@
-bug-484107.diff
-bug-467865.diff
+threadsafe-supports.diff
 functor.diff
 runnable-functor.diff
+bug-484107.diff
+bug-467865.diff
 tokenizing-tokenizer.diff
 simplify-nsIDTD.diff
 divorce-parser-from-dtd.diff
