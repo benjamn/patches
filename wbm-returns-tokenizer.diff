@@ -1,0 +1,799 @@
+diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD.h
+--- a/parser/htmlparser/public/nsIDTD.h
++++ b/parser/htmlparser/public/nsIDTD.h
+@@ -88,18 +88,18 @@ class CParserContext;
+ 
+ class nsIDTD : public nsISupports
+ {
+ public:
+ 
+     NS_DECLARE_STATIC_IID_ACCESSOR(NS_IDTD_IID)
+ 
+     NS_IMETHOD WillBuildModel(const CParserContext& aParserContext,
+-                              nsITokenizer* aTokenizer,
+-                              nsIContentSink* aSink) = 0;
++                              nsIContentSink* aSink,
++                              nsITokenizer** aTokenizerPtr) = 0;
+ 
+     /**
+      * Called by the parser after the parsing process has concluded
+      * @update  gess5/18/98
+      * @param   anErrorCode - contains error code resulting from parse process
+      * @return
+      */
+     NS_IMETHOD DidBuildModel(nsresult anErrorCode, PRBool aNotifySink,
+@@ -178,17 +178,17 @@ public:
+     NS_IMETHOD_(void) Terminate() = 0;
+ 
+     NS_IMETHOD_(PRInt32) GetType() = 0;
+ };
+ 
+ NS_DEFINE_STATIC_IID_ACCESSOR(nsIDTD, NS_IDTD_IID)
+ 
+ #define NS_DECL_NSIDTD \
+-    NS_IMETHOD WillBuildModel(  const CParserContext& aParserContext, nsITokenizer* aTokenizer, nsIContentSink* aSink);\
++    NS_IMETHOD WillBuildModel(const CParserContext& aParserContext, nsIContentSink* aSink, nsITokenizer** aTokenizerPtr);\
+     NS_IMETHOD DidBuildModel(nsresult anErrorCode,PRBool aNotifySink,nsIParser* aParser,nsIContentSink* aSink);\
+     NS_IMETHOD BuildModel(nsIParser* aParser,nsITokenizer* aTokenizer,nsITokenObserver* anObserver,nsIContentSink* aSink);\
+     NS_IMETHOD HandleToken(CToken* aToken,nsIParser* aParser);\
+     NS_IMETHOD WillResumeParse(nsIContentSink* aSink = 0);\
+     NS_IMETHOD WillInterruptParse(nsIContentSink* aSink = 0);\
+     NS_IMETHOD_(PRBool) CanContain(PRInt32 aParent,PRInt32 aChild) const;\
+     NS_IMETHOD_(PRBool) IsContainer(PRInt32 aTag) const;\
+     NS_IMETHOD_(void)  Terminate();\
+diff --git a/parser/htmlparser/public/nsITokenizer.h b/parser/htmlparser/public/nsITokenizer.h
+--- a/parser/htmlparser/public/nsITokenizer.h
++++ b/parser/htmlparser/public/nsITokenizer.h
+@@ -81,17 +81,17 @@ public:
+   NS_IMETHOD_(CToken*)           PushTokenFront(CToken* aToken)=0;
+   NS_IMETHOD_(CToken*)           PushToken(CToken* aToken)=0;
+   NS_IMETHOD_(CToken*)           PopToken(void)=0;
+   NS_IMETHOD_(CToken*)           PeekToken(void)=0;
+   NS_IMETHOD_(CToken*)           GetTokenAt(PRInt32 anIndex)=0;
+   NS_IMETHOD_(PRInt32)           GetCount(void)=0;
+   NS_IMETHOD_(nsTokenAllocator*) GetTokenAllocator(void)=0;
+   NS_IMETHOD_(void)              PrependTokens(nsDeque& aDeque)=0;
+-  NS_IMETHOD                     CopyState(nsITokenizer* aTokenizer)=0;
++  NS_IMETHOD                     CopyState(const nsITokenizer* aTokenizer)=0;
+   
+ };
+ 
+ NS_DEFINE_STATIC_IID_ACCESSOR(nsITokenizer, NS_ITOKENIZER_IID)
+ 
+ #define NS_DECL_NSITOKENIZER \
+   NS_IMETHOD                     WillTokenize(PRBool aIsFinalChunk,nsTokenAllocator* aTokenAllocator);\
+   NS_IMETHOD                     ConsumeToken(nsScanner& aScanner,PRBool& aFlushTokens);\
+@@ -99,12 +99,12 @@ NS_DEFINE_STATIC_IID_ACCESSOR(nsITokeniz
+   NS_IMETHOD_(CToken*)           PushTokenFront(CToken* aToken);\
+   NS_IMETHOD_(CToken*)           PushToken(CToken* aToken);\
+   NS_IMETHOD_(CToken*)           PopToken(void);\
+   NS_IMETHOD_(CToken*)           PeekToken(void);\
+   NS_IMETHOD_(CToken*)           GetTokenAt(PRInt32 anIndex);\
+   NS_IMETHOD_(PRInt32)           GetCount(void);\
+   NS_IMETHOD_(nsTokenAllocator*) GetTokenAllocator(void);\
+   NS_IMETHOD_(void)              PrependTokens(nsDeque& aDeque);\
+-  NS_IMETHOD                     CopyState(nsITokenizer* aTokenizer);
++  NS_IMETHOD                     CopyState(const nsITokenizer* aTokenizer);
+ 
+ 
+ #endif
+diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.cpp
+--- a/parser/htmlparser/src/CNavDTD.cpp
++++ b/parser/htmlparser/src/CNavDTD.cpp
+@@ -183,73 +183,83 @@ CNavDTD::~CNavDTD()
+     nsLoggingSink *theLogSink = GetLoggingSink();
+     if (mSink == theLogSink) {
+       theLogSink->ReleaseProxySink();
+     }
+   }
+ #endif
+ }
+ 
++FIXME
++WillBuildModel really should not store the tokenizer.
++It should return a fresh tokenizer (if the parser context does not already
++have one) which can be passed to BuildModel.
++
+ nsresult
+ CNavDTD::WillBuildModel(const CParserContext& aParserContext,
+-                        nsITokenizer* aTokenizer,
+-                        nsIContentSink* aSink)
++                        nsIContentSink* aSink,
++                        nsITokenizer** aTokenizerPtr)
+ {
+   nsresult result = NS_OK;
+ 
+   mFilename = aParserContext.mScanner->GetFilename();
+   mFlags = NS_DTD_FLAG_ENABLE_RESIDUAL_STYLE;
+   mLineNumber = 1;
+   mDTDMode = aParserContext.mDTDMode;
+   mParserCommand = aParserContext.mParserCommand;
+   mMimeType = aParserContext.mMimeType;
+   mDocType = aParserContext.mDocType;
+-  mTokenizer = aTokenizer;
+   mBodyContext->SetNodeAllocator(&mNodeAllocator);
+ 
+-  if (!aParserContext.mPrevContext && aSink) {
+-    STOP_TIMER();
+-    MOZ_TIMER_DEBUGLOG(("Stop: Parse Time: CNavDTD::WillBuildModel(), this=%p\n", this));
+-    
+-    result = aSink->WillBuildModel();
+-    
+-    MOZ_TIMER_DEBUGLOG(("Start: Parse Time: CNavDTD::WillBuildModel(), this=%p\n", this));
+-    START_TIMER();
++  if (aParserContext.mPrevContext || !aSink) {
++    return result;
++  }
+ 
+-    if (NS_SUCCEEDED(result) && !mSink) {
+-      mSink = do_QueryInterface(aSink, &result);
+-      if (NS_FAILED(result)) {
+-        mFlags |= NS_DTD_FLAG_STOP_PARSING;
+-        return result;
+-      }
++  STOP_TIMER();
++  MOZ_TIMER_DEBUGLOG(("Stop: Parse Time: CNavDTD::WillBuildModel(), this=%p\n", this));
++
++  result = aSink->WillBuildModel();
++
++  MOZ_TIMER_DEBUGLOG(("Start: Parse Time: CNavDTD::WillBuildModel(), this=%p\n", this));
++  START_TIMER();
++
++  if (NS_SUCCEEDED(result) && !mSink) {
++    mSink = do_QueryInterface(aSink, &result);
++    if (NS_FAILED(result)) {
++      mFlags |= NS_DTD_FLAG_STOP_PARSING;
++      return result;
+     }
+-    
+-    // Let's see if the environment is set up for us to write output to
+-    // a logging sink. If so, then we'll create one, and make it the
+-    // proxy for the real sink we're given from the parser.
++  }
++
++  // Let's see if the environment is set up for us to write output to
++  // a logging sink. If so, then we'll create one, and make it the
++  // proxy for the real sink we're given from the parser.
+ #ifdef NS_DEBUG
+-    nsLoggingSink *theLogSink = GetLoggingSink();
+-    if (theLogSink) {
+-      theLogSink->SetProxySink(mSink);
+-      mSink = theLogSink;
++  nsLoggingSink *theLogSink = GetLoggingSink();
++  if (theLogSink) {
++    theLogSink->SetProxySink(mSink);
++    mSink = theLogSink;
++  }
++#endif
++
++  PRUint32 tokenizerFlags = nsHTMLTokenizer::GetFlagsFor(aSink);
++  mFlags |= tokenizerFlags;
++
++  mTokenizer = aParserContext.mTokenizer;
++  if (!mTokenizer) {
++    mTokenizer = new nsHTMLTokenizer(mDTDMode, mDocType, mParserCommand,
++                                     tokenizerFlags);
++    NS_ENSURE_TRUE(mTokenizer, NS_ERROR_OUT_OF_MEMORY);
++    if (aParserContext.mPrevContext) {
++      mTokenizer->CopyState(aParserContext.mPrevContext->mTokenizer);
+     }
+-#endif    
++  }
+ 
+-   if (mSink) {
+-      PRBool enabled = PR_TRUE;
+-      mSink->IsEnabled(eHTMLTag_frameset, &enabled);
+-      if (enabled) {
+-        mFlags |= NS_IPARSER_FLAG_FRAMES_ENABLED;
+-      }
+-      
+-      mSink->IsEnabled(eHTMLTag_script, &enabled);
+-      if (enabled) {
+-        mFlags |= NS_IPARSER_FLAG_SCRIPT_ENABLED;
+-      }
+-    }
++  if (aTokenizerPtr) {
++    *aTokenizerPtr = mTokenizer;
+   }
+ 
+   return result;
+ }
+ 
+ nsresult
+ CNavDTD::BuildModel(nsIParser* aParser,
+                     nsITokenizer* aTokenizer,
+diff --git a/parser/htmlparser/src/CParserContext.cpp b/parser/htmlparser/src/CParserContext.cpp
+--- a/parser/htmlparser/src/CParserContext.cpp
++++ b/parser/htmlparser/src/CParserContext.cpp
+@@ -59,18 +59,18 @@ CParserContext::CParserContext(CParserCo
+     mStreamListenerState(eNone),
+     mContextType(eCTNone),
+     mAutoDetectStatus(aStatus),
+     mParserCommand(aCommand),
+     mMultipart(PR_TRUE),
+     mCopyUnused(aCopyUnused),
+     mNumConsumed(0)
+ { 
+-  MOZ_COUNT_CTOR(CParserContext); 
+-} 
++  MOZ_COUNT_CTOR(CParserContext);
++}
+ 
+ CParserContext::~CParserContext()
+ {
+   // It's ok to simply ingore the PrevContext.
+   MOZ_COUNT_DTOR(CParserContext);
+ }
+ 
+ void
+@@ -88,58 +88,8 @@ CParserContext::SetMimeType(const nsACSt
+            mMimeType.EqualsLiteral(kXULTextContentType)          ||
+ #ifdef MOZ_SVG
+            mMimeType.EqualsLiteral(kSVGTextContentType)          ||
+ #endif
+            mMimeType.EqualsLiteral(kRDFApplicationContentType)   ||
+            mMimeType.EqualsLiteral(kRDFTextContentType))
+     mDocType = eXML;
+ }
+-
+-nsresult
+-CParserContext::GetTokenizer(nsIDTD* aDTD,
+-                             nsIContentSink* aSink,
+-                             nsITokenizer*& aTokenizer)
+-{
+-  nsresult result = NS_OK;
+-  PRInt32 type = aDTD ? aDTD->GetType() : NS_IPARSER_FLAG_HTML;
+-
+-  if (!mTokenizer) {
+-    if (type == NS_IPARSER_FLAG_HTML || mParserCommand == eViewSource) {
+-      nsCOMPtr<nsIHTMLContentSink> theSink = do_QueryInterface(aSink);
+-      PRUint16 theFlags = 0;
+-
+-      if (theSink) {
+-        // XXX This code is repeated both here and in CNavDTD. Can the two
+-        // callsites be combined?
+-        PRBool enabled;
+-        theSink->IsEnabled(eHTMLTag_frameset, &enabled);
+-        if(enabled) {
+-          theFlags |= NS_IPARSER_FLAG_FRAMES_ENABLED;
+-        }
+-        
+-        theSink->IsEnabled(eHTMLTag_script, &enabled);
+-        if(enabled) {
+-          theFlags |= NS_IPARSER_FLAG_SCRIPT_ENABLED;
+-        }
+-      }
+-
+-      mTokenizer = new nsHTMLTokenizer(mDTDMode, mDocType,
+-                                       mParserCommand, theFlags);
+-      if (!mTokenizer) {
+-        return NS_ERROR_OUT_OF_MEMORY;
+-      }
+-
+-      // Make sure the new tokenizer has all of the necessary information.
+-      // XXX this might not be necessary.
+-      if (mPrevContext) {
+-        mTokenizer->CopyState(mPrevContext->mTokenizer);
+-      }
+-    }
+-    else if (type == NS_IPARSER_FLAG_XML) {
+-      mTokenizer = do_QueryInterface(aDTD, &result);
+-    }
+-  }
+-
+-  aTokenizer = mTokenizer;
+-
+-  return result;
+-}
+diff --git a/parser/htmlparser/src/CParserContext.h b/parser/htmlparser/src/CParserContext.h
+--- a/parser/htmlparser/src/CParserContext.h
++++ b/parser/htmlparser/src/CParserContext.h
+@@ -68,19 +68,16 @@ public:
+                   void* aKey = 0,
+                   eParserCommands aCommand = eViewNormal,
+                   nsIRequestObserver* aListener = 0,
+                   eAutoDetectResult aStatus = eUnknownDetect,
+                   PRBool aCopyUnused = PR_FALSE);
+ 
+     ~CParserContext();
+ 
+-    nsresult GetTokenizer(nsIDTD* aDTD,
+-                          nsIContentSink* aSink,
+-                          nsITokenizer*& aTokenizer);
+     void  SetMimeType(const nsACString& aMimeType);
+ 
+     nsCOMPtr<nsIRequest> mRequest; // provided by necko to differnciate different input streams
+                                    // why is mRequest strongly referenced? see bug 102376.
+     nsCOMPtr<nsIRequestObserver> mListener;
+     void* const          mKey;
+     nsCOMPtr<nsITokenizer> mTokenizer;
+     CParserContext* const mPrevContext;
+diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsExpatDriver.cpp
+--- a/parser/htmlparser/src/nsExpatDriver.cpp
++++ b/parser/htmlparser/src/nsExpatDriver.cpp
+@@ -1216,19 +1216,23 @@ nsExpatDriver::ConsumeToken(nsScanner& a
+          ("Remaining in expat's buffer: %i, remaining in scanner: %i.",
+           mExpatBuffered, Distance(currentExpatPosition, end)));
+ 
+   return NS_SUCCEEDED(mInternalState) ? kEOF : NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ nsExpatDriver::WillBuildModel(const CParserContext& aParserContext,
+-                              nsITokenizer* aTokenizer,
+-                              nsIContentSink* aSink)
++                              nsIContentSink* aSink,
++                              nsITokenizer** aTokenizerPtr)
+ {
++  if (aTokenizerPtr) {
++    *aTokenizerPtr = static_cast<nsITokenizer*>(this);
++  }
++
+   mSink = do_QueryInterface(aSink);
+   if (!mSink) {
+     NS_ERROR("nsExpatDriver didn't get an nsIExpatSink");
+     // Make sure future calls to us bail out as needed
+     mInternalState = NS_ERROR_UNEXPECTED;
+     return mInternalState;
+   }
+ 
+@@ -1412,17 +1416,17 @@ nsExpatDriver::GetTokenAllocator(void)
+ }
+ 
+ NS_IMETHODIMP_(void)
+ nsExpatDriver::PrependTokens(nsDeque& aDeque)
+ {
+ }
+ 
+ NS_IMETHODIMP
+-nsExpatDriver::CopyState(nsITokenizer* aTokenizer)
++nsExpatDriver::CopyState(const nsITokenizer*)
+ {
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ nsExpatDriver::HandleToken(CToken* aToken,nsIParser* aParser)
+ {
+   return NS_OK;
+diff --git a/parser/htmlparser/src/nsHTMLTokenizer.cpp b/parser/htmlparser/src/nsHTMLTokenizer.cpp
+--- a/parser/htmlparser/src/nsHTMLTokenizer.cpp
++++ b/parser/htmlparser/src/nsHTMLTokenizer.cpp
+@@ -281,20 +281,20 @@ nsHTMLTokenizer::PrependTokens(nsDeque& 
+  * Copies the state flags from aTokenizer into this tokenizer. This is used
+  * to pass information around between the main tokenizer and tokenizers
+  * created for document.write() calls.
+  *
+  * @param aTokenizer The tokenizer with more information in it.
+  * @return NS_OK
+  */
+ nsresult
+-nsHTMLTokenizer::CopyState(nsITokenizer* aTokenizer)
++nsHTMLTokenizer::CopyState(const nsITokenizer* aTokenizer)
+ {
+   if (aTokenizer) {
+-    mFlags = ((nsHTMLTokenizer*)aTokenizer)->mFlags;
++    mFlags = static_cast<const nsHTMLTokenizer*>(aTokenizer)->mFlags;
+   }
+ 
+   return NS_OK;
+ }
+ 
+ /**
+  * This is a utilty method for ScanDocStructure, which finds a given
+  * tag in the stack. The return value is meant to be used with
+diff --git a/parser/htmlparser/src/nsHTMLTokenizer.h b/parser/htmlparser/src/nsHTMLTokenizer.h
+--- a/parser/htmlparser/src/nsHTMLTokenizer.h
++++ b/parser/htmlparser/src/nsHTMLTokenizer.h
+@@ -68,16 +68,33 @@ public:
+   NS_DECL_ISUPPORTS
+   NS_DECL_NSITOKENIZER
+   nsHTMLTokenizer(PRInt32 aParseMode = eDTDMode_quirks,
+                   eParserDocType aDocType = eHTML_Quirks,
+                   eParserCommands aCommand = eViewNormal,
+                   PRUint16 aFlags = 0);
+   virtual ~nsHTMLTokenizer();
+ 
++  static PRUint32 GetFlagsFor(nsIContentSink* aSink) {
++    PRUint32 flags = 0;
++    nsCOMPtr<nsIHTMLContentSink> sink = do_QueryInterface(aSink);
++    if (sink) {
++      PRBool enabled = PR_TRUE;
++      sink->IsEnabled(eHTMLTag_frameset, &enabled);
++      if (enabled) {
++        flags |= NS_IPARSER_FLAG_FRAMES_ENABLED;
++      }
++      sink->IsEnabled(eHTMLTag_script, &enabled);
++      if (enabled) {
++        flags |= NS_IPARSER_FLAG_SCRIPT_ENABLED;
++      }
++    }
++    return flags;
++  }
++
+ protected:
+ 
+   nsresult ConsumeTag(PRUnichar aChar,CToken*& aToken,nsScanner& aScanner,PRBool& aFlushTokens);
+   nsresult ConsumeStartTag(PRUnichar aChar,CToken*& aToken,nsScanner& aScanner,PRBool& aFlushTokens);
+   nsresult ConsumeEndTag(PRUnichar aChar,CToken*& aToken,nsScanner& aScanner);
+   nsresult ConsumeAttributes(PRUnichar aChar, CToken* aToken, nsScanner& aScanner);
+   nsresult ConsumeEntity(PRUnichar aChar,CToken*& aToken,nsScanner& aScanner);
+   nsresult ConsumeWhitespace(PRUnichar aChar,CToken*& aToken,nsScanner& aScanner);
+diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
+--- a/parser/htmlparser/src/nsParser.cpp
++++ b/parser/htmlparser/src/nsParser.cpp
+@@ -1508,21 +1508,25 @@ nsParser::WillBuildModel(nsString& aFile
+                        mParserContext->mDocType, mParserContext->mMimeType);
+   }
+ 
+   NS_ASSERTION(!mDTD || !mParserContext->mPrevContext,
+                "Clobbering DTD for non-root parser context!");
+   mDTD = FindSuitableDTD(*mParserContext);
+   NS_ENSURE_TRUE(mDTD, NS_ERROR_OUT_OF_MEMORY);
+ 
+-  nsITokenizer* tokenizer;
+-  nsresult rv = mParserContext->GetTokenizer(mDTD, mSink, tokenizer);
++  nsITokenizer* tokenizer = 0;
++  nsresult rv = mDTD->WillBuildModel(*mParserContext, mSink, &tokenizer);
+   NS_ENSURE_SUCCESS(rv, rv);
+-
+-  return mDTD->WillBuildModel(*mParserContext, tokenizer, mSink);
++  NS_ENSURE_TRUE(tokenizer, NS_ERROR_OUT_OF_MEMORY);
++  NS_ASSERTION(!mParserContext->mTokenizer ||
++               mParserContext->mTokenizer == tokenizer,
++               "WillBuildModel is changing the tokenizer!");
++  mParserContext->mTokenizer = tokenizer;
++  return rv;
+ }
+ 
+ /**
+  * This gets called when the parser is done with its input.
+  * Note that the parser may have been called recursively, so we
+  * have to check for a prev. context before closing out the DTD/sink.
+  */
+ nsresult
+@@ -2227,16 +2231,19 @@ nsParser::ResumeParse(PRBool allowIterat
+                  "Bad races happening, expect to crash!");
+ 
+     result = WillBuildModel(mParserContext->mScanner->GetFilename());
+     if (NS_FAILED(result)) {
+       mFlags &= ~NS_PARSER_FLAG_CAN_TOKENIZE;
+       return result;
+     }
+ 
++    NS_ASSERTION(mParserContext->mTokenizer,
++                 "Should have a tokenizer if WillBuildModel returned NS_OK!");
++
+     if (mDTD) {
+       mDTD->WillResumeParse(mSink);
+       PRBool theIterationIsOk = PR_TRUE;
+ 
+       while (result == NS_OK && theIterationIsOk) {
+         if (!mUnusedInput.IsEmpty() && mParserContext->mScanner) {
+           // -- Ref: Bug# 22485 --
+           // Insert the unused input into the source buffer
+@@ -2245,17 +2252,18 @@ nsParser::ResumeParse(PRBool allowIterat
+           mParserContext->mScanner->UngetReadable(mUnusedInput);
+           mUnusedInput.Truncate(0);
+         }
+ 
+         // Only allow parsing to be interrupted in the subsequent call to
+         // build model.
+         SetCanInterrupt(aCanInterrupt);
+         nsresult theTokenizerResult = (mFlags & NS_PARSER_FLAG_CAN_TOKENIZE)
+-                                      ? Tokenize(aIsFinalChunk)
++                                      ? Tokenize(mParserContext->mTokenizer,
++                                                 aIsFinalChunk)
+                                       : NS_OK;
+         result = BuildModel();
+ 
+         if (result == NS_ERROR_HTMLPARSER_INTERRUPTED && aIsFinalChunk) {
+           PostContinueEvent();
+         }
+         SetCanInterrupt(PR_FALSE);
+ 
+@@ -2355,30 +2363,29 @@ nsParser::ResumeParse(PRBool allowIterat
+ 
+ /**
+  *  This is where we loop over the tokens created in the
+  *  tokenization phase, and try to make sense out of them.
+  */
+ nsresult
+ nsParser::BuildModel()
+ {
+-  nsITokenizer* theTokenizer = nsnull;
+-
+   nsresult result = NS_OK;
+-  if (mParserContext) {
+-    result = mParserContext->GetTokenizer(mDTD, mSink, theTokenizer);
+-  }
+-
+-  if (NS_SUCCEEDED(result)) {
++  if (mParserContext &&
++      mParserContext->mTokenizer)
++  {
+     if (mDTD) {
+       MOZ_TIMER_START(mDTDTime);
+-      result = mDTD->BuildModel(this, theTokenizer, nsnull, mSink);
++      result = mDTD->BuildModel(this, mParserContext->mTokenizer, nsnull,
++                                mSink);
+       MOZ_TIMER_STOP(mDTDTime);
+     }
+   } else {
++    NS_ASSERTION(mParserContext, "No parser context in nsParser::BuildModel?");
++    NS_ASSERTION(mParserContext, "No tokenizer in nsParser::BuildModel?");
+     mInternalState = result = NS_ERROR_HTMLPARSER_BADTOKENIZER;
+   }
+   return result;
+ }
+ 
+ /*******************************************************************
+   These methods are used to talk to the netlib system...
+  *******************************************************************/
+@@ -2964,81 +2971,57 @@ nsParser::OnStopRequest(nsIRequest *requ
+                                                                  status);
+     }
+   }
+ 
+   return rv;
+ }
+ 
+ 
+-/*******************************************************************
+-  Here come the tokenization methods...
+- *******************************************************************/
+-
+-
+-/**
+- *  Part of the code sandwich, this gets called right before
+- *  the tokenization process begins. The main reason for
+- *  this call is to allow the delegate to do initialization.
+- */
+-PRBool
+-nsParser::WillTokenize(PRBool aIsFinalChunk)
+-{
+-  if (!mParserContext) {
+-    return PR_TRUE;
+-  }
+-
+-  nsITokenizer* theTokenizer;
+-  nsresult result = mParserContext->GetTokenizer(mDTD, mSink, theTokenizer);
+-  NS_ENSURE_SUCCESS(result, PR_FALSE);
+-  return NS_SUCCEEDED(theTokenizer->WillTokenize(aIsFinalChunk,
+-                                                 &mTokenAllocator));
+-}
+-
+-
+ /**
+  * This is the primary control routine to consume tokens.
+  * It iteratively consumes tokens until an error occurs or
+  * you run out of data.
+  */
+-nsresult nsParser::Tokenize(PRBool aIsFinalChunk)
++nsresult nsParser::Tokenize(nsITokenizer* const aTokenizer,
++                            PRBool aIsFinalChunk)
+ {
+-  nsITokenizer* theTokenizer;
++  nsresult result = NS_ERROR_NOT_AVAILABLE;
+ 
+-  nsresult result = NS_ERROR_NOT_AVAILABLE;
+-  if (mParserContext) {
+-    result = mParserContext->GetTokenizer(mDTD, mSink, theTokenizer);
+-  }
++  NS_ASSERTION(aTokenizer, "Calling nsParser::Tokenize with null tokenizer?");
+ 
+-  if (NS_SUCCEEDED(result)) {
++  if (aTokenizer) {
+     if (mFlags & NS_PARSER_FLAG_FLUSH_TOKENS) {
+       // For some reason tokens didn't get flushed (probably
+       // the parser got blocked before all the tokens in the
+       // stack got handled). Flush 'em now. Ref. bug 104856
+-      if (theTokenizer->GetCount() != 0) {
++      if (aTokenizer->GetCount() != 0) {
+         return result;
+       }
+ 
+       // Reset since the tokens have been flushed.
+       mFlags &= ~NS_PARSER_FLAG_FLUSH_TOKENS;
+     }
+ 
++    result = NS_OK;
++
+     PRBool flushTokens = PR_FALSE;
+ 
+     MOZ_TIMER_START(mTokenizeTime);
+ 
+     mParserContext->mNumConsumed = 0;
+ 
+     PRBool killSink = PR_FALSE;
+ 
+-    WillTokenize(aIsFinalChunk);
++    aTokenizer->WillTokenize(aIsFinalChunk, &mTokenAllocator);
++
+     while (NS_SUCCEEDED(result)) {
+       mParserContext->mNumConsumed += mParserContext->mScanner->Mark();
+-      result = theTokenizer->ConsumeToken(*mParserContext->mScanner,
+-                                          flushTokens);
++      result = aTokenizer->ConsumeToken(*mParserContext->mScanner,
++                                        flushTokens);
+       if (NS_FAILED(result)) {
+         mParserContext->mScanner->RewindToMark();
+         if (kEOF == result){
+           break;
+         }
+         if (NS_ERROR_HTMLPARSER_STOPPARSING == result) {
+           killSink = PR_TRUE;
+           result = Terminate();
+@@ -3048,49 +3031,31 @@ nsresult nsParser::Tokenize(PRBool aIsFi
+         // I added the extra test of NS_PARSER_FLAG_OBSERVERS_ENABLED to fix Bug# 23931.
+         // Flush tokens on seeing </SCRIPT> -- Ref: Bug# 22485 --
+         // Also remember to update the marked position.
+         mFlags |= NS_PARSER_FLAG_FLUSH_TOKENS;
+         mParserContext->mNumConsumed += mParserContext->mScanner->Mark();
+         break;
+       }
+     }
+-    DidTokenize(aIsFinalChunk);
++
++    aTokenizer->DidTokenize(aIsFinalChunk);
+ 
+     MOZ_TIMER_STOP(mTokenizeTime);
+ 
+     if (killSink) {
+       mSink = nsnull;
+     }
+   } else {
+     result = mInternalState = NS_ERROR_HTMLPARSER_BADTOKENIZER;
+   }
+ 
+   return result;
+ }
+ 
+-/**
+- *  This is the tail-end of the code sandwich for the
+- *  tokenization process. It gets called once tokenziation
+- *  has completed for each phase.
+- */
+-PRBool
+-nsParser::DidTokenize(PRBool aIsFinalChunk)
+-{
+-  if (!mParserContext) {
+-    return PR_TRUE;
+-  }
+-
+-  nsITokenizer* theTokenizer;
+-  nsresult rv = mParserContext->GetTokenizer(mDTD, mSink, theTokenizer);
+-  NS_ENSURE_SUCCESS(rv, PR_FALSE);
+-
+-  rv = theTokenizer->DidTokenize(aIsFinalChunk);
+-  return NS_SUCCEEDED(rv);
+-}
+ 
+ /**
+  * Get the channel associated with this parser
+  *
+  * @param aChannel out param that will contain the result
+  * @return NS_OK if successful
+  */
+ NS_IMETHODIMP
+diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
+--- a/parser/htmlparser/src/nsParser.h
++++ b/parser/htmlparser/src/nsParser.h
+@@ -422,52 +422,26 @@ class nsParser : public nsIParser,
+      * @return
+      */
+     nsresult DidBuildModel(nsresult anErrorCode);
+ 
+     void SpeculativelyParse();
+ 
+ private:
+ 
+-    /*******************************************
+-      These are the tokenization methods...
+-     *******************************************/
+-
+     /**
+-     *  Part of the code sandwich, this gets called right before
+-     *  the tokenization process begins. The main reason for
+-     *  this call is to allow the delegate to do initialization.
+-     *  
+-     *  @update  gess 3/25/98
+-     *  @param   
+-     *  @return  TRUE if it's ok to proceed
++     * Primary tokenization routine.
++     * Iteratively consumes tokens until an error occurs or you run out of
++     * data.
++     * 
++     * @update gess 3/25/98
++     * @return error code 
+      */
+-    PRBool WillTokenize(PRBool aIsFinalChunk = PR_FALSE);
+-
+-   
+-    /**
+-     *  This is the primary control routine. It iteratively
+-     *  consumes tokens until an error occurs or you run out
+-     *  of data.
+-     *  
+-     *  @update  gess 3/25/98
+-     *  @return  error code 
+-     */
+-    nsresult Tokenize(PRBool aIsFinalChunk = PR_FALSE);
+-
+-    /**
+-     *  This is the tail-end of the code sandwich for the
+-     *  tokenization process. It gets called once tokenziation
+-     *  has completed.
+-     *  
+-     *  @update  gess 3/25/98
+-     *  @param   
+-     *  @return  TRUE if all went well
+-     */
+-    PRBool DidTokenize(PRBool aIsFinalChunk = PR_FALSE);
++    nsresult Tokenize(nsITokenizer* const aTokenizer,
++                      PRBool aIsFinalChunk = PR_FALSE);
+ 
+ protected:
+     //*********************************************
+     // And now, some data members...
+     //*********************************************
+     
+       
+     CParserContext*              mParserContext;
+diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/nsViewSourceHTML.cpp
+--- a/parser/htmlparser/src/nsViewSourceHTML.cpp
++++ b/parser/htmlparser/src/nsViewSourceHTML.cpp
+@@ -257,19 +257,19 @@ CViewSourceHTML::~CViewSourceHTML(){
+   * the process begins, WillBuildModel() is called. Afterwards the parser
+   * calls DidBuildModel().
+   * @update rickg 03.20.2000
+   * @param  aParserContext
+   * @param  aSink
+   * @return error code (almost always 0)
+   */
+ nsresult CViewSourceHTML::WillBuildModel(const CParserContext& aParserContext,
+-                                         nsITokenizer* aTokenizer,
+-                                         nsIContentSink* aSink){
+-
++                                         nsIContentSink* aSink,
++                                         nsITokenizer** aTokenizerPtr)
++{
+   nsresult result=NS_OK;
+ 
+ #ifdef RAPTOR_PERF_METRICS
+   vsTimer.Reset();
+   NS_START_STOPWATCH(vsTimer);
+ #endif
+ 
+   STOP_TIMER();
+@@ -281,17 +281,29 @@ nsresult CViewSourceHTML::WillBuildModel
+     mFilename = Substring(contextFilename,
+                           12, // The length of "view-source:"
+                           contextFilename.Length() - 12);
+ 
+     mDocType=aParserContext.mDocType;
+     mMimeType=aParserContext.mMimeType;
+     mDTDMode=aParserContext.mDTDMode;
+     mParserCommand=aParserContext.mParserCommand;
+-    mTokenizer = aTokenizer;
++
++    mTokenizer = aParserContext.mTokenizer;
++    if (!mTokenizer) {
++      mTokenizer = new nsHTMLTokenizer(mDTDMode, mDocType, mParserCommand,
++                                       nsHTMLTokenizer::GetFlagsFor(aSink));
++      NS_ENSURE_TRUE(mTokenizer, NS_ERROR_OUT_OF_MEMORY);
++      if (aParserContext.mPrevContext) {
++        mTokenizer->CopyState(aParserContext.mPrevContext->mTokenizer);
++      }
++    }
++    if (aTokenizerPtr) {
++      *aTokenizerPtr = mTokenizer;
++    }
+ 
+ #ifdef DUMP_TO_FILE
+     if (gDumpFile) {
+ 
+       fprintf(gDumpFile, "<html>\n");
+       fprintf(gDumpFile, "<head>\n");
+       fprintf(gDumpFile, "<title>");
+       fprintf(gDumpFile, "Source of: ");
