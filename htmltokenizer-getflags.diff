@@ -1,0 +1,138 @@
+diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.cpp
+--- a/parser/htmlparser/src/CNavDTD.cpp
++++ b/parser/htmlparser/src/CNavDTD.cpp
+@@ -228,28 +228,18 @@ CNavDTD::WillBuildModel(const CParserCon
+ #ifdef NS_DEBUG
+     nsLoggingSink *theLogSink = GetLoggingSink();
+     if (theLogSink) {
+       theLogSink->SetProxySink(mSink);
+       mSink = theLogSink;
+     }
+ #endif    
+ 
+-   if (mSink) {
+-      PRBool enabled = PR_TRUE;
+-      mSink->IsEnabled(eHTMLTag_frameset, &enabled);
+-      if (enabled) {
+-        mFlags |= NS_IPARSER_FLAG_FRAMES_ENABLED;
+-      }
+-      
+-      mSink->IsEnabled(eHTMLTag_script, &enabled);
+-      if (enabled) {
+-        mFlags |= NS_IPARSER_FLAG_SCRIPT_ENABLED;
+-      }
+-    }
++    mFlags |= nsHTMLTokenizer::GetFlags(aSink);
++
+   }
+ 
+   return result;
+ }
+ 
+ nsresult
+ CNavDTD::BuildModel(nsIParser* aParser,
+                     nsITokenizer* aTokenizer,
+diff --git a/parser/htmlparser/src/CParserContext.cpp b/parser/htmlparser/src/CParserContext.cpp
+--- a/parser/htmlparser/src/CParserContext.cpp
++++ b/parser/htmlparser/src/CParserContext.cpp
+@@ -100,35 +100,18 @@ CParserContext::GetTokenizer(nsIDTD* aDT
+                              nsITokenizer*& aTokenizer)
+ {
+   nsresult result = NS_OK;
+   PRInt32 type = aDTD ? aDTD->GetType() : NS_IPARSER_FLAG_HTML;
+ 
+   if (!mTokenizer) {
+     if (type == NS_IPARSER_FLAG_HTML || mParserCommand == eViewSource) {
+       nsCOMPtr<nsIHTMLContentSink> theSink = do_QueryInterface(aSink);
+-      PRUint16 theFlags = 0;
+-
+-      if (theSink) {
+-        // XXX This code is repeated both here and in CNavDTD. Can the two
+-        // callsites be combined?
+-        PRBool enabled;
+-        theSink->IsEnabled(eHTMLTag_frameset, &enabled);
+-        if(enabled) {
+-          theFlags |= NS_IPARSER_FLAG_FRAMES_ENABLED;
+-        }
+-        
+-        theSink->IsEnabled(eHTMLTag_script, &enabled);
+-        if(enabled) {
+-          theFlags |= NS_IPARSER_FLAG_SCRIPT_ENABLED;
+-        }
+-      }
+-
+-      mTokenizer = new nsHTMLTokenizer(mDTDMode, mDocType,
+-                                       mParserCommand, theFlags);
++      mTokenizer = new nsHTMLTokenizer(mDTDMode, mDocType, mParserCommand,
++                                       nsHTMLTokenizer::GetFlags(aSink));
+       if (!mTokenizer) {
+         return NS_ERROR_OUT_OF_MEMORY;
+       }
+ 
+       // Make sure the new tokenizer has all of the necessary information.
+       // XXX this might not be necessary.
+       if (mPrevContext) {
+         mTokenizer->CopyState(mPrevContext->mTokenizer);
+diff --git a/parser/htmlparser/src/nsHTMLTokenizer.cpp b/parser/htmlparser/src/nsHTMLTokenizer.cpp
+--- a/parser/htmlparser/src/nsHTMLTokenizer.cpp
++++ b/parser/htmlparser/src/nsHTMLTokenizer.cpp
+@@ -113,17 +113,36 @@ nsHTMLTokenizer::nsHTMLTokenizer(PRInt32
+  */
+ nsHTMLTokenizer::~nsHTMLTokenizer()
+ {
+   if (mTokenDeque.GetSize()) {
+     CTokenDeallocator theDeallocator(mTokenAllocator->GetArenaPool());
+     mTokenDeque.ForEach(theDeallocator);
+   }
+ }
+- 
++
++/*static*/ PRUint32
++GetFlags(const nsIContentSink* aSink)
++{
++  PRUint32 flags = 0;
++  nsCOMPtr<nsIHTMLContentSink> sink =
++    do_QueryInterface(const_cast<nsIContentSink*>(aSink));
++  if (sink) {
++    PRBool enabled = PR_TRUE;
++    sink->IsEnabled(eHTMLTag_frameset, &enabled);
++    if (enabled) {
++      flags |= NS_IPARSER_FLAG_FRAMES_ENABLED;
++    }
++    sink->IsEnabled(eHTMLTag_script, &enabled);
++    if (enabled) {
++      flags |= NS_IPARSER_FLAG_SCRIPT_ENABLED;
++    }
++  }
++  return flags;
++}
+ 
+ /*******************************************************************
+   Here begins the real working methods for the tokenizer.
+  *******************************************************************/
+ 
+ /**
+  * Adds a token onto the end of the deque if aResult is a successful result.
+  * Otherwise, this function frees aToken and sets it to nsnull.
+diff --git a/parser/htmlparser/src/nsHTMLTokenizer.h b/parser/htmlparser/src/nsHTMLTokenizer.h
+--- a/parser/htmlparser/src/nsHTMLTokenizer.h
++++ b/parser/htmlparser/src/nsHTMLTokenizer.h
+@@ -68,16 +68,18 @@ public:
+   NS_DECL_ISUPPORTS
+   NS_DECL_NSITOKENIZER
+   nsHTMLTokenizer(PRInt32 aParseMode = eDTDMode_quirks,
+                   eParserDocType aDocType = eHTML_Quirks,
+                   eParserCommands aCommand = eViewNormal,
+                   PRUint16 aFlags = 0);
+   virtual ~nsHTMLTokenizer();
+ 
++  static PRUint32 GetFlags(const nsIContentSink* aSink);
++
+ protected:
+ 
+   nsresult ConsumeTag(PRUnichar aChar,CToken*& aToken,nsScanner& aScanner,PRBool& aFlushTokens);
+   nsresult ConsumeStartTag(PRUnichar aChar,CToken*& aToken,nsScanner& aScanner,PRBool& aFlushTokens);
+   nsresult ConsumeEndTag(PRUnichar aChar,CToken*& aToken,nsScanner& aScanner);
+   nsresult ConsumeAttributes(PRUnichar aChar, CToken* aToken, nsScanner& aScanner);
+   nsresult ConsumeEntity(PRUnichar aChar,CToken*& aToken,nsScanner& aScanner);
+   nsresult ConsumeWhitespace(PRUnichar aChar,CToken*& aToken,nsScanner& aScanner);

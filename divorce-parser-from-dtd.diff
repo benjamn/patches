@@ -33,15 +33,15 @@ diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD
       * @return ignored
       */
      NS_IMETHOD WillResumeParse() = 0;
-@@ -166,18 +168,18 @@ public:
+@@ -164,17 +166,17 @@ public:
  
-     NS_IMETHOD_(nsITokenizer*) CreateTokenizer() = 0;
+     NS_IMETHOD_(PRInt32) GetType() = 0;
  };
  
  NS_DEFINE_STATIC_IID_ACCESSOR(nsIDTD, NS_IDTD_IID)
  
  #define NS_DECL_NSIDTD \
-     NS_IMETHOD WillBuildModel(  const CParserContext& aParserContext, nsITokenizer* aTokenizer, nsIContentSink* aSink);\
+     NS_IMETHOD WillBuildModel(const CParserContext& aParserContext, nsITokenizer* aTokenizer, nsIContentSink* aSink);\
 -    NS_IMETHOD DidBuildModel(nsresult anErrorCode, PRBool aNotifySink, nsIParser* aParser);\
 -    NS_IMETHOD BuildModel(nsIParser* aParser, nsITokenizer* aTokenizer);\
 +    NS_IMETHOD DidBuildModel(nsresult anErrorCode, PRBool aNotifySink);\
@@ -51,8 +51,7 @@ diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD
      NS_IMETHOD_(PRBool) CanContain(PRInt32 aParent,PRInt32 aChild) const;\
      NS_IMETHOD_(PRBool) IsContainer(PRInt32 aTag) const;\
      NS_IMETHOD_(void)  Terminate();\
-     NS_IMETHOD_(PRInt32) GetType();\
-     NS_IMETHOD_(nsITokenizer*) CreateTokenizer();
+     NS_IMETHOD_(PRInt32) GetType();
  #endif /* nsIDTD_h___ */
 diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.cpp
 --- a/parser/htmlparser/src/CNavDTD.cpp
@@ -125,9 +124,9 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
      mOpenMapCount(0),
      mHeadContainerPosition(-1),
      mFlags(NS_DTD_FLAG_NONE)
-@@ -246,32 +235,34 @@ CNavDTD::WillBuildModel(const CParserCon
-       }
-     }
+@@ -236,32 +225,34 @@ CNavDTD::WillBuildModel(const CParserCon
+     mFlags |= nsHTMLTokenizer::GetFlags(aSink);
+ 
    }
  
    return result;
@@ -165,7 +164,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
             : result;
    }
  
-@@ -322,82 +313,78 @@ CNavDTD::BuildModel(nsIParser* aParser,
+@@ -312,82 +303,78 @@ CNavDTD::BuildModel(nsIParser* aParser,
    }
  
    while (NS_SUCCEEDED(result)) {
@@ -261,7 +260,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
          // Keep track of the top index.
          PRInt32 topIndex = mBodyContext->mContextTopIndex;
          
-@@ -584,30 +571,30 @@ HasOpenTagOfType(PRInt32 aType, const ns
+@@ -568,30 +555,30 @@ HasOpenTagOfType(PRInt32 aType, const ns
        return PR_TRUE;
      }
    }
@@ -294,7 +293,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
      static eHTMLTags gLegalElements[] = {
        eHTMLTag_table, eHTMLTag_thead, eHTMLTag_tbody,
        eHTMLTag_tr, eHTMLTag_td, eHTMLTag_th, eHTMLTag_tfoot
-@@ -734,27 +721,25 @@ CNavDTD::HandleToken(CToken* aToken, nsI
+@@ -718,27 +705,25 @@ CNavDTD::HandleToken(CToken* aToken, nsI
                // end tag.
              }
  
@@ -323,7 +322,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
          result = HandleStartToken(theToken);
          break;
  
-@@ -812,17 +797,17 @@ CNavDTD::DidHandleStartTag(nsIParserNode
+@@ -796,17 +781,17 @@ CNavDTD::DidHandleStartTag(nsIParserNode
          // plain text doc (for which we pushed a PRE in CNavDTD::BuildModel).
  
          // XXX This code is incorrect in the face of misplaced <pre> and
@@ -342,7 +341,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
          }
        }
        break;
-@@ -1645,17 +1630,17 @@ CNavDTD::HandleEndToken(CToken* aToken)
+@@ -1629,17 +1614,17 @@ CNavDTD::HandleEndToken(CToken* aToken)
        {
          // This is special NAV-QUIRKS code that allows users to use </BR>, even
          // though that isn't a legitimate tag.
@@ -361,7 +360,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
      case eHTMLTag_html:
        StripWSFollowingTag(theChildTag, mTokenizer, mTokenAllocator,
                            mLineNumber);
-@@ -1740,21 +1725,21 @@ CNavDTD::HandleEndToken(CToken* aToken)
+@@ -1724,21 +1709,21 @@ CNavDTD::HandleEndToken(CToken* aToken)
                    // regular flow of HandleToken.
                    IF_HOLD(aToken);
                    mTokenizer->PushTokenFront(aToken);
@@ -385,7 +384,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
            if (result == NS_OK) {
              eHTMLTags theTarget =
                FindAutoCloseTargetForEndTag(theChildTag, *mBodyContext,
-@@ -1865,17 +1850,17 @@ CNavDTD::HandleSavedTokens(PRInt32 anInd
+@@ -1849,17 +1834,17 @@ CNavDTD::HandleSavedTokens(PRInt32 anInd
                continue;
              }
            }
@@ -404,7 +403,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
          // handling saved tokens, because the parser does not track forms on its
          // mBodyContext stack.
          CloseContainersTo(theTopIndex, mBodyContext->TagAt(theTopIndex),
-@@ -1932,17 +1917,17 @@ CNavDTD::HandleEntityToken(CToken* aToke
+@@ -1916,17 +1901,17 @@ CNavDTD::HandleEntityToken(CToken* aToke
      nsAutoString entityName;
      entityName.AssignLiteral("&");
      entityName.Append(theStr);
@@ -423,7 +422,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
  
    PRInt32 theParentContains = -1;
    if (CanOmit(theParentTag, eHTMLTag_entity, theParentContains)) {
-@@ -2044,17 +2029,17 @@ CNavDTD::HandleProcessingInstructionToke
+@@ -2028,17 +2013,17 @@ CNavDTD::HandleProcessingInstructionToke
  nsresult
  CNavDTD::HandleDocTypeDeclToken(CToken* aToken)
  {
@@ -442,7 +441,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
    if (pos != kNotFound) {
      // First remove '>' from the end.
      docTypeStr.Cut(pos, len - pos);
-@@ -2104,17 +2089,17 @@ CNavDTD::CollectAttributes(nsIParserNode
+@@ -2088,17 +2073,17 @@ CNavDTD::CollectAttributes(nsIParserNode
          if (theType != eToken_attribute) {
            // If you're here then it means that the token does not
            // belong to this node. Put the token back into the tokenizer
@@ -461,7 +460,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
            // add it to the node.
            if (!((CAttributeToken*)theToken)->GetKey().IsEmpty()) {
              aNode->AddAttribute(theToken);
-@@ -3143,17 +3128,17 @@ CNavDTD::CreateContextStackFor(eHTMLTags
+@@ -3127,17 +3112,17 @@ CNavDTD::CreateContextStackFor(eHTMLTags
  
    // Now, build up the stack according to the tags.
    while (theLen) {
@@ -608,7 +607,7 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
    nsresult result = NS_OK;
    if (mOriginalSink) {
      result = mOriginalSink->DidBuildModel();
-@@ -1432,17 +1432,17 @@ nsExpatDriver::PrependTokens(nsDeque& aD
+@@ -1426,17 +1426,17 @@ nsExpatDriver::PrependTokens(nsDeque& aD
  
  NS_IMETHODIMP
  nsExpatDriver::CopyState(nsITokenizer* aTokenizer)
@@ -652,7 +651,7 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.h b/parser/htmlparser/src/nsExp
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -1526,17 +1526,17 @@ nsParser::DidBuildModel(nsresult anError
+@@ -1534,17 +1534,17 @@ nsParser::DidBuildModel(nsresult anError
  
    if (IsComplete()) {
      if (mParserContext && !mParserContext->mPrevContext) {
@@ -661,8 +660,8 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
        PRBool terminated = mInternalState == NS_ERROR_HTMLPARSER_STOPPARSING;
        if (mDTD && mSink &&
            mSink->ReadyToCallDidBuildModel(terminated)) {
--        result = mDTD->DidBuildModel(anErrorCode,PR_TRUE,this);
-+        result = mDTD->DidBuildModel(anErrorCode,PR_TRUE);
+-        result = mDTD->DidBuildModel(anErrorCode, PR_TRUE, this);
++        result = mDTD->DidBuildModel(anErrorCode, PR_TRUE);
        }
  
        //Ref. to bug 61462.
@@ -671,10 +670,10 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    return result;
-@@ -2359,17 +2359,23 @@ nsParser::BuildModel()
+@@ -2367,17 +2367,23 @@ nsParser::BuildModel()
    nsresult result = NS_OK;
    if (mParserContext) {
-     result = mParserContext->GetTokenizer(mDTD, theTokenizer);
+     result = mParserContext->GetTokenizer(mDTD, mSink, theTokenizer);
    }
  
    if (NS_SUCCEEDED(result)) {
@@ -908,7 +907,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
    printf("\n");
  #endif
  
-@@ -754,16 +743,18 @@ nsresult CViewSourceHTML::WriteTag(PRInt
+@@ -747,16 +736,18 @@ nsresult CViewSourceHTML::WriteTag(PRInt
    nsresult result=NS_OK;
  
    // adjust line number to what it will be after we finish writing this tag
@@ -927,7 +926,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
      return NS_ERROR_FAILURE;
  
    // Highlight all parts of all erroneous tags.
-@@ -874,35 +865,34 @@ nsresult CViewSourceHTML::WriteTag(PRInt
+@@ -867,35 +858,34 @@ nsresult CViewSourceHTML::WriteTag(PRInt
  
  /**
   *
@@ -966,7 +965,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
      case eToken_end:
        {
          const nsSubstring& endValue = aToken->GetStringValue();
-@@ -1087,31 +1077,26 @@ void CViewSourceHTML::WriteHrefAttribute
+@@ -1080,31 +1070,26 @@ void CViewSourceHTML::WriteHrefAttribute
  nsresult CViewSourceHTML::CreateViewSourceURL(const nsAString& linkUrl,
                                                nsString& viewSourceUrl) {
    nsCOMPtr<nsIURI> baseURI;
@@ -999,7 +998,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
  
    // URLs that execute script (e.g. "javascript:" URLs) should just be
    // ignored.  There's nothing reasonable we can do with them, and allowing
-@@ -1239,24 +1224,19 @@ nsresult CViewSourceHTML::GetBaseURI(nsI
+@@ -1232,24 +1217,19 @@ nsresult CViewSourceHTML::GetBaseURI(nsI
    if (!mBaseURI) {
      rv = SetBaseURI(mFilename);
    }
