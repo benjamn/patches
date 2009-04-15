@@ -48,10 +48,19 @@ diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD
       * @return
       */
      NS_IMETHOD DidBuildModel(nsresult anErrorCode, PRBool aNotifySink,
-@@ -178,19 +177,20 @@ public:
+@@ -173,24 +172,30 @@ public:
+      *
+      * @update  harishd 07/22/99
+      * @param
+      * @return
+      */
      NS_IMETHOD_(void) Terminate() = 0;
  
      NS_IMETHOD_(PRInt32) GetType() = 0;
++
++    virtual nsITokenizer*
++    CreateTokenizer(const CParserContext* aContext,
++                    const nsIContentSink* aSink) const;
  };
  
  NS_DEFINE_STATIC_IID_ACCESSOR(nsIDTD, NS_IDTD_IID)
@@ -67,7 +76,9 @@ diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD
      NS_IMETHOD_(PRBool) CanContain(PRInt32 aParent,PRInt32 aChild) const;\
      NS_IMETHOD_(PRBool) IsContainer(PRInt32 aTag) const;\
      NS_IMETHOD_(void)  Terminate();\
-     NS_IMETHOD_(PRInt32) GetType();
+-    NS_IMETHOD_(PRInt32) GetType();
++    NS_IMETHOD_(PRInt32) GetType();\
++    nsITokenizer* CreateTokenizer(const CParserContext* aContext, const nsIContentSink* aSink) const;
 +
  #endif /* nsIDTD_h___ */
 diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.cpp
@@ -145,7 +156,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
  nsresult
  CNavDTD::BuildModel(nsIParser* aParser,
                      nsITokenizer* aTokenizer,
-@@ -470,16 +462,22 @@ CNavDTD::Terminate()
+@@ -470,16 +462,26 @@ CNavDTD::Terminate()
  
  
  NS_IMETHODIMP_(PRInt32) 
@@ -154,10 +165,14 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
    return NS_IPARSER_FLAG_HTML; 
  }
  
-+NS_IMETHODIMP_(nsITokenizer*)
-+CNavDTD::CreateTokenizer(PRUint32 aFlags)
++nsITokenizer*
++CViewSourceHTML::CreateTokenizer(const CParserContext* aContext,
++                                 const nsIContentSink* aSink) const
 +{
-+  return new nsHTMLTokenizer(mDTDMode, mDocType, mParserCommand, aFlags);
++  return new nsHTMLTokenizer(aContext->mDTDMode,
++                             aContext->mDocType,
++                             aContext->mParserCommand,
++                             nsHTMLTokenizer::GetFlags(aSink));
 +}
 +
  /**
@@ -619,7 +634,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
    * The parser uses a code sandwich to wrap the parsing process. Before
    * the process begins, WillBuildModel() is called. Afterwards the parser
    * calls DidBuildModel().
-@@ -606,16 +613,22 @@ NS_IMETHODIMP_(void)
+@@ -606,16 +613,26 @@ NS_IMETHODIMP_(void)
  CViewSourceHTML::Terminate() {
  }
  
@@ -628,10 +643,14 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
    return NS_IPARSER_FLAG_HTML;
  }
  
-+NS_IMETHODIMP_(nsITokenizer*)
-+CViewSourceHTML::CreateTokenizer(PRUint32 aFlags)
++nsITokenizer*
++CViewSourceHTML::CreateTokenizer(const CParserContext* aContext,
++                                 const nsIContentSink* aSink) const
 +{
-+  return new nsHTMLTokenizer(mDTDMode, mDocType, mParserCommand, aFlags);
++  return new nsHTMLTokenizer(aContext->mDTDMode,
++                             aContext->mDocType,
++                             aContext->mParserCommand,
++                             nsHTMLTokenizer::GetFlags(aSink));
 +}
 +
  /**

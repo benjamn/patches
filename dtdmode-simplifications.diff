@@ -1,0 +1,1029 @@
+diff --git a/browser/components/places/src/nsPlacesImportExportService.cpp b/browser/components/places/src/nsPlacesImportExportService.cpp
+--- a/browser/components/places/src/nsPlacesImportExportService.cpp
++++ b/browser/components/places/src/nsPlacesImportExportService.cpp
+@@ -340,18 +340,16 @@ public:
+                 nsINavBookmarksService* bookmarkService,
+                 PRInt64 aFolder,
+                 PRBool aIsImportDefaults);
+ 
+   NS_DECL_ISUPPORTS
+ 
+   // nsIContentSink (superclass of nsIHTMLContentSink)
+   NS_IMETHOD WillParse() { return NS_OK; }
+-  NS_IMETHOD WillBuildModel() { return NS_OK; }
+-  NS_IMETHOD DidBuildModel() { return NS_OK; }
+   NS_IMETHOD WillInterrupt() { return NS_OK; }
+   NS_IMETHOD WillResume() { return NS_OK; }
+   NS_IMETHOD SetParser(nsIParser* aParser) { return NS_OK; }
+   virtual void FlushPendingNotifications(mozFlushType aType) { }
+   NS_IMETHOD SetDocumentCharset(nsACString& aCharset) { return NS_OK; }
+   virtual nsISupports *GetTarget() { return nsnull; }
+ 
+   // nsIHTMLContentSink
+diff --git a/content/base/src/mozSanitizingSerializer.h b/content/base/src/mozSanitizingSerializer.h
+--- a/content/base/src/mozSanitizingSerializer.h
++++ b/content/base/src/mozSanitizingSerializer.h
+@@ -95,18 +95,16 @@ public:
+   NS_IMETHOD AppendElementEnd(nsIDOMElement *aElement, nsAString& aStr);
+   NS_IMETHOD Flush(nsAString& aStr);
+ 
+   NS_IMETHOD AppendDocumentStart(nsIDOMDocument *aDocument,
+                                  nsAString& aStr);
+ 
+   // nsIContentSink
+   NS_IMETHOD WillParse(void) { return NS_OK; }
+-  NS_IMETHOD WillBuildModel(void) { return NS_OK; }
+-  NS_IMETHOD DidBuildModel(void) { return NS_OK; }
+   NS_IMETHOD WillInterrupt(void) { return NS_OK; }
+   NS_IMETHOD WillResume(void) { return NS_OK; }
+   NS_IMETHOD SetParser(nsIParser* aParser) { return NS_OK; }
+   NS_IMETHOD OpenContainer(const nsIParserNode& aNode);
+   NS_IMETHOD CloseContainer(const nsHTMLTag aTag);
+   NS_IMETHOD AddLeaf(const nsIParserNode& aNode);
+   NS_IMETHOD AddComment(const nsIParserNode& aNode) { return NS_OK; }
+   NS_IMETHOD AddProcessingInstruction(const nsIParserNode& aNode)
+diff --git a/content/base/src/nsPlainTextSerializer.h b/content/base/src/nsPlainTextSerializer.h
+--- a/content/base/src/nsPlainTextSerializer.h
++++ b/content/base/src/nsPlainTextSerializer.h
+@@ -51,17 +51,16 @@
+ #include "nsString.h"
+ #include "nsILineBreaker.h"
+ #include "nsIContent.h"
+ #include "nsIAtom.h"
+ #include "nsIHTMLToTextSink.h"
+ #include "nsIDocumentEncoder.h"
+ #include "nsTArray.h"
+ 
+-
+ class nsPlainTextSerializer : public nsIContentSerializer,
+                               public nsIHTMLContentSink,
+                               public nsIHTMLToTextSink
+ {
+ public:
+   nsPlainTextSerializer();
+   virtual ~nsPlainTextSerializer();
+ 
+@@ -92,18 +91,16 @@ public:
+                               nsAString& aStr);
+   NS_IMETHOD Flush(nsAString& aStr);
+ 
+   NS_IMETHOD AppendDocumentStart(nsIDOMDocument *aDocument,
+                                  nsAString& aStr);
+ 
+   // nsIContentSink
+   NS_IMETHOD WillParse(void) { return NS_OK; }
+-  NS_IMETHOD WillBuildModel(void) { return NS_OK; }
+-  NS_IMETHOD DidBuildModel(void) { return NS_OK; }
+   NS_IMETHOD WillInterrupt(void) { return NS_OK; }
+   NS_IMETHOD WillResume(void) { return NS_OK; }
+   NS_IMETHOD SetParser(nsIParser* aParser) { return NS_OK; }
+   NS_IMETHOD OpenContainer(const nsIParserNode& aNode);
+   NS_IMETHOD CloseContainer(const nsHTMLTag aTag);
+   NS_IMETHOD AddLeaf(const nsIParserNode& aNode);
+   NS_IMETHOD AddComment(const nsIParserNode& aNode) { return NS_OK; }
+   NS_IMETHOD AddProcessingInstruction(const nsIParserNode& aNode) { return NS_OK; }
+diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/document/src/nsHTMLContentSink.cpp
+--- a/content/html/document/src/nsHTMLContentSink.cpp
++++ b/content/html/document/src/nsHTMLContentSink.cpp
+@@ -177,17 +177,17 @@ public:
+   nsresult Init(nsIDocument* aDoc, nsIURI* aURI, nsISupports* aContainer,
+                 nsIChannel* aChannel);
+ 
+   // nsISupports
+   NS_DECL_ISUPPORTS_INHERITED
+ 
+   // nsIContentSink
+   NS_IMETHOD WillParse(void);
+-  NS_IMETHOD WillBuildModel(void);
++  NS_IMETHOD WillBuildModel(nsDTDMode aDTDMode);
+   NS_IMETHOD DidBuildModel(void);
+   virtual PRBool ReadyToCallDidBuildModel(PRBool aTerminated);
+   NS_IMETHOD WillInterrupt(void);
+   NS_IMETHOD WillResume(void);
+   NS_IMETHOD SetParser(nsIParser* aParser);
+   virtual void FlushPendingNotifications(mozFlushType aType);
+   NS_IMETHOD SetDocumentCharset(nsACString& aCharset);
+   virtual nsISupports *GetTarget();
+@@ -1742,38 +1742,31 @@ HTMLContentSink::Init(nsIDocument* aDoc,
+ 
+ NS_IMETHODIMP
+ HTMLContentSink::WillParse(void)
+ {
+   return WillParseImpl();
+ }
+ 
+ NS_IMETHODIMP
+-HTMLContentSink::WillBuildModel(void)
++HTMLContentSink::WillBuildModel(nsDTDMode aDTDMode)
+ {
+   WillBuildModelImpl();
++
+   if (mHTMLDocument) {
+-    NS_ASSERTION(mParser, "no parser");
+     nsCompatibility mode = eCompatibility_NavQuirks;
+-    if (mParser) {
+-      nsDTDMode dtdMode = mParser->GetParseMode();
+-      switch (dtdMode) {
+-        case eDTDMode_full_standards:
+-          mode = eCompatibility_FullStandards;
+-
+-          break;
+-        case eDTDMode_almost_standards:
+-          mode = eCompatibility_AlmostStandards;
+-
+-          break;
+-        default:
+-          mode = eCompatibility_NavQuirks;
+-
+-          break;
+-      }
++    switch (aDTDMode) {
++      case eDTDMode_full_standards:
++        mode = eCompatibility_FullStandards;
++        break;
++      case eDTDMode_almost_standards:
++        mode = eCompatibility_AlmostStandards;
++        break;
++      default:
++        break;
+     }
+     mHTMLDocument->SetCompatibilityMode(mode);
+   }
+ 
+   // Notify document that the load is beginning
+   mDocument->BeginLoad();
+ 
+   return NS_OK;
+diff --git a/content/html/document/src/nsHTMLFragmentContentSink.cpp b/content/html/document/src/nsHTMLFragmentContentSink.cpp
+--- a/content/html/document/src/nsHTMLFragmentContentSink.cpp
++++ b/content/html/document/src/nsHTMLFragmentContentSink.cpp
+@@ -34,16 +34,17 @@
+  * and other provisions required by the GPL or the LGPL. If you do not delete
+  * the provisions above, a recipient may use your version of this file under
+  * the terms of any one of the MPL, the GPL or the LGPL.
+  *
+  * ***** END LICENSE BLOCK ***** */
+ #include "nsCOMPtr.h"
+ #include "nsIServiceManager.h"
+ #include "nsIFragmentContentSink.h"
++#include "nsIDTD.h"
+ #include "nsIHTMLContentSink.h"
+ #include "nsIParser.h"
+ #include "nsIParserService.h"
+ #include "nsGkAtoms.h"
+ #include "nsHTMLTokens.h"
+ #include "nsGenericHTMLElement.h"
+ #include "nsIDOMText.h"
+ #include "nsIDOMComment.h"
+@@ -83,17 +84,17 @@ public:
+   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsHTMLFragmentContentSink,
+                                            nsIContentSink)
+ 
+   NS_DECL_AND_IMPL_ZEROING_OPERATOR_NEW
+ 
+   // nsIContentSink
+   NS_IMETHOD WillParse(void) { return NS_OK; }
+-  NS_IMETHOD WillBuildModel(void);
++  NS_IMETHOD WillBuildModel(nsDTDMode aDTDMode);
+   NS_IMETHOD DidBuildModel(void);
+   NS_IMETHOD WillInterrupt(void);
+   NS_IMETHOD WillResume(void);
+   NS_IMETHOD SetParser(nsIParser* aParser);
+   virtual void FlushPendingNotifications(mozFlushType aType) { }
+   NS_IMETHOD SetDocumentCharset(nsACString& aCharset) { return NS_OK; }
+   virtual nsISupports *GetTarget() { return mTargetDocument; }
+ 
+@@ -255,17 +256,17 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(
+     PRUint32 i;
+     for (i = 0; i < NS_ARRAY_LENGTH(tmp->mNodeInfoCache); ++i) {
+       cb.NoteXPCOMChild(tmp->mNodeInfoCache[i]);
+     }
+   }
+ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+ 
+ NS_IMETHODIMP
+-nsHTMLFragmentContentSink::WillBuildModel(void)
++nsHTMLFragmentContentSink::WillBuildModel(nsDTDMode)
+ {
+   if (mRoot) {
+     return NS_OK;
+   }
+ 
+   NS_ASSERTION(mNodeInfoManager, "Need a nodeinfo manager!");
+ 
+   nsCOMPtr<nsIDOMDocumentFragment> frag;
+diff --git a/content/xml/document/src/nsLoadSaveContentSink.cpp b/content/xml/document/src/nsLoadSaveContentSink.cpp
+--- a/content/xml/document/src/nsLoadSaveContentSink.cpp
++++ b/content/xml/document/src/nsLoadSaveContentSink.cpp
+@@ -88,17 +88,17 @@ NS_INTERFACE_MAP_BEGIN(nsLoadSaveContent
+   NS_INTERFACE_MAP_ENTRY(nsIXMLContentSink)
+   NS_INTERFACE_MAP_ENTRY(nsIContentSink)
+   NS_INTERFACE_MAP_ENTRY(nsIExpatSink)
+   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIXMLContentSink)
+ NS_INTERFACE_MAP_END
+ 
+ // nsIContentSink
+ NS_IMETHODIMP
+-nsLoadSaveContentSink::WillBuildModel(void)
++nsLoadSaveContentSink::WillBuildModel(nsDTDMode)
+ {
+   return mBaseSink->WillBuildModel();
+ }
+ 
+ NS_IMETHODIMP
+ nsLoadSaveContentSink::DidBuildModel(void)
+ {
+   return mBaseSink->DidBuildModel();
+diff --git a/content/xml/document/src/nsLoadSaveContentSink.h b/content/xml/document/src/nsLoadSaveContentSink.h
+--- a/content/xml/document/src/nsLoadSaveContentSink.h
++++ b/content/xml/document/src/nsLoadSaveContentSink.h
+@@ -38,16 +38,17 @@
+ 
+ #ifndef nsLoadSaveContentSink_h__
+ #define nsLoadSaveContentSink_h__
+ 
+ #include "nsIExpatSink.h"
+ #include "nsIXMLContentSink.h"
+ #include "nsILoadSaveContentSink.h"
+ #include "nsCOMPtr.h"
++#include "nsIDTD.h"
+ 
+ /**
+  * This class implements the core of the DOMBuilder for DOM3
+  * Load/Save.  It holds a reference to an actual content sink that
+  * constructs the content model.
+  */
+ class nsLoadSaveContentSink : public nsILoadSaveContentSink,
+                               public nsIExpatSink
+@@ -64,17 +65,17 @@ public:
+    *                  must also implement nsIExpatSink.
+    */
+   nsresult Init(nsIXMLContentSink* aBaseSink);
+   
+   NS_DECL_ISUPPORTS
+   NS_DECL_NSIEXPATSINK
+ 
+   // nsILoadSaveContentSink
+-  NS_IMETHOD WillBuildModel(void);
++  NS_IMETHOD WillBuildModel(nsDTDMode aDTDMode);
+   NS_IMETHOD DidBuildModel(void);
+   NS_IMETHOD WillInterrupt(void);
+   NS_IMETHOD WillResume(void);
+   NS_IMETHOD SetParser(nsIParser* aParser);  
+   virtual void FlushPendingNotifications(mozFlushType aType);
+   NS_IMETHOD SetDocumentCharset(nsAString& aCharset);
+ 
+ private:
+diff --git a/content/xml/document/src/nsXMLContentSink.cpp b/content/xml/document/src/nsXMLContentSink.cpp
+--- a/content/xml/document/src/nsXMLContentSink.cpp
++++ b/content/xml/document/src/nsXMLContentSink.cpp
+@@ -205,17 +205,17 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+ // nsIContentSink
+ NS_IMETHODIMP
+ nsXMLContentSink::WillParse(void)
+ {
+   return WillParseImpl();
+ }
+ 
+ NS_IMETHODIMP
+-nsXMLContentSink::WillBuildModel(void)
++nsXMLContentSink::WillBuildModel(nsDTDMode aDTDMode)
+ {
+   WillBuildModelImpl();
+ 
+   // Notify document that the load is beginning
+   mDocument->BeginLoad();
+ 
+   // Check for correct load-command for maybe prettyprinting
+   if (mPrettyPrintXML) {
+diff --git a/content/xml/document/src/nsXMLContentSink.h b/content/xml/document/src/nsXMLContentSink.h
+--- a/content/xml/document/src/nsXMLContentSink.h
++++ b/content/xml/document/src/nsXMLContentSink.h
+@@ -41,16 +41,17 @@
+ #include "nsContentSink.h"
+ #include "nsIXMLContentSink.h"
+ #include "nsIExpatSink.h"
+ #include "nsIDocumentTransformer.h"
+ #include "nsTArray.h"
+ #include "nsCOMPtr.h"
+ #include "nsCRT.h"
+ #include "nsCycleCollectionParticipant.h"
++#include "nsIDTD.h"
+ 
+ class nsIDocument;
+ class nsIURI;
+ class nsIContent;
+ class nsINodeInfo;
+ class nsIParser;
+ class nsIViewManager;
+ 
+@@ -86,17 +87,17 @@ public:
+ 
+   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED_NO_UNLINK(nsXMLContentSink,
+                                                      nsContentSink)
+ 
+   NS_DECL_NSIEXPATSINK
+ 
+   // nsIContentSink
+   NS_IMETHOD WillParse(void);
+-  NS_IMETHOD WillBuildModel(void);
++  NS_IMETHOD WillBuildModel(nsDTDMode aDTDMode);
+   NS_IMETHOD DidBuildModel(void);
+   virtual PRBool ReadyToCallDidBuildModel(PRBool aTerminated);
+   NS_IMETHOD WillInterrupt(void);
+   NS_IMETHOD WillResume(void);
+   NS_IMETHOD SetParser(nsIParser* aParser);  
+   virtual void FlushPendingNotifications(mozFlushType aType);
+   NS_IMETHOD SetDocumentCharset(nsACString& aCharset);
+   virtual nsISupports *GetTarget();
+diff --git a/content/xml/document/src/nsXMLFragmentContentSink.cpp b/content/xml/document/src/nsXMLFragmentContentSink.cpp
+--- a/content/xml/document/src/nsXMLFragmentContentSink.cpp
++++ b/content/xml/document/src/nsXMLFragmentContentSink.cpp
+@@ -37,16 +37,17 @@
+  *
+  * ***** END LICENSE BLOCK ***** */
+ #include "nsCOMPtr.h"
+ #include "nsXMLContentSink.h"
+ #include "nsIFragmentContentSink.h"
+ #include "nsIXMLContentSink.h"
+ #include "nsContentSink.h"
+ #include "nsIExpatSink.h"
++#include "nsIDTD.h"
+ #include "nsIParser.h"
+ #include "nsIDocument.h"
+ #include "nsIDOMDocumentFragment.h"
+ #include "nsIContent.h"
+ #include "nsGkAtoms.h"
+ #include "nsINodeInfo.h"
+ #include "nsNodeInfoManager.h"
+ #include "nsContentCreatorFunctions.h"
+@@ -88,17 +89,17 @@ public:
+                                   const PRUnichar *aEncoding,
+                                   PRInt32 aStandalone);
+   NS_IMETHOD ReportError(const PRUnichar* aErrorText, 
+                          const PRUnichar* aSourceText,
+                          nsIScriptError *aError,
+                          PRBool *_retval);
+ 
+   // nsIContentSink
+-  NS_IMETHOD WillBuildModel(void);
++  NS_IMETHOD WillBuildModel(nsDTDMode aDTDMode);
+   NS_IMETHOD DidBuildModel();
+   NS_IMETHOD SetDocumentCharset(nsACString& aCharset);
+   virtual nsISupports *GetTarget();
+   NS_IMETHOD DidProcessATokenImpl();
+ 
+   // nsIXMLContentSink
+ 
+   // nsIFragmentContentSink
+@@ -185,17 +186,17 @@ NS_IMPL_CYCLE_COLLECTION_CLASS(nsXMLFrag
+ 
+ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(nsXMLFragmentContentSink,
+                                                   nsXMLContentSink)
+   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mTargetDocument)
+   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mRoot)
+ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+ 
+ NS_IMETHODIMP 
+-nsXMLFragmentContentSink::WillBuildModel(void)
++nsXMLFragmentContentSink::WillBuildModel(nsDTDMode aDTDMode)
+ {
+   if (mRoot) {
+     return NS_OK;
+   }
+ 
+   mState = eXMLContentSinkState_InDocumentElement;
+ 
+   NS_ASSERTION(mTargetDocument, "Need a document!");
+diff --git a/content/xslt/src/xslt/txMozillaStylesheetCompiler.cpp b/content/xslt/src/xslt/txMozillaStylesheetCompiler.cpp
+--- a/content/xslt/src/xslt/txMozillaStylesheetCompiler.cpp
++++ b/content/xslt/src/xslt/txMozillaStylesheetCompiler.cpp
+@@ -104,17 +104,16 @@ public:
+     NS_DECL_ISUPPORTS
+     NS_DECL_NSIEXPATSINK
+     NS_DECL_NSISTREAMLISTENER
+     NS_DECL_NSIREQUESTOBSERVER
+     NS_DECL_NSIINTERFACEREQUESTOR
+ 
+     // nsIContentSink
+     NS_IMETHOD WillParse(void) { return NS_OK; }
+-    NS_IMETHOD WillBuildModel(void) { return NS_OK; }
+     NS_IMETHOD DidBuildModel();
+     NS_IMETHOD WillInterrupt(void) { return NS_OK; }
+     NS_IMETHOD WillResume(void) { return NS_OK; }
+     NS_IMETHOD SetParser(nsIParser* aParser) { return NS_OK; }
+     virtual void FlushPendingNotifications(mozFlushType aType) { }
+     NS_IMETHOD SetDocumentCharset(nsACString& aCharset) { return NS_OK; }
+     virtual nsISupports *GetTarget() { return nsnull; }
+ 
+diff --git a/content/xul/document/src/nsXULContentSink.cpp b/content/xul/document/src/nsXULContentSink.cpp
+--- a/content/xul/document/src/nsXULContentSink.cpp
++++ b/content/xul/document/src/nsXULContentSink.cpp
+@@ -252,17 +252,17 @@ NS_IMPL_ISUPPORTS3(XULContentSinkImpl,
+                    nsIXMLContentSink,
+                    nsIContentSink,
+                    nsIExpatSink)
+ 
+ //----------------------------------------------------------------------
+ // nsIContentSink interface
+ 
+ NS_IMETHODIMP 
+-XULContentSinkImpl::WillBuildModel(void)
++XULContentSinkImpl::WillBuildModel(nsDTDMode aDTDMode)
+ {
+ #if FIXME
+     if (! mParentContentSink) {
+         // If we're _not_ an overlay, then notify the document that
+         // the load is beginning.
+         mDocument->BeginLoad();
+     }
+ #endif
+diff --git a/content/xul/document/src/nsXULContentSink.h b/content/xul/document/src/nsXULContentSink.h
+--- a/content/xul/document/src/nsXULContentSink.h
++++ b/content/xul/document/src/nsXULContentSink.h
+@@ -43,16 +43,17 @@
+ #define nsXULContentSink_h__
+ 
+ #include "nsIExpatSink.h"
+ #include "nsIXMLContentSink.h"
+ #include "nsAutoPtr.h"
+ #include "nsNodeInfoManager.h"
+ #include "nsWeakPtr.h"
+ #include "nsXULElement.h"
++#include "nsIDTD.h"
+ 
+ class nsIDocument;
+ class nsIScriptSecurityManager;
+ class nsAttrName;
+ class nsXULPrototypeDocument;
+ class nsXULPrototypeElement;
+ class nsXULPrototypeNode;
+ 
+@@ -64,17 +65,17 @@ public:
+     virtual ~XULContentSinkImpl();
+ 
+     // nsISupports
+     NS_DECL_ISUPPORTS
+     NS_DECL_NSIEXPATSINK
+ 
+     // nsIContentSink
+     NS_IMETHOD WillParse(void) { return NS_OK; }
+-    NS_IMETHOD WillBuildModel(void);
++    NS_IMETHOD WillBuildModel(nsDTDMode aDTDMode);
+     NS_IMETHOD DidBuildModel(void);
+     NS_IMETHOD WillInterrupt(void);
+     NS_IMETHOD WillResume(void);
+     NS_IMETHOD SetParser(nsIParser* aParser);
+     virtual void FlushPendingNotifications(mozFlushType aType) { }
+     NS_IMETHOD SetDocumentCharset(nsACString& aCharset);
+     virtual nsISupports *GetTarget();
+ 
+diff --git a/parser/htmlparser/public/nsIContentSink.h b/parser/htmlparser/public/nsIContentSink.h
+--- a/parser/htmlparser/public/nsIContentSink.h
++++ b/parser/htmlparser/public/nsIContentSink.h
+@@ -47,22 +47,24 @@
+  *
+  * The icontentsink interface is a very lightweight wrapper that represents the
+  * content-sink model building process. There is another one that you may care 
+  * about more, which is the IHTMLContentSink interface. (See that file for details).
+  */
+ #include "nsISupports.h"
+ #include "nsStringGlue.h"
+ #include "mozFlushType.h"
++#include "nsIDTD.h"
+ 
+ class nsIParser;
+ 
++// 5530ebaf-f9fd-44bf-b6b5-e46f3b67eb3d
+ #define NS_ICONTENT_SINK_IID \
+-{ 0xcfa3643b, 0xee60, 0x4bf0, \
+-  { 0xbc, 0x83, 0x49, 0x95, 0xdb, 0xbc, 0xda, 0x75 } }
++{ 0x5530ebaf, 0xf9fd, 0x44bf, \
++  { 0xb6, 0xb5, 0xe4, 0x6f, 0x3b, 0x67, 0xeb, 0x3d } }
+ 
+ class nsIContentSink : public nsISupports {
+ public:
+ 
+   NS_DECLARE_STATIC_IID_ACCESSOR(NS_ICONTENT_SINK_IID)
+ 
+   /**
+    * This method is called by the parser when it is entered from
+@@ -71,27 +73,37 @@ public:
+    * main event loop and this call calibrates that measurement.
+    */
+   NS_IMETHOD WillParse(void)=0;
+ 
+   /**
+    * This method gets called when the parser begins the process
+    * of building the content model via the content sink.
+    *
++   * Default implementation provided since the sink should have the option of
++   * doing nothing in response to this call.
++   *
+    * @update 5/7/98 gess
+    */
+-  NS_IMETHOD WillBuildModel(void)=0;
++  NS_IMETHOD WillBuildModel(nsDTDMode aDTDMode = eDTDMode_unknown) {
++    return NS_OK;
++  }
+ 
+   /**
+    * This method gets called when the parser concludes the process
+    * of building the content model via the content sink.
+    *
++   * Default implementation provided since the sink should have the option of
++   * doing nothing in response to this call.
++   *
+    * @update 5/7/98 gess
+    */
+-  NS_IMETHOD DidBuildModel()=0;
++  NS_IMETHOD DidBuildModel() {
++    return NS_OK;
++  }
+ 
+   /**
+    * Thie method gets caller right before DidBuildModel is called.
+    * If false, the parser won't call DidBuildModel yet.
+    *
+    * If aTerminated is true, the parser has been terminated.
+    */
+   virtual PRBool ReadyToCallDidBuildModel(PRBool aTerminated)
+diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD.h
+--- a/parser/htmlparser/public/nsIDTD.h
++++ b/parser/htmlparser/public/nsIDTD.h
+@@ -173,24 +173,31 @@ public:
+      *
+      * @update  harishd 07/22/99
+      * @param
+      * @return
+      */
+     NS_IMETHOD_(void) Terminate() = 0;
+ 
+     NS_IMETHOD_(PRInt32) GetType() = 0;
++
++    /**
++     * Call this method after calling WillBuildModel to determine what mode the
++     * DTD actually is using, as it may differ from aParserContext.mDTDMode.
++     */
++    NS_IMETHOD_(nsDTDMode) GetMode() const = 0;
+ };
+ 
+ NS_DEFINE_STATIC_IID_ACCESSOR(nsIDTD, NS_IDTD_IID)
+ 
+ #define NS_DECL_NSIDTD \
+     NS_IMETHOD WillBuildModel(  const CParserContext& aParserContext, nsITokenizer* aTokenizer, nsIContentSink* aSink);\
+     NS_IMETHOD DidBuildModel(nsresult anErrorCode,PRBool aNotifySink,nsIParser* aParser,nsIContentSink* aSink);\
+     NS_IMETHOD BuildModel(nsIParser* aParser,nsITokenizer* aTokenizer,nsITokenObserver* anObserver,nsIContentSink* aSink);\
+     NS_IMETHOD HandleToken(CToken* aToken,nsIParser* aParser);\
+     NS_IMETHOD WillResumeParse(nsIContentSink* aSink = 0);\
+     NS_IMETHOD WillInterruptParse(nsIContentSink* aSink = 0);\
+     NS_IMETHOD_(PRBool) CanContain(PRInt32 aParent,PRInt32 aChild) const;\
+     NS_IMETHOD_(PRBool) IsContainer(PRInt32 aTag) const;\
+     NS_IMETHOD_(void)  Terminate();\
+-    NS_IMETHOD_(PRInt32) GetType();
++    NS_IMETHOD_(PRInt32) GetType();\
++    NS_IMETHOD_(nsDTDMode) GetMode() const;
+ #endif /* nsIDTD_h___ */
+diff --git a/parser/htmlparser/public/nsIParser.h b/parser/htmlparser/public/nsIParser.h
+--- a/parser/htmlparser/public/nsIParser.h
++++ b/parser/htmlparser/public/nsIParser.h
+@@ -260,25 +260,16 @@ class nsIParser : public nsISupports {
+     /**
+      * This method gets called when the tokens have been consumed, and it's time
+      * to build the model via the content sink.
+      * @update	gess5/11/98
+      * @return  error code -- 0 if model building went well .
+      */
+     NS_IMETHOD BuildModel(void) = 0;
+ 
+-
+-    /**
+-     *  Retrieve the parse mode from the parser...
+-     *  
+-     *  @update  gess 6/9/98
+-     *  @return  ptr to scanner
+-     */
+-    NS_IMETHOD_(nsDTDMode) GetParseMode(void) = 0;
+-
+     /**
+      *  Call this method to cancel any pending parsing events.
+      *  Parsing events may be pending if all of the document's content
+      *  has been passed to the parser but the parser has been interrupted
+      *  because processing the tokens took too long.
+      *  
+      *  @update  kmcclusk 05/18/01
+      *  @return  NS_OK if succeeded else ERROR.
+diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.cpp
+--- a/parser/htmlparser/src/CNavDTD.cpp
++++ b/parser/htmlparser/src/CNavDTD.cpp
+@@ -204,17 +204,17 @@ CNavDTD::WillBuildModel(const CParserCon
+   mDocType = aParserContext.mDocType;
+   mTokenizer = aTokenizer;
+   mBodyContext->SetNodeAllocator(&mNodeAllocator);
+ 
+   if (!aParserContext.mPrevContext && aSink) {
+     STOP_TIMER();
+     MOZ_TIMER_DEBUGLOG(("Stop: Parse Time: CNavDTD::WillBuildModel(), this=%p\n", this));
+     
+-    result = aSink->WillBuildModel();
++    result = aSink->WillBuildModel(GetMode());
+     
+     MOZ_TIMER_DEBUGLOG(("Start: Parse Time: CNavDTD::WillBuildModel(), this=%p\n", this));
+     START_TIMER();
+ 
+     if (NS_SUCCEEDED(result) && !mSink) {
+       mSink = do_QueryInterface(aSink, &result);
+       if (NS_FAILED(result)) {
+         mFlags |= NS_DTD_FLAG_STOP_PARSING;
+@@ -460,16 +460,22 @@ CNavDTD::Terminate()
+ 
+ 
+ NS_IMETHODIMP_(PRInt32) 
+ CNavDTD::GetType() 
+ { 
+   return NS_IPARSER_FLAG_HTML; 
+ }
+ 
++NS_IMETHODIMP_(nsDTDMode)
++CNavDTD::GetMode() const
++{
++  return mDTDMode;
++}
++
+ /**
+  * Text and some tags require a body when they're added, this function returns
+  * true for those tags.
+  *
+  * @param aToken The current token that we care about.
+  * @param aTokenizer A tokenizer that we can get the tags attributes off of.
+  * @return PR_TRUE if aToken does indeed force the body to open.
+  */
+diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsExpatDriver.cpp
+--- a/parser/htmlparser/src/nsExpatDriver.cpp
++++ b/parser/htmlparser/src/nsExpatDriver.cpp
+@@ -1289,17 +1289,17 @@ nsExpatDriver::WillBuildModel(const CPar
+   }
+ 
+   // Set up the user data.
+   XML_SetUserData(mExpatParser, this);
+ 
+   // XML must detect invalid character convertion
+   aParserContext.mScanner->OverrideReplacementCharacter(0xffff);
+ 
+-  return aSink->WillBuildModel();
++  return aSink->WillBuildModel(GetMode());
+ }
+ 
+ NS_IMETHODIMP
+ nsExpatDriver::BuildModel(nsIParser* aParser,
+                           nsITokenizer* aTokenizer,
+                           nsITokenObserver* anObserver,
+                           nsIContentSink* aSink)
+ {
+@@ -1362,16 +1362,22 @@ nsExpatDriver::Terminate()
+ }
+ 
+ NS_IMETHODIMP_(PRInt32)
+ nsExpatDriver::GetType()
+ {
+   return NS_IPARSER_FLAG_XML;
+ }
+ 
++NS_IMETHODIMP_(nsDTDMode)
++nsExpatDriver::GetMode() const
++{
++  return eDTDMode_full_standards;
++}
++
+ /*************************** Unused methods **********************************/
+ 
+ NS_IMETHODIMP_(CToken*)
+ nsExpatDriver::PushTokenFront(CToken* aToken)
+ {
+   return 0;
+ }
+ 
+diff --git a/parser/htmlparser/src/nsHTMLTokenizer.cpp b/parser/htmlparser/src/nsHTMLTokenizer.cpp
+--- a/parser/htmlparser/src/nsHTMLTokenizer.cpp
++++ b/parser/htmlparser/src/nsHTMLTokenizer.cpp
+@@ -65,17 +65,17 @@ NS_IMPL_ISUPPORTS1(nsHTMLTokenizer, nsIT
+ 
+ /**
+  * Default constructor
+  * 
+  * @param  aParseMode The current mode the document is in (quirks, etc.)
+  * @param  aDocType The document type of the current document
+  * @param  aCommand What we are trying to do (view-source, parse a fragment, etc.)
+  */
+-nsHTMLTokenizer::nsHTMLTokenizer(PRInt32 aParseMode,
++nsHTMLTokenizer::nsHTMLTokenizer(nsDTDMode aParseMode,
+                                  eParserDocType aDocType,
+                                  eParserCommands aCommand,
+                                  PRUint16 aFlags) :
+   nsITokenizer(), mTokenDeque(0), mFlags(aFlags)
+ {
+   if (aParseMode == eDTDMode_full_standards ||
+       aParseMode == eDTDMode_almost_standards) {
+     mFlags |= NS_IPARSER_FLAG_STRICT_MODE;
+diff --git a/parser/htmlparser/src/nsHTMLTokenizer.h b/parser/htmlparser/src/nsHTMLTokenizer.h
+--- a/parser/htmlparser/src/nsHTMLTokenizer.h
++++ b/parser/htmlparser/src/nsHTMLTokenizer.h
+@@ -62,17 +62,17 @@
+ #pragma warning( disable : 4275 )
+ #endif
+ 
+ class nsHTMLTokenizer : public nsITokenizer {
+ public:
+   
+   NS_DECL_ISUPPORTS
+   NS_DECL_NSITOKENIZER
+-  nsHTMLTokenizer(PRInt32 aParseMode = eDTDMode_quirks,
++  nsHTMLTokenizer(nsDTDMode aParseMode = eDTDMode_quirks,
+                   eParserDocType aDocType = eHTML_Quirks,
+                   eParserCommands aCommand = eViewNormal,
+                   PRUint16 aFlags = 0);
+   virtual ~nsHTMLTokenizer();
+ 
+   static PRUint32 GetFlags(const nsIContentSink* aSink);
+ 
+ protected:
+diff --git a/parser/htmlparser/src/nsLoggingSink.cpp b/parser/htmlparser/src/nsLoggingSink.cpp
+--- a/parser/htmlparser/src/nsLoggingSink.cpp
++++ b/parser/htmlparser/src/nsLoggingSink.cpp
+@@ -94,24 +94,24 @@ void WriteTabs(PRFileDesc * out,int aTab
+ }
+ 
+ NS_IMETHODIMP
+ nsLoggingSink::WillParse() {
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+-nsLoggingSink::WillBuildModel() {
++nsLoggingSink::WillBuildModel(nsDTDMode aDTDMode) {
+   
+   WriteTabs(mOutput,++mLevel);
+   PR_fprintf(mOutput, "<begin>\n");
+   
+   //proxy the call to the real sink if you have one.
+   if(mSink) {
+-    mSink->WillBuildModel();
++    mSink->WillBuildModel(aDTDMode);
+   }
+ 
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ nsLoggingSink::DidBuildModel() {
+   
+diff --git a/parser/htmlparser/src/nsLoggingSink.h b/parser/htmlparser/src/nsLoggingSink.h
+--- a/parser/htmlparser/src/nsLoggingSink.h
++++ b/parser/htmlparser/src/nsLoggingSink.h
+@@ -56,17 +56,17 @@ public:
+   }
+ 
+ 
+   // nsISupports
+   NS_DECL_ISUPPORTS
+ 
+   // nsIContentSink
+   NS_IMETHOD WillParse();
+-  NS_IMETHOD WillBuildModel();
++  NS_IMETHOD WillBuildModel(nsDTDMode aDTDMode);
+   NS_IMETHOD DidBuildModel();
+   NS_IMETHOD WillInterrupt();
+   NS_IMETHOD WillResume();
+   NS_IMETHOD SetParser(nsIParser* aParser);
+   NS_IMETHOD OpenContainer(const nsIParserNode& aNode);
+   NS_IMETHOD CloseContainer(const nsHTMLTag aTag);
+   NS_IMETHOD AddLeaf(const nsIParserNode& aNode);
+   NS_IMETHOD AddComment(const nsIParserNode& aNode);
+diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
+--- a/parser/htmlparser/src/nsParser.cpp
++++ b/parser/htmlparser/src/nsParser.cpp
+@@ -1010,31 +1010,16 @@ nsParser::SetContentSink(nsIContentSink*
+  */
+ NS_IMETHODIMP_(nsIContentSink*)
+ nsParser::GetContentSink()
+ {
+   return mSink;
+ }
+ 
+ /**
+- *  Retrieve parsemode from topmost parser context
+- *
+- *  @return  parsemode
+- */
+-NS_IMETHODIMP_(nsDTDMode)
+-nsParser::GetParseMode()
+-{
+-  if (mParserContext) {
+-    return mParserContext->mDTDMode;
+-  }
+-  NS_NOTREACHED("no parser context");
+-  return eDTDMode_unknown;
+-}
+-
+-/**
+  * Determine what DTD mode (and thus what layout nsCompatibility mode)
+  * to use for this document based on the first chunk of data received
+  * from the network (each parsercontext can have its own mode).  (No,
+  * this is not an optimal solution -- we really don't need to know until
+  * after we've received the DOCTYPE, and this could easily be part of
+  * the regular parsing process if the parser were designed in a way that
+  * made such modifications easy.)
+  */
+diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
+--- a/parser/htmlparser/src/nsParser.h
++++ b/parser/htmlparser/src/nsParser.h
+@@ -176,24 +176,16 @@ class nsParser : public nsIParser,
+          aCharset = mCharset;
+          aSource = mCharsetSource;
+     }
+ 
+ 
+     NS_IMETHOD_(void) SetParserFilter(nsIParserFilter* aFilter);
+ 
+     /**
+-     *  Retrieve the scanner from the topmost parser context
+-     *  
+-     *  @update  gess 6/9/98
+-     *  @return  ptr to scanner
+-     */
+-    NS_IMETHOD_(nsDTDMode) GetParseMode(void);
+-
+-    /**
+      * Cause parser to parse input from given URL 
+      * @update	gess5/11/98
+      * @param   aURL is a descriptor for source document
+      * @param   aListener is a listener to forward notifications to
+      * @return  TRUE if all went well -- FALSE otherwise
+      */
+     NS_IMETHOD Parse(nsIURI* aURL,
+                      nsIRequestObserver* aListener = nsnull,
+diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/nsViewSourceHTML.cpp
+--- a/parser/htmlparser/src/nsViewSourceHTML.cpp
++++ b/parser/htmlparser/src/nsViewSourceHTML.cpp
+@@ -307,30 +307,19 @@ nsresult CViewSourceHTML::WillBuildModel
+   }
+ 
+ 
+   if(eViewSource!=aParserContext.mParserCommand)
+     mDocType=ePlainText;
+   else mDocType=aParserContext.mDocType;
+ 
+   mLineNumber = 1;
+-  // Munge the DTD mode so that the document will be in standards mode even if
+-  // the original source was quirks.  The CONST_CAST is evil, but the other
+-  // options seem to be:
+-  // 1) Change the WillBuildModel signature to take an nsIParser so that we can
+-  //    push a new parser context right here.
+-  // 2) Make some assumptions about the exact class of mSink and get at the
+-  //    document that way.
+-  // #1 doesn't seem worth it, and #2 is even more evil, since we plan to reset
+-  // the DTD mode right back to what it was before, let's risk this.
+-  CParserContext& parserContext = const_cast<CParserContext&>(aParserContext);
+-  parserContext.mDTDMode = eDTDMode_full_standards;
+-  result = mSink->WillBuildModel();
+-  // And reset the DTD mode back to the right one
+-  parserContext.mDTDMode = mDTDMode;
++
++  result = mSink->WillBuildModel(GetMode());
++
+   START_TIMER();
+   return result;
+ }
+ 
+ /**
+   * The parser uses a code sandwich to wrap the parsing process. Before
+   * the process begins, WillBuildModel() is called. Afterwards the parser
+   * calls DidBuildModel().
+@@ -606,16 +595,23 @@ NS_IMETHODIMP_(void)
+ CViewSourceHTML::Terminate() {
+ }
+ 
+ NS_IMETHODIMP_(PRInt32)
+ CViewSourceHTML::GetType() {
+   return NS_IPARSER_FLAG_HTML;
+ }
+ 
++NS_IMETHODIMP_(nsDTDMode)
++CViewSourceHTML::GetMode() const
++{
++  return eDTDMode_full_standards; // lie, lie, lie
++}
++
++
+ /**
+  *
+  * @update  gess5/18/98
+  * @param
+  * @return
+  */
+ NS_IMETHODIMP CViewSourceHTML::WillResumeParse(nsIContentSink* aSink){
+   nsresult result = NS_OK;
+diff --git a/parser/xml/src/nsSAXXMLReader.cpp b/parser/xml/src/nsSAXXMLReader.cpp
+--- a/parser/xml/src/nsSAXXMLReader.cpp
++++ b/parser/xml/src/nsSAXXMLReader.cpp
+@@ -84,17 +84,17 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(
+ NS_INTERFACE_MAP_END
+ 
+ nsSAXXMLReader::nsSAXXMLReader() : mIsAsyncParse(PR_FALSE)
+ {
+ }
+ 
+ // nsIContentSink
+ NS_IMETHODIMP
+-nsSAXXMLReader::WillBuildModel()
++nsSAXXMLReader::WillBuildModel(nsDTDMode)
+ {
+   if (mContentHandler)
+     return mContentHandler->StartDocument();
+ 
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+diff --git a/parser/xml/src/nsSAXXMLReader.h b/parser/xml/src/nsSAXXMLReader.h
+--- a/parser/xml/src/nsSAXXMLReader.h
++++ b/parser/xml/src/nsSAXXMLReader.h
+@@ -72,17 +72,17 @@ public:
+   nsSAXXMLReader();
+ 
+   //nsIContentSink
+   NS_IMETHOD WillParse()
+   {
+     return NS_OK;
+   }
+ 
+-  NS_IMETHOD WillBuildModel();
++  NS_IMETHOD WillBuildModel(nsDTDMode aDTDMode);
+   NS_IMETHOD DidBuildModel();
+   NS_IMETHOD SetParser(nsIParser* aParser);
+   
+   NS_IMETHOD WillInterrupt()
+   {
+     return NS_OK;
+   }
+ 
+diff --git a/rdf/base/src/nsRDFContentSink.cpp b/rdf/base/src/nsRDFContentSink.cpp
+--- a/rdf/base/src/nsRDFContentSink.cpp
++++ b/rdf/base/src/nsRDFContentSink.cpp
+@@ -91,16 +91,17 @@
+ #include "rdf.h"
+ #include "rdfutil.h"
+ #include "nsReadableUtils.h"
+ #include "nsIExpatSink.h"
+ #include "nsCRT.h"
+ #include "nsIAtom.h"
+ #include "nsStaticAtom.h"
+ #include "nsIScriptError.h"
++#include "nsIDTD.h"
+ 
+ ////////////////////////////////////////////////////////////////////////
+ // XPCOM IIDs
+ 
+ static NS_DEFINE_IID(kIContentSinkIID,         NS_ICONTENT_SINK_IID); // XXX grr...
+ static NS_DEFINE_IID(kIExpatSinkIID,           NS_IEXPATSINK_IID);
+ static NS_DEFINE_IID(kIRDFServiceIID,          NS_IRDFSERVICE_IID);
+ static NS_DEFINE_IID(kISupportsIID,            NS_ISUPPORTS_IID);
+@@ -155,17 +156,17 @@ public:
+     virtual ~RDFContentSinkImpl();
+ 
+     // nsISupports
+     NS_DECL_ISUPPORTS
+     NS_DECL_NSIEXPATSINK
+ 
+     // nsIContentSink
+     NS_IMETHOD WillParse(void);
+-    NS_IMETHOD WillBuildModel(void);
++    NS_IMETHOD WillBuildModel(nsDTDMode aDTDMode);
+     NS_IMETHOD DidBuildModel(void);
+     NS_IMETHOD WillInterrupt(void);
+     NS_IMETHOD WillResume(void);
+     NS_IMETHOD SetParser(nsIParser* aParser);  
+     virtual void FlushPendingNotifications(mozFlushType aType) { }
+     NS_IMETHOD SetDocumentCharset(nsACString& aCharset) { return NS_OK; }
+     virtual nsISupports *GetTarget() { return nsnull; }
+ 
+@@ -609,17 +610,17 @@ RDFContentSinkImpl::ReportError(const PR
+ NS_IMETHODIMP 
+ RDFContentSinkImpl::WillParse(void)
+ {
+     return NS_OK;
+ }
+ 
+ 
+ NS_IMETHODIMP 
+-RDFContentSinkImpl::WillBuildModel(void)
++RDFContentSinkImpl::WillBuildModel(nsDTDMode)
+ {
+     if (mDataSource) {
+         nsCOMPtr<nsIRDFXMLSink> sink = do_QueryInterface(mDataSource);
+         if (sink) 
+             return sink->BeginLoad();
+     }
+     return NS_OK;
+ }

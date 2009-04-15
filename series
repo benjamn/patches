@@ -1,5 +1,7 @@
-bug-484107.diff
 htmltokenizer-getflags.diff
+dtdmode-simplifications.diff
+nsidtd-kill-resume-interrupt.diff
+parser-calls-sink-wbm-dbm.diff
 simplify-nsIDTD.diff
 divorce-parser-from-dtd.diff
 functor.diff

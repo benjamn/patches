@@ -1,7 +1,7 @@
 diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD.h
 --- a/parser/htmlparser/public/nsIDTD.h
 +++ b/parser/htmlparser/public/nsIDTD.h
-@@ -97,26 +97,28 @@ public:
+@@ -97,26 +97,35 @@ public:
                                nsIContentSink* aSink) = 0;
  
      /**
@@ -10,15 +10,26 @@ diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD
       * @param   anErrorCode - contains error code resulting from parse process
       * @return
       */
--    NS_IMETHOD DidBuildModel(nsresult anErrorCode, PRBool aNotifySink,
+-    NS_IMETHOD DidBuildModel(nsresult anErrorCode,
 -                             nsIParser* aParser) = 0;
-+    NS_IMETHOD DidBuildModel(nsresult anErrorCode, PRBool aNotifySink) = 0;
++    NS_IMETHOD DidBuildModel(nsresult anErrorCode) = 0;
  
      /**
-      * Called by the parser after the parsing process has concluded
-      * @update  gess5/18/98
-      * @param   anErrorCode - contains error code resulting from parse process
-      * @return
+-     * Called by the parser after the parsing process has concluded
+-     * @update  gess5/18/98
+-     * @param   anErrorCode - contains error code resulting from parse process
+-     * @return
++     * Called (possibly repeatedly) by the parser to parse tokens and construct
++     * the document model via the sink provided to WillBuildModel.
++     *
++     * @param   aTokenizer - tokenizer providing the token stream to be parsed
++     * @param   aCanInterrupt - informs the DTD whether the parser can handle
++     *                          interruptions of the model building process
++     * @param   aCountLines - informs the DTD whether to count newlines
++     *                        (not wanted, e.g., when handling document.write)
++     * @param   aCharsetPtr - address of an nsCString containing the charset
++     *                        that the DTD should use (pointer in case the DTD
++     *                        opts to ignore this parameter)
       */
 -    NS_IMETHOD BuildModel(nsIParser* aParser, nsITokenizer* aTokenizer) = 0;
 +    NS_IMETHOD BuildModel(nsITokenizer* aTokenizer,
@@ -27,31 +38,30 @@ diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD
 +                          const nsCString* aCharsetPtr) = 0;
  
      /**
-      * If the parse process gets interrupted midway, this method is
-      * called by the parser prior to resuming the process.
-      * @update  gess5/18/98
-      * @return ignored
+      * This method is called to determine whether or not a tag of one
+      * type can contain a tag of another type.
+      *
+      * @update  gess 3/25/98
+      * @param   aParent -- int tag of parent container
+      * @param   aChild -- int tag of child container
+@@ -154,16 +163,16 @@ public:
       */
-     NS_IMETHOD WillResumeParse() = 0;
-@@ -164,17 +166,17 @@ public:
- 
-     NS_IMETHOD_(PRInt32) GetType() = 0;
+     NS_IMETHOD_(nsDTDMode) GetMode() const = 0;
  };
  
  NS_DEFINE_STATIC_IID_ACCESSOR(nsIDTD, NS_IDTD_IID)
  
  #define NS_DECL_NSIDTD \
-     NS_IMETHOD WillBuildModel(const CParserContext& aParserContext, nsITokenizer* aTokenizer, nsIContentSink* aSink);\
--    NS_IMETHOD DidBuildModel(nsresult anErrorCode, PRBool aNotifySink, nsIParser* aParser);\
--    NS_IMETHOD BuildModel(nsIParser* aParser, nsITokenizer* aTokenizer);\
-+    NS_IMETHOD DidBuildModel(nsresult anErrorCode, PRBool aNotifySink);\
+     NS_IMETHOD WillBuildModel(  const CParserContext& aParserContext, nsITokenizer* aTokenizer, nsIContentSink* aSink);\
+-    NS_IMETHOD DidBuildModel(nsresult anErrorCode,nsIParser* aParser);\
+-    NS_IMETHOD BuildModel(nsIParser* aParser,nsITokenizer* aTokenizer);\
++    NS_IMETHOD DidBuildModel(nsresult anErrorCode);\
 +    NS_IMETHOD BuildModel(nsITokenizer* aTokenizer, PRBool aCanInterrupt, PRBool aCountLines, const nsCString* aCharsetPtr);\
-     NS_IMETHOD WillResumeParse();\
-     NS_IMETHOD WillInterruptParse();\
      NS_IMETHOD_(PRBool) CanContain(PRInt32 aParent,PRInt32 aChild) const;\
      NS_IMETHOD_(PRBool) IsContainer(PRInt32 aTag) const;\
      NS_IMETHOD_(void)  Terminate();\
-     NS_IMETHOD_(PRInt32) GetType();
+     NS_IMETHOD_(PRInt32) GetType();\
+     NS_IMETHOD_(nsDTDMode) GetMode() const;
  #endif /* nsIDTD_h___ */
 diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.cpp
 --- a/parser/htmlparser/src/CNavDTD.cpp
@@ -124,7 +134,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
      mOpenMapCount(0),
      mHeadContainerPosition(-1),
      mFlags(NS_DTD_FLAG_NONE)
-@@ -236,32 +225,34 @@ CNavDTD::WillBuildModel(const CParserCon
+@@ -229,32 +218,34 @@ CNavDTD::WillBuildModel(const CParserCon
      mFlags |= nsHTMLTokenizer::GetFlags(aSink);
  
    }
@@ -164,7 +174,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
             : result;
    }
  
-@@ -312,82 +303,78 @@ CNavDTD::BuildModel(nsIParser* aParser,
+@@ -305,81 +296,74 @@ CNavDTD::BuildModel(nsIParser* aParser,
    }
  
    while (NS_SUCCEEDED(result)) {
@@ -230,19 +240,19 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
 +  return BuildModel(mTokenizer, PR_FALSE, mCountLines, 0);
  }
  
- NS_IMETHODIMP
- CNavDTD::DidBuildModel(nsresult anErrorCode,
--                       PRBool aNotifySink,
+ nsresult
+-CNavDTD::DidBuildModel(nsresult anErrorCode,
 -                       nsIParser* aParser)
-+                       PRBool aNotifySink)
++CNavDTD::DidBuildModel(nsresult anErrorCode)
  {
-   if (!mSink) {
-     return NS_OK;
-   }
+-  if (!mSink) {
+-    return NS_OK;
+-  }
++  nsresult result = NS_OK;
  
-   nsresult result = NS_OK;
--  if (aParser && aNotifySink) {
-+  if (aNotifySink) {
+-  nsresult result = NS_OK;
+-  if (aParser) {
++  if (mSink) {
      if (NS_OK == anErrorCode) {
        if (!(mFlags & NS_DTD_FLAG_HAS_MAIN_CONTAINER)) {
          // This document is not a frameset document, however, it did not contain
@@ -260,7 +270,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
          // Keep track of the top index.
          PRInt32 topIndex = mBodyContext->mContextTopIndex;
          
-@@ -568,30 +555,30 @@ HasOpenTagOfType(PRInt32 aType, const ns
+@@ -561,30 +545,30 @@ HasOpenTagOfType(PRInt32 aType, const ns
        return PR_TRUE;
      }
    }
@@ -293,7 +303,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
      static eHTMLTags gLegalElements[] = {
        eHTMLTag_table, eHTMLTag_thead, eHTMLTag_tbody,
        eHTMLTag_tr, eHTMLTag_td, eHTMLTag_th, eHTMLTag_tfoot
-@@ -718,27 +705,25 @@ CNavDTD::HandleToken(CToken* aToken, nsI
+@@ -711,27 +695,25 @@ CNavDTD::HandleToken(CToken* aToken, nsI
                // end tag.
              }
  
@@ -322,7 +332,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
          result = HandleStartToken(theToken);
          break;
  
-@@ -796,17 +781,17 @@ CNavDTD::DidHandleStartTag(nsIParserNode
+@@ -789,17 +771,17 @@ CNavDTD::DidHandleStartTag(nsIParserNode
          // plain text doc (for which we pushed a PRE in CNavDTD::BuildModel).
  
          // XXX This code is incorrect in the face of misplaced <pre> and
@@ -341,7 +351,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
          }
        }
        break;
-@@ -1629,17 +1614,17 @@ CNavDTD::HandleEndToken(CToken* aToken)
+@@ -1622,17 +1604,17 @@ CNavDTD::HandleEndToken(CToken* aToken)
        {
          // This is special NAV-QUIRKS code that allows users to use </BR>, even
          // though that isn't a legitimate tag.
@@ -360,7 +370,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
      case eHTMLTag_html:
        StripWSFollowingTag(theChildTag, mTokenizer, mTokenAllocator,
                            mLineNumber);
-@@ -1724,21 +1709,21 @@ CNavDTD::HandleEndToken(CToken* aToken)
+@@ -1717,21 +1699,21 @@ CNavDTD::HandleEndToken(CToken* aToken)
                    // regular flow of HandleToken.
                    IF_HOLD(aToken);
                    mTokenizer->PushTokenFront(aToken);
@@ -384,7 +394,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
            if (result == NS_OK) {
              eHTMLTags theTarget =
                FindAutoCloseTargetForEndTag(theChildTag, *mBodyContext,
-@@ -1849,17 +1834,17 @@ CNavDTD::HandleSavedTokens(PRInt32 anInd
+@@ -1842,17 +1824,17 @@ CNavDTD::HandleSavedTokens(PRInt32 anInd
                continue;
              }
            }
@@ -403,7 +413,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
          // handling saved tokens, because the parser does not track forms on its
          // mBodyContext stack.
          CloseContainersTo(theTopIndex, mBodyContext->TagAt(theTopIndex),
-@@ -1916,17 +1901,17 @@ CNavDTD::HandleEntityToken(CToken* aToke
+@@ -1909,17 +1891,17 @@ CNavDTD::HandleEntityToken(CToken* aToke
      nsAutoString entityName;
      entityName.AssignLiteral("&");
      entityName.Append(theStr);
@@ -422,7 +432,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
  
    PRInt32 theParentContains = -1;
    if (CanOmit(theParentTag, eHTMLTag_entity, theParentContains)) {
-@@ -2028,17 +2013,17 @@ CNavDTD::HandleProcessingInstructionToke
+@@ -2021,17 +2003,17 @@ CNavDTD::HandleProcessingInstructionToke
  nsresult
  CNavDTD::HandleDocTypeDeclToken(CToken* aToken)
  {
@@ -441,7 +451,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
    if (pos != kNotFound) {
      // First remove '>' from the end.
      docTypeStr.Cut(pos, len - pos);
-@@ -2088,17 +2073,17 @@ CNavDTD::CollectAttributes(nsIParserNode
+@@ -2081,17 +2063,17 @@ CNavDTD::CollectAttributes(nsIParserNode
          if (theType != eToken_attribute) {
            // If you're here then it means that the token does not
            // belong to this node. Put the token back into the tokenizer
@@ -460,7 +470,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
            // add it to the node.
            if (!((CAttributeToken*)theToken)->GetKey().IsEmpty()) {
              aNode->AddAttribute(theToken);
-@@ -3127,17 +3112,17 @@ CNavDTD::CreateContextStackFor(eHTMLTags
+@@ -3120,11 +3102,11 @@ CNavDTD::CreateContextStackFor(eHTMLTags
  
    // Now, build up the stack according to the tags.
    while (theLen) {
@@ -473,12 +483,6 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
 +    HandleToken(theToken);
    }
  }
- 
- NS_IMETHODIMP
- CNavDTD::WillResumeParse()
- {
-   STOP_TIMER();
-   MOZ_TIMER_DEBUGLOG(("Stop: Parse Time: CNavDTD::WillResumeParse(), this=%p\n", this));
 diff --git a/parser/htmlparser/src/CNavDTD.h b/parser/htmlparser/src/CNavDTD.h
 --- a/parser/htmlparser/src/CNavDTD.h
 +++ b/parser/htmlparser/src/CNavDTD.h
@@ -575,12 +579,12 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
  #include "nsIContentSink.h"
  #include "nsParserMsgUtils.h"
  #include "nsIURL.h"
-@@ -1297,26 +1296,27 @@ nsExpatDriver::WillBuildModel(const CPar
+@@ -1297,25 +1296,26 @@ nsExpatDriver::WillBuildModel(const CPar
  
    // XML must detect invalid character convertion
    aParserContext.mScanner->OverrideReplacementCharacter(0xffff);
  
-   return aSink->WillBuildModel();
+   return mInternalState;
  }
  
  NS_IMETHODIMP
@@ -595,19 +599,18 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
  }
  
  NS_IMETHODIMP
- nsExpatDriver::DidBuildModel(nsresult anErrorCode,
--                             PRBool aNotifySink,
+-nsExpatDriver::DidBuildModel(nsresult anErrorCode,
 -                             nsIParser* aParser)
-+                             PRBool aNotifySink)
++nsExpatDriver::DidBuildModel(nsresult anErrorCode)
  {
-   NS_ASSERTION(mSink == nsCOMPtr<nsIExpatSink>(do_QueryInterface(mOriginalSink)),
-                "In nsExpatDriver::DidBuildModel: mOriginalSink not the same object as mSink?");
-   // Check for mOriginalSink is intentional. This would make sure
-   // that DidBuildModel() is called only once on the sink.
-   nsresult result = NS_OK;
-   if (mOriginalSink) {
-     result = mOriginalSink->DidBuildModel();
-@@ -1426,17 +1426,17 @@ nsExpatDriver::PrependTokens(nsDeque& aD
+   mOriginalSink = nsnull;
+   mSink = nsnull;
+   mExtendedSink = nsnull;
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+@@ -1405,17 +1405,17 @@ nsExpatDriver::PrependTokens(nsDeque& aD
  
  NS_IMETHODIMP
  nsExpatDriver::CopyState(nsITokenizer* aTokenizer)
@@ -651,7 +654,7 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.h b/parser/htmlparser/src/nsExp
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -1534,17 +1534,17 @@ nsParser::DidBuildModel(nsresult anError
+@@ -1521,17 +1521,17 @@ nsParser::DidBuildModel(nsresult anError
  
    if (IsComplete()) {
      if (mParserContext && !mParserContext->mPrevContext) {
@@ -660,17 +663,17 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
        PRBool terminated = mInternalState == NS_ERROR_HTMLPARSER_STOPPARSING;
        if (mDTD && mSink &&
            mSink->ReadyToCallDidBuildModel(terminated)) {
--        result = mDTD->DidBuildModel(anErrorCode, PR_TRUE, this);
-+        result = mDTD->DidBuildModel(anErrorCode, PR_TRUE);
+-        nsresult dtdResult =  mDTD->DidBuildModel(anErrorCode,this),
++        nsresult dtdResult =  mDTD->DidBuildModel(anErrorCode),
+                 sinkResult = mSink->DidBuildModel();
+         result = NS_FAILED(sinkResult) ? sinkResult : dtdResult;
        }
  
        //Ref. to bug 61462.
        mParserContext->mRequest = 0;
      }
    }
- 
-   return result;
-@@ -2367,17 +2367,23 @@ nsParser::BuildModel()
+@@ -2351,17 +2351,23 @@ nsParser::BuildModel()
    nsresult result = NS_OK;
    if (mParserContext) {
      result = mParserContext->GetTokenizer(mDTD, mSink, theTokenizer);
@@ -775,7 +778,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
    * calls DidBuildModel().
    * @update rickg 03.20.2000
    * @param  aParserContext
-@@ -334,22 +322,24 @@ CViewSourceHTML::WillBuildModel(const CP
+@@ -322,22 +310,24 @@ CViewSourceHTML::WillBuildModel(const CP
  /**
    * The parser uses a code sandwich to wrap the parsing process. Before
    * the process begins, WillBuildModel() is called. Afterwards the parser
@@ -803,7 +806,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
      if(!mHasOpenRoot) {
        // For the stack-allocated tokens below, it's safe to pass a null
        // token allocator, because there are no attributes on the tokens.
-@@ -451,24 +441,30 @@ NS_IMETHODIMP CViewSourceHTML::BuildMode
+@@ -439,24 +429,30 @@ NS_IMETHODIMP CViewSourceHTML::BuildMode
            } else {
              result = NS_ERROR_OUT_OF_MEMORY;
            }
@@ -837,7 +840,8 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
          }
        }
        else break;
-@@ -546,52 +542,45 @@ void CViewSourceHTML::AddAttrToNode(nsCP
+@@ -533,51 +529,44 @@ void CViewSourceHTML::AddAttrToNode(nsCP
+ }
  
  /**
   *
@@ -845,10 +849,9 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
   * @param
   * @return
   */
- NS_IMETHODIMP CViewSourceHTML::DidBuildModel(nsresult anErrorCode,
--                                             PRBool aNotifySink,
+-NS_IMETHODIMP CViewSourceHTML::DidBuildModel(nsresult anErrorCode,
 -                                             nsIParser* aParser)
-+                                             PRBool aNotifySink)
++NS_IMETHODIMP CViewSourceHTML::DidBuildModel(nsresult anErrorCode)
  {
    nsresult result= NS_OK;
  
@@ -861,9 +864,9 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
 -    STOP_TIMER();
 -
 -    mSink=(nsIHTMLContentSink*)aParser->GetContentSink();
--    if((aNotifySink) && (mSink)) {
+-    if (mSink) {
 -        //now let's close automatically auto-opened containers...
-+  if((aNotifySink) && (mSink)) {
++  if (mSink) {
 +      //now let's close automatically auto-opened containers...
  
  #ifdef DUMP_TO_FILE
@@ -886,13 +889,11 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
 -        mSink->CloseContainer(eHTMLTag_body);
 -        mSink->CloseContainer(eHTMLTag_html);
 -      }
--      result = mSink->DidBuildModel();
 +    if(ePlainText!=mDocType) {
 +      mSink->CloseContainer(eHTMLTag_pre);
 +      mSink->CloseContainer(eHTMLTag_body);
 +      mSink->CloseContainer(eHTMLTag_html);
      }
-+    result = mSink->DidBuildModel();
 +  }
  
 -    START_TIMER();
@@ -907,7 +908,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
    printf("\n");
  #endif
  
-@@ -747,16 +736,18 @@ nsresult CViewSourceHTML::WriteTag(PRInt
+@@ -710,16 +699,18 @@ nsresult CViewSourceHTML::WriteTag(PRInt
    nsresult result=NS_OK;
  
    // adjust line number to what it will be after we finish writing this tag
@@ -926,7 +927,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
      return NS_ERROR_FAILURE;
  
    // Highlight all parts of all erroneous tags.
-@@ -867,35 +858,34 @@ nsresult CViewSourceHTML::WriteTag(PRInt
+@@ -830,35 +821,34 @@ nsresult CViewSourceHTML::WriteTag(PRInt
  
  /**
   *
@@ -965,7 +966,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
      case eToken_end:
        {
          const nsSubstring& endValue = aToken->GetStringValue();
-@@ -1080,31 +1070,26 @@ void CViewSourceHTML::WriteHrefAttribute
+@@ -1043,31 +1033,26 @@ void CViewSourceHTML::WriteHrefAttribute
  nsresult CViewSourceHTML::CreateViewSourceURL(const nsAString& linkUrl,
                                                nsString& viewSourceUrl) {
    nsCOMPtr<nsIURI> baseURI;
@@ -998,7 +999,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
  
    // URLs that execute script (e.g. "javascript:" URLs) should just be
    // ignored.  There's nothing reasonable we can do with them, and allowing
-@@ -1232,24 +1217,19 @@ nsresult CViewSourceHTML::GetBaseURI(nsI
+@@ -1195,24 +1180,19 @@ nsresult CViewSourceHTML::GetBaseURI(nsI
    if (!mBaseURI) {
      rv = SetBaseURI(mFilename);
    }

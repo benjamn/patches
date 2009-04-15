@@ -80,7 +80,7 @@ diff --git a/parser/htmlparser/public/nsITokenizer.h b/parser/htmlparser/public/
 diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.cpp
 --- a/parser/htmlparser/src/CNavDTD.cpp
 +++ b/parser/htmlparser/src/CNavDTD.cpp
-@@ -183,73 +183,83 @@ CNavDTD::~CNavDTD()
+@@ -183,73 +183,79 @@ CNavDTD::~CNavDTD()
      nsLoggingSink *theLogSink = GetLoggingSink();
      if (mSink == theLogSink) {
        theLogSink->ReleaseProxySink();
@@ -89,10 +89,6 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
  #endif
  }
  
-+FIXME
-+WillBuildModel really should not store the tokenizer.
-+It should return a fresh tokenizer (if the parser context does not already
-+have one) which can be passed to BuildModel.
 +
  nsresult
  CNavDTD::WillBuildModel(const CParserContext& aParserContext,
@@ -452,7 +448,26 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
   * have to check for a prev. context before closing out the DTD/sink.
   */
  nsresult
-@@ -2227,16 +2231,19 @@ nsParser::ResumeParse(PRBool allowIterat
+@@ -1576,16 +1580,18 @@ nsParser::SpeculativelyParse()
+  * @param   ptr to new context
+  */
+ void
+ nsParser::PushContext(CParserContext& aContext)
+ {
+   NS_ASSERTION(aContext.mPrevContext == mParserContext,
+                "Trying to push a context whose previous context differs from "
+                "the current parser context.");
++  if (!aContext.mPrevContext)
++    mDTD = FindSuitableDTD(*aContext);
+   mParserContext = &aContext;
+ }
+ 
+ /**
+  * This method pops the topmost context off the stack,
+  * returning it to the user. The next context  (if any)
+  * becomes the current context.
+  * @update	gess7/22/98
+@@ -2227,16 +2233,19 @@ nsParser::ResumeParse(PRBool allowIterat
                   "Bad races happening, expect to crash!");
  
      result = WillBuildModel(mParserContext->mScanner->GetFilename());
@@ -472,7 +487,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
          if (!mUnusedInput.IsEmpty() && mParserContext->mScanner) {
            // -- Ref: Bug# 22485 --
            // Insert the unused input into the source buffer
-@@ -2245,17 +2252,18 @@ nsParser::ResumeParse(PRBool allowIterat
+@@ -2245,17 +2254,18 @@ nsParser::ResumeParse(PRBool allowIterat
            mParserContext->mScanner->UngetReadable(mUnusedInput);
            mUnusedInput.Truncate(0);
          }
@@ -492,7 +507,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
          }
          SetCanInterrupt(PR_FALSE);
  
-@@ -2355,30 +2363,29 @@ nsParser::ResumeParse(PRBool allowIterat
+@@ -2355,30 +2365,29 @@ nsParser::ResumeParse(PRBool allowIterat
  
  /**
   *  This is where we loop over the tokens created in the
@@ -530,7 +545,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  /*******************************************************************
    These methods are used to talk to the netlib system...
   *******************************************************************/
-@@ -2964,81 +2971,57 @@ nsParser::OnStopRequest(nsIRequest *requ
+@@ -2964,81 +2973,57 @@ nsParser::OnStopRequest(nsIRequest *requ
                                                                   status);
      }
    }
@@ -624,7 +639,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
          if (NS_ERROR_HTMLPARSER_STOPPARSING == result) {
            killSink = PR_TRUE;
            result = Terminate();
-@@ -3048,49 +3031,31 @@ nsresult nsParser::Tokenize(PRBool aIsFi
+@@ -3048,49 +3033,31 @@ nsresult nsParser::Tokenize(PRBool aIsFi
          // I added the extra test of NS_PARSER_FLAG_OBSERVERS_ENABLED to fix Bug# 23931.
          // Flush tokens on seeing </SCRIPT> -- Ref: Bug# 22485 --
          // Also remember to update the marked position.
