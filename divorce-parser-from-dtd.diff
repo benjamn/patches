@@ -216,7 +216,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
    return result;
  }
  
- nsresult
+ NS_IMETHODIMP
  CNavDTD::BuildNeglectedTarget(eHTMLTags aTarget,
 -                              eHTMLTokenTypes aType,
 -                              nsIParser* aParser)
@@ -654,7 +654,7 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.h b/parser/htmlparser/src/nsExp
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -1521,17 +1521,17 @@ nsParser::DidBuildModel(nsresult anError
+@@ -1520,17 +1520,17 @@ nsParser::DidBuildModel(nsresult anError
  
    if (IsComplete()) {
      if (mParserContext && !mParserContext->mPrevContext) {
@@ -673,7 +673,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
        mParserContext->mRequest = 0;
      }
    }
-@@ -2351,17 +2351,23 @@ nsParser::BuildModel()
+@@ -2337,17 +2337,23 @@ nsParser::BuildModel()
    nsresult result = NS_OK;
    if (mParserContext) {
      result = mParserContext->GetTokenizer(mDTD, mSink, theTokenizer);

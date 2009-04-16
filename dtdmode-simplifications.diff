@@ -104,7 +104,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    virtual void FlushPendingNotifications(mozFlushType aType);
    NS_IMETHOD SetDocumentCharset(nsACString& aCharset);
    virtual nsISupports *GetTarget();
-@@ -1742,38 +1742,31 @@ HTMLContentSink::Init(nsIDocument* aDoc,
+@@ -1743,38 +1743,31 @@ HTMLContentSink::Init(nsIDocument* aDoc,
  
  NS_IMETHODIMP
  HTMLContentSink::WillParse(void)
@@ -497,8 +497,8 @@ diff --git a/parser/htmlparser/public/nsIContentSink.h b/parser/htmlparser/publi
  
 +// 5530ebaf-f9fd-44bf-b6b5-e46f3b67eb3d
  #define NS_ICONTENT_SINK_IID \
--{ 0xcfa3643b, 0xee60, 0x4bf0, \
--  { 0xbc, 0x83, 0x49, 0x95, 0xdb, 0xbc, 0xda, 0x75 } }
+-{ 0x6fd3c94f, 0xaf81, 0x4792, \
+-  { 0xa3, 0xe4, 0x1f, 0xb9, 0x40, 0xb6, 0x9c, 0x3a } }
 +{ 0x5530ebaf, 0xf9fd, 0x44bf, \
 +  { 0xb6, 0xb5, 0xe4, 0x6f, 0x3b, 0x67, 0xeb, 0x3d } }
  
@@ -588,7 +588,7 @@ diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD
 diff --git a/parser/htmlparser/public/nsIParser.h b/parser/htmlparser/public/nsIParser.h
 --- a/parser/htmlparser/public/nsIParser.h
 +++ b/parser/htmlparser/public/nsIParser.h
-@@ -260,25 +260,16 @@ class nsIParser : public nsISupports {
+@@ -261,25 +261,16 @@ class nsIParser : public nsISupports {
      /**
       * This method gets called when the tokens have been consumed, and it's time
       * to build the model via the content sink.
@@ -803,7 +803,7 @@ diff --git a/parser/htmlparser/src/nsLoggingSink.h b/parser/htmlparser/src/nsLog
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -1010,31 +1010,16 @@ nsParser::SetContentSink(nsIContentSink*
+@@ -1009,31 +1009,16 @@ nsParser::SetContentSink(nsIContentSink*
   */
  NS_IMETHODIMP_(nsIContentSink*)
  nsParser::GetContentSink()
