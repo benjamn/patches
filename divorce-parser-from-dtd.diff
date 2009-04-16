@@ -216,7 +216,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
    return result;
  }
  
- NS_IMETHODIMP
+ nsresult
  CNavDTD::BuildNeglectedTarget(eHTMLTags aTarget,
 -                              eHTMLTokenTypes aType,
 -                              nsIParser* aParser)
@@ -240,7 +240,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
 +  return BuildModel(mTokenizer, PR_FALSE, mCountLines, 0);
  }
  
- nsresult
+ NS_IMETHODIMP
 -CNavDTD::DidBuildModel(nsresult anErrorCode,
 -                       nsIParser* aParser)
 +CNavDTD::DidBuildModel(nsresult anErrorCode)

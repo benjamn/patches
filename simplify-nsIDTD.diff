@@ -140,17 +140,13 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
  
    if (!aTokenizer || !aParser) {
      return NS_OK;
-@@ -337,53 +335,51 @@ CNavDTD::BuildModel(nsIParser* aParser,
-       }
-     }
-   }
+@@ -340,50 +338,48 @@ CNavDTD::BuildModel(nsIParser* aParser,
  
    mTokenizer = oldTokenizer;
    return result;
  }
  
--nsresult
-+NS_IMETHODIMP
+ nsresult
  CNavDTD::BuildNeglectedTarget(eHTMLTags aTarget,
                                eHTMLTokenTypes aType,
 -                              nsIParser* aParser,
@@ -170,7 +166,8 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
 +  return BuildModel(aParser, mTokenizer);
  }
  
- nsresult
+-nsresult
++NS_IMETHODIMP
  CNavDTD::DidBuildModel(nsresult anErrorCode,
 -                       nsIParser* aParser,
 -                       nsIContentSink* aSink)
