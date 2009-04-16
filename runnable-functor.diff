@@ -1,38 +1,63 @@
 diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 --- a/xpcom/glue/Functor.h
 +++ b/xpcom/glue/Functor.h
-@@ -44,6 +44,7 @@
+@@ -38,16 +38,17 @@
+ 
+ #ifndef Functor_h__
+ #define Functor_h__
+ 
+ #include "nsISupports.h"
  #include "nsIRunnable.h"
  #include "nsAutoPtr.h"
  #include "TList.h"
-+#include "nsRunnableFunctor.h"
++#include "RunnableFunctor.h"
  
  /**
   * For an overview of Functor usage, see bug 486440.
-@@ -203,6 +204,10 @@
+  *
+  * This implementation was inspired by Andrei Alexandrescu's book
+  *
+  *   Modern C++ Design: Generic Programming and Design Patterns Applied,
+  *
+@@ -204,16 +205,20 @@ public:
+ 
+   EXTRACT_TYPEDEFS(Params)
+ 
+ public:
+   Functor(const Functor& f) : mImpl(f.mImpl) {}
    Functor(ImplType* impl)   : mImpl(impl) {}
   ~Functor() {}
  
-+  nsRefPtr<nsRunnableFunctor<Result, Functor> >
++  nsRefPtr<RunnableFunctor<Result, Functor> >
 +  proxy(nsIThread* target,
 +        PRUint32 flags = NS_DISPATCH_SYNC);
 +
    template <typename Callable>
    static Functor callable(Callable c) {
      return Functor(new CallableHandler<Functor, Callable>(c));
-@@ -638,4 +643,22 @@
+   }
+ 
+   template <typename Method>
+   static Functor method(Method m) {
+     return Functor(new MethodHandler<Functor, Method>(m));
+@@ -639,9 +644,27 @@ template <typename R, typename P0, typen
+ Functor<R, TLIST9(P0, P1, P2, P3, P4, P5, P6, P7, P8)>
+ functor(R (*f)(P0, P1, P2, P3, P4, P5, P6, P7, P8)) {
+   return Functor<R, TLIST9(P0, P1, P2, P3, P4, P5, P6, P7, P8)>::callable(f);
+ }
+ 
  // [[[end]]]
  
  
 +template <typename Result, class Params>
-+nsRefPtr<nsRunnableFunctor<Result, Functor<Result, Params> > >
++nsRefPtr<RunnableFunctor<Result, Functor<Result, Params> > >
 +Functor<Result, Params>::proxy(nsIThread* target, PRUint32 flags)
 +{
 +  static nsIThread* mainThread = nsnull;
 +  if (!target && (mainThread || NS_SUCCEEDED(NS_GetMainThread(&mainThread))))
 +      target = mainThread;
 +
-+  typedef nsRunnableFunctor<Result, Functor> Event;
++  typedef RunnableFunctor<Result, Functor> Event;
 +  nsRefPtr<Event> event(new Event(*this));
 +
 +  PRBool dispatched = target && NS_SUCCEEDED(target->Dispatch(event, flags));
@@ -46,21 +71,31 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
-@@ -126,6 +126,7 @@
+@@ -120,16 +120,17 @@ SDK_HEADERS = \
+ 		nsDeque.h \
+ 		$(NULL)
+ 
+ EXPORTS = \
+ 		nsThreadUtils.h \
+ 		nsProxyRelease.h \
  		nsXPTCUtils.h \
- 		ThreadsafeSupports.h \
  		TList.h \
-+		nsRunnableFunctor.h \
++		RunnableFunctor.h \
  		Functor.h \
  		Bind.h \
  		$(NULL)
-diff --git a/xpcom/glue/nsRunnableFunctor.h b/xpcom/glue/nsRunnableFunctor.h
+ 
+ SDK_LIBRARY     =                        \
+ 		$(LIB_PREFIX)xpcomglue_s.$(LIB_SUFFIX) \
+ 		$(NULL)
+ 
+diff --git a/xpcom/glue/RunnableFunctor.h b/xpcom/glue/RunnableFunctor.h
 new file mode 100644
 --- /dev/null
-+++ b/xpcom/glue/nsRunnableFunctor.h
-@@ -0,0 +1,93 @@
-+#ifndef nsRunnableFunctor_h__
-+#define nsRunnableFunctor_h__
++++ b/xpcom/glue/RunnableFunctor.h
+@@ -0,0 +1,88 @@
++#ifndef RunnableFunctor_h__
++#define RunnableFunctor_h__
 +
 +#include "nsISupports.h"
 +#include "nsAutoPtr.h"
@@ -68,19 +103,24 @@ new file mode 100644
 +#include "nsIEventTarget.h"
 +#include "nsThreadUtils.h"
 +#include "nsProxyRelease.h"
-+#include "ThreadsafeSupports.h"
 +
-+typedef ThreadsafeSupports<nsIRunnable>
-+        ThreadsafeRunnable;
++class RunnableSupports : public nsIRunnable {
++  NS_DECL_ISUPPORTS
++protected:
++  virtual ~RunnableSupports() {}
++};
++inline NS_IMPL_THREADSAFE_ADDREF(RunnableSupports)
++inline NS_IMPL_THREADSAFE_RELEASE(RunnableSupports)
++inline NS_IMPL_THREADSAFE_QUERY_INTERFACE1(RunnableSupports, nsIRunnable)
 +
-+class nsARunnableFunctor
-+  : public ThreadsafeRunnable
++class AbstractRunnableFunctor
++  : public RunnableSupports
 +{
 +  PRMonitor* const mMon;
 +  PRBool mRun;
 +public:
-+  nsARunnableFunctor()
-+    : mMon(nsAutoMonitor::NewMonitor("nsARunnableFunctor"))
++  AbstractRunnableFunctor()
++    : mMon(nsAutoMonitor::NewMonitor("AbstractRunnableFunctor"))
 +    , mRun(PR_FALSE)
 +  {}
 +  void Wait()
@@ -89,18 +129,8 @@ new file mode 100644
 +    if (!mRun)
 +      mon.Wait();
 +  }
-+  NS_IMETHOD_(nsrefcnt) Release()
-+  {
-+    if (NS_IsMainThread())
-+      return ThreadsafeRunnable::Release();
-+    nsIThread* mainThread = nsnull;
-+    NS_GetMainThread(&mainThread);
-+    if (mainThread)
-+      NS_ProxyRelease(mainThread, this);
-+    return 1;
-+  }
 +protected:
-+  ~nsARunnableFunctor()
++  ~AbstractRunnableFunctor()
 +  {
 +    nsAutoMonitor::DestroyMonitor(mMon);
 +  }
@@ -114,18 +144,18 @@ new file mode 100644
 +};
 +
 +template <typename Result, typename Functor>
-+class nsRunnableFunctor
-+  : public nsARunnableFunctor
++class RunnableFunctor
++  : public AbstractRunnableFunctor
 +{
 +  Result mResult;
 +  Functor mFunctor;
 +public:
-+  nsRunnableFunctor(Functor functor)
++  RunnableFunctor(Functor functor)
 +    : mFunctor(functor)
 +  {}
 +  Result& Wait()
 +  {
-+    nsARunnableFunctor::Wait();
++    AbstractRunnableFunctor::Wait();
 +    return mResult;
 +  }
 +  NS_IMETHOD Run()
@@ -136,12 +166,12 @@ new file mode 100644
 +};
 +
 +template <typename Functor>
-+class nsRunnableFunctor<void, Functor>
-+  : public nsARunnableFunctor
++class RunnableFunctor<void, Functor>
++  : public AbstractRunnableFunctor
 +{
 +  Functor mFunctor;
 +public:
-+  nsRunnableFunctor(Functor functor)
++  RunnableFunctor(Functor functor)
 +    : mFunctor(functor)
 +  {}
 +  NS_IMETHOD Run()
@@ -155,7 +185,12 @@ new file mode 100644
 diff --git a/xpcom/tests/Makefile.in b/xpcom/tests/Makefile.in
 --- a/xpcom/tests/Makefile.in
 +++ b/xpcom/tests/Makefile.in
-@@ -74,6 +74,7 @@
+@@ -69,16 +69,17 @@ CPPSRCS		= \
+ 		TestRegistrationOrder.cpp \
+ 		TestThreadPoolListener.cpp \
+ 		TestTimers.cpp \
+ 		TestOOM.cpp \
+ 		TestBlockingProcess.cpp \
  		TestQuickReturn.cpp \
  		TestArguments.cpp \
  		TestFunctor.cpp \
@@ -163,14 +198,20 @@ diff --git a/xpcom/tests/Makefile.in b/xpcom/tests/Makefile.in
  		$(NULL)
  
  ifndef MOZ_ENABLE_LIBXUL
+ CPPSRCS += \
+ 		TestAtoms.cpp \
+ 		TestPermanentAtoms.cpp \
+ 		$(NULL)
+ endif
 diff --git a/xpcom/tests/TestRunnableFunctor.cpp b/xpcom/tests/TestRunnableFunctor.cpp
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/TestRunnableFunctor.cpp
-@@ -0,0 +1,36 @@
+@@ -0,0 +1,37 @@
 +#include <iostream>
 +#include "nsAutoPtr.h"
 +#include "Bind.h"
++#include "RunnableFunctor.h"
 +
 +int one() { return 1; }
 +int plus_two(int x) { return x + 2; }
@@ -182,7 +223,7 @@ new file mode 100644
 +
 +void test() {
 +  typedef Functor<int, TLIST0()> ftype;
-+  typedef nsRunnableFunctor<int, ftype> rftype;
++  typedef RunnableFunctor<int, ftype> rftype;
 +
 +  ftype f1 = functor(&one);
 +  ftype f5 = BIND1(&plus_two, 3);

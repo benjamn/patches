@@ -1,7 +1,7 @@
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -2739,73 +2739,46 @@ nsParser::DetectMetaTag(const char* aByt
+@@ -2729,73 +2729,46 @@ nsParser::DetectMetaTag(const char* aByt
  
      // Nothing specified as charset, continue next loop
      currPos = tagEnd;
@@ -89,7 +89,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
              if (cacheDescriptor) {
  #ifdef DEBUG
                nsresult rv =
-@@ -2814,40 +2787,39 @@ ParserWriteFunc(nsIInputStream* in,
+@@ -2804,41 +2777,40 @@ ParserWriteFunc(nsIInputStream* in,
                                                      guess.get());
                NS_ASSERTION(NS_SUCCEEDED(rv),"cannot SetMetaDataElement");
              }
@@ -122,7 +122,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
                    "Must have a buffered input stream");
  
    nsresult rv = NS_OK;
-+
+ 
 +  char *data = new char[aLength + 1];
 +  PRUint32 totalRead;
 +  rv = pIStream->Read(data, aLength, &totalRead);
@@ -131,7 +131,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +    return rv;
 +  }
 +  data[aLength] = 0;
- 
++
    CParserContext *theContext = mParserContext;
  
    while (theContext && theContext->mRequest != request) {
@@ -139,7 +139,8 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    if (theContext) {
-@@ -2861,40 +2833,35 @@ nsParser::OnDataAvailable(nsIRequest *re
+     theContext->mStreamListenerState = eOnDataAvail;
+@@ -2851,40 +2823,35 @@ nsParser::OnDataAvailable(nsIRequest *re
      if (eInvalidDetect == theContext->mAutoDetectStatus) {
        if (theContext->mScanner) {
          nsScannerIterator iter;
@@ -171,7 +172,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
      // Don't bother to start parsing until we've seen some
      // non-whitespace data
-     if (mScriptsExecuting == 0 &&
+     if (!IsScriptExecuting() &&
          theContext->mScanner->FirstNonWhitespacePosition() >= 0) {
        if (mSink) {
          mSink->WillParse();

@@ -59,7 +59,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  class HTMLContentSink : public nsContentSink,
  #ifdef DEBUG
                          public nsIDebugDumpContent,
-@@ -229,16 +251,18 @@ protected:
+@@ -230,16 +252,18 @@ protected:
  #ifdef NS_DEBUG
    void SinkTraceNode(PRUint32 aBit,
                       const char* aMsg,
@@ -78,7 +78,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    nsGenericHTMLElement* mRoot;
    nsGenericHTMLElement* mBody;
    nsRefPtr<nsGenericHTMLElement> mFrameset;
-@@ -1627,16 +1651,17 @@ IsScriptEnabled(nsIDocument *aDoc, nsIDo
+@@ -1628,16 +1652,17 @@ IsScriptEnabled(nsIDocument *aDoc, nsIDo
  nsresult
  HTMLContentSink::Init(nsIDocument* aDoc,
                        nsIURI* aURI,
@@ -96,7 +96,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  
    nsresult rv = nsContentSink::Init(aDoc, aURI, aContainer, aChannel);
    if (NS_FAILED(rv)) {
-@@ -1738,22 +1763,25 @@ HTMLContentSink::Init(nsIDocument* aDoc,
+@@ -1739,22 +1764,25 @@ HTMLContentSink::Init(nsIDocument* aDoc,
    MOZ_TIMER_STOP(mWatch);
  
    return NS_OK;
@@ -110,19 +110,19 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  }
  
  NS_IMETHODIMP
- HTMLContentSink::WillBuildModel(void)
+ HTMLContentSink::WillBuildModel(nsDTDMode aDTDMode)
  {
 +  TRIVIAL_PROXY_SYNC(WillBuildModel);
 +
    WillBuildModelImpl();
+ 
    if (mHTMLDocument) {
-     NS_ASSERTION(mParser, "no parser");
      nsCompatibility mode = eCompatibility_NavQuirks;
-     if (mParser) {
-       nsDTDMode dtdMode = mParser->GetParseMode();
-       switch (dtdMode) {
-         case eDTDMode_full_standards:
-@@ -1777,16 +1805,18 @@ HTMLContentSink::WillBuildModel(void)
+     switch (aDTDMode) {
+       case eDTDMode_full_standards:
+         mode = eCompatibility_FullStandards;
+         break;
+@@ -1771,16 +1799,18 @@ HTMLContentSink::WillBuildModel(nsDTDMod
    mDocument->BeginLoad();
  
    return NS_OK;
@@ -141,7 +141,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    MOZ_TIMER_LOG(("Content creation time (this=%p): ", this));
    MOZ_TIMER_PRINT(mWatch);
  #endif
-@@ -1841,30 +1871,39 @@ PRBool
+@@ -1835,30 +1865,39 @@ PRBool
  HTMLContentSink::ReadyToCallDidBuildModel(PRBool aTerminated)
  {
    return ReadyToCallDidBuildModelImpl(aTerminated);
@@ -181,7 +181,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    SinkContext* sc = new SinkContext(this);
    if (!sc) {
      MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::BeginContext()\n"));
-@@ -1913,16 +1952,20 @@ HTMLContentSink::BeginContext(PRInt32 aP
+@@ -1907,16 +1946,20 @@ HTMLContentSink::BeginContext(PRInt32 aP
    MOZ_TIMER_STOP(mWatch);
  
    return NS_OK;
@@ -202,7 +202,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    SinkContext* sc = mContextStack.ElementAt(n);
  
    const SinkContext::Node &bottom = mCurrentContext->mStack[0];
-@@ -2003,16 +2046,18 @@ HTMLContentSink::CloseHTML()
+@@ -1997,16 +2040,18 @@ HTMLContentSink::CloseHTML()
    MOZ_TIMER_STOP(mWatch);
  
    return NS_OK;
@@ -221,7 +221,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::OpenHead()\n"));
    MOZ_TIMER_STOP(mWatch);
  
-@@ -2295,32 +2340,39 @@ HTMLContentSink::CloseFrameset()
+@@ -2289,32 +2334,39 @@ HTMLContentSink::CloseFrameset()
    }
  
    return rv;
@@ -261,7 +261,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    switch (aNode.GetNodeType()) {
      case eHTMLTag_frameset:
        rv = OpenFrameset(aNode);
-@@ -2358,16 +2410,20 @@ HTMLContentSink::OpenContainer(const nsI
+@@ -2352,16 +2404,20 @@ HTMLContentSink::OpenContainer(const nsI
    MOZ_TIMER_STOP(mWatch);
  
    return rv;
@@ -282,7 +282,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    switch (aTag) {
      case eHTMLTag_frameset:
        rv = CloseFrameset();
-@@ -2399,16 +2455,18 @@ NS_IMETHODIMP
+@@ -2393,16 +2449,18 @@ NS_IMETHODIMP
  HTMLContentSink::CloseMalformedContainer(const eHTMLTags aTag)
  {
    return mCurrentContext->CloseContainer(aTag, PR_TRUE);
@@ -301,7 +301,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    nsHTMLTag nodeType = nsHTMLTag(aNode.GetNodeType());
    switch (nodeType) {
    case eHTMLTag_link:
-@@ -2432,16 +2490,18 @@ HTMLContentSink::AddLeaf(const nsIParser
+@@ -2426,16 +2484,18 @@ HTMLContentSink::AddLeaf(const nsIParser
   * This gets called by the parsing system when we find a comment
   * @update	gess11/9/98
   * @param   aNode contains a comment token
@@ -320,7 +320,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::AddComment()\n"));
    MOZ_TIMER_STOP(mWatch);
  
-@@ -2452,16 +2512,18 @@ HTMLContentSink::AddComment(const nsIPar
+@@ -2446,16 +2506,18 @@ HTMLContentSink::AddComment(const nsIPar
   * This gets called by the parsing system when we find a PI
   * @update	gess11/9/98
   * @param   aNode contains a comment token
@@ -339,7 +339,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    MOZ_TIMER_STOP(mWatch);
  
    return result;
-@@ -2470,16 +2532,18 @@ HTMLContentSink::AddProcessingInstructio
+@@ -2464,16 +2526,18 @@ HTMLContentSink::AddProcessingInstructio
  /**
   *  This gets called by the parser when it encounters
   *  a DOCTYPE declaration in the HTML document.
@@ -358,7 +358,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
  
    PRInt32 publicStart = docTypeStr.Find("PUBLIC", PR_TRUE);
    PRInt32 systemStart = docTypeStr.Find("SYSTEM", PR_TRUE);
-@@ -2714,34 +2778,41 @@ NS_IMETHODIMP
+@@ -2708,34 +2772,41 @@ NS_IMETHODIMP
  HTMLContentSink::WillProcessAToken(void)
  {
    return NS_OK;
@@ -400,7 +400,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    if (!mObservers) {
      return NS_OK;
    }
-@@ -3185,16 +3256,20 @@ HTMLContentSink::ProcessSTYLEEndTag(nsGe
+@@ -3179,16 +3250,20 @@ HTMLContentSink::ProcessSTYLEEndTag(nsGe
    }
  
    return rv;
@@ -421,7 +421,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
      }
      else if (mCurrentContext) {
        mCurrentContext->FlushText();
-@@ -3216,16 +3291,20 @@ HTMLContentSink::FlushTags()
+@@ -3210,16 +3285,20 @@ HTMLContentSink::FlushTags()
    }
    
    return mCurrentContext ? mCurrentContext->FlushTags() : NS_OK;
@@ -442,7 +442,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
      nsCOMPtr<nsIMarkupDocumentViewer> muCV;
      nsCOMPtr<nsIContentViewer> cv;
      mDocShell->GetContentViewer(getter_AddRefs(cv));
-@@ -3264,16 +3343,17 @@ HTMLContentSink::SetDocumentCharset(nsAC
+@@ -3258,16 +3337,17 @@ HTMLContentSink::SetDocumentCharset(nsAC
    }
  
    return NS_OK;
@@ -455,11 +455,11 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    return mDocument;
  }
  
- #ifdef DEBUG
- /**
-  *  This will dump content model into the output file.
-  *
-  *  @update  harishd 05/25/00
+ PRBool
+ HTMLContentSink::IsScriptExecuting()
+ {
+   return IsScriptExecutingImpl();
+ }
 diff --git a/content/xul/document/src/nsXULContentSink.cpp b/content/xul/document/src/nsXULContentSink.cpp
 --- a/content/xul/document/src/nsXULContentSink.cpp
 +++ b/content/xul/document/src/nsXULContentSink.cpp
@@ -482,7 +482,7 @@ diff --git a/content/xul/document/src/nsXULContentSink.cpp b/content/xul/documen
  
  XULContentSinkImpl::ContextStack::ContextStack()
      : mTop(nsnull), mDepth(0)
-@@ -268,16 +270,20 @@ XULContentSinkImpl::WillBuildModel(void)
+@@ -268,16 +270,20 @@ XULContentSinkImpl::WillBuildModel(nsDTD
  #endif
  
      return NS_OK;
@@ -976,28 +976,20 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
      return mInternalState;
    }
  
-@@ -1308,16 +1365,18 @@ nsExpatDriver::BuildModel(nsITokenizer* 
+@@ -1307,39 +1364,43 @@ nsExpatDriver::BuildModel(nsITokenizer* 
+                           const nsCString*)// aCharsetPtr)
  {
    return mInternalState;
  }
  
  NS_IMETHODIMP
- nsExpatDriver::DidBuildModel(nsresult anErrorCode,
-                              PRBool aNotifySink)
+ nsExpatDriver::DidBuildModel(nsresult anErrorCode)
  {
-+  PROXY_SYNC(BIND3(&nsExpatDriver::DidBuildModel, this,
-+                   anErrorCode, aNotifySink));
-   NS_ASSERTION(mSink == nsCOMPtr<nsIExpatSink>(do_QueryInterface(mOriginalSink)),
-                "In nsExpatDriver::DidBuildModel: mOriginalSink not the same object as mSink?");
-   // Check for mOriginalSink is intentional. This would make sure
-   // that DidBuildModel() is called only once on the sink.
-   nsresult result = NS_OK;
-   if (mOriginalSink) {
-     result = mOriginalSink->DidBuildModel();
-     mOriginalSink = nsnull;
-@@ -1328,45 +1387,50 @@ nsExpatDriver::DidBuildModel(nsresult an
- 
-   return result;
++  PROXY_SYNC(BIND2(&nsExpatDriver::DidBuildModel, this, anErrorCode));
+   mOriginalSink = nsnull;
+   mSink = nsnull;
+   mExtendedSink = nsnull;
+   return NS_OK;
  }
  
  NS_IMETHODIMP
@@ -1008,24 +1000,6 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
 +                   aIsFinalChunk, aTokenAllocator));
    mIsFinalChunk = aIsFinalChunk;
    return NS_OK;
- }
- 
- NS_IMETHODIMP
- nsExpatDriver::WillResumeParse()
- {
-+  PROXY_SYNC(BIND1(&nsExpatDriver::WillResumeParse, this));
-   NS_ASSERTION(mSink == nsCOMPtr<nsIExpatSink>(do_QueryInterface(mOriginalSink)),
-                "In nsExpatDriver::WillResumeParse: mOriginalSink not the same object as mSink?");
-   return mOriginalSink ? mOriginalSink->WillResume() : NS_OK;
- }
- 
- NS_IMETHODIMP
- nsExpatDriver::WillInterruptParse()
- {
-+  PROXY_SYNC(BIND1(&nsExpatDriver::WillInterruptParse, this));
-   NS_ASSERTION(mSink == nsCOMPtr<nsIExpatSink>(do_QueryInterface(mOriginalSink)),
-                "In nsExpatDriver::WillInterruptParse: mOriginalSink not the same object as mSink?");
-   return mOriginalSink ? mOriginalSink->WillInterrupt() : NS_OK;
  }
  
  NS_IMETHODIMP
@@ -1046,7 +1020,7 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
  }
  
  NS_IMETHODIMP_(PRInt32)
-@@ -1452,16 +1516,18 @@ NS_IMETHODIMP_(PRBool)
+@@ -1425,16 +1486,18 @@ NS_IMETHODIMP_(PRBool)
  nsExpatDriver::CanContain(PRInt32 aParent,PRInt32 aChild) const
  {
    return PR_TRUE;
@@ -1112,14 +1086,14 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  /*
  The parser can be explicitly interrupted by passing a return value of
  NS_ERROR_HTMLPARSER_INTERRUPTED from BuildModel on the DTD. This will cause
-@@ -812,16 +828,18 @@ nsParser::Initialize(PRBool aConstructor
+@@ -813,16 +829,18 @@ nsParser::Initialize(PRBool aConstructor
+   mCharset.AssignLiteral("ISO-8859-1");
    mInternalState = NS_OK;
    mStreamStatus = 0;
    mCommand = eViewNormal;
    mFlags = NS_PARSER_FLAG_OBSERVERS_ENABLED |
             NS_PARSER_FLAG_PARSER_ENABLED |
             NS_PARSER_FLAG_CAN_TOKENIZE;
-   mScriptsExecuting = 0;
  
 +  NS_GetCurrentThread(getter_AddRefs(mParserThread));
 +
@@ -1131,7 +1105,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
  void
  nsParser::Cleanup()
-@@ -913,16 +931,19 @@ nsParser::PostContinueEvent()
+@@ -914,16 +932,19 @@ nsParser::PostContinueEvent()
      }
    }
    return NS_OK;
@@ -1151,7 +1125,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  {
    aCommand = mCommandStr;
  }
-@@ -932,16 +953,22 @@ nsParser::GetCommand(nsCString& aCommand
+@@ -933,16 +954,22 @@ nsParser::GetCommand(nsCString& aCommand
   *  about the command which caused the parser to be constructed. For example,
   *  this allows us to select a DTD which can do, say, view-source.
   *
@@ -1174,7 +1148,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    } else {
      mCommand = eViewNormal;
    }
-@@ -952,29 +979,39 @@ nsParser::SetCommand(const char* aComman
+@@ -953,29 +980,39 @@ nsParser::SetCommand(const char* aComman
   *  about the command which caused the parser to be constructed. For example,
   *  this allows us to select a DTD which can do, say, view-source.
   *
@@ -1214,7 +1188,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  }
  
  void
-@@ -989,31 +1026,36 @@ nsParser::SetSinkCharset(nsACString& aCh
+@@ -990,31 +1027,35 @@ nsParser::SetSinkCharset(nsACString& aCh
   *  This method gets called in order to set the content
   *  sink for this parser to dump nodes to.
   *
@@ -1225,8 +1199,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  {
 +  PROXY_SYNC(BIND2(&nsParser::SetContentSink,
 +                   nsRefPtr<nsParser>(this),
-+                   nsRefPtr<nsIContentSink>(aSink)));
-+
++                   aSink));
    NS_PRECONDITION(aSink, "sink cannot be null!");
    mSink = aSink;
  
@@ -1247,11 +1220,11 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  }
  
  /**
-  *  Retrieve parsemode from topmost parser context
-  *
-  *  @return  parsemode
-  */
-@@ -1627,16 +1669,18 @@ void
+  * Determine what DTD mode (and thus what layout nsCompatibility mode)
+  * to use for this document based on the first chunk of data received
+  * from the network (each parsercontext can have its own mode).  (No,
+  * this is not an optimal solution -- we really don't need to know until
+@@ -1617,16 +1658,18 @@ void
  nsParser::SetUnusedInput(nsString& aBuffer)
  {
    mUnusedInput = aBuffer;
@@ -1270,7 +1243,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    while (pc->mPrevContext) {
      pc = pc->mPrevContext;
    }
-@@ -1647,16 +1691,18 @@ nsParser::GetRootContextKey()
+@@ -1637,16 +1680,18 @@ nsParser::GetRootContextKey()
  /**
   *  Call this when you want to *force* the parser to terminate the
   *  parsing process altogether. This is binary -- so once you terminate
@@ -1289,7 +1262,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
    nsresult result = NS_OK;
    // XXX - [ until we figure out a way to break parser-sink circularity ]
-@@ -1882,33 +1928,55 @@ nsParser::SetCanInterrupt(PRBool aCanInt
+@@ -1859,33 +1904,55 @@ nsParser::SetCanInterrupt(PRBool aCanInt
   *  of this method.
   */
  NS_IMETHODIMP
@@ -1354,7 +1327,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
        pc->mDTDMode = aMode;
        PushContext(*pc);
  
-@@ -1929,23 +1997,40 @@ nsParser::Parse(nsIURI* aURL,
+@@ -1906,23 +1973,40 @@ nsParser::Parse(nsIURI* aURL,
  /**
   * Call this method if all you want to do is parse 1 string full of HTML text.
   * In particular, this method should be called by the DOM when it has an HTML
@@ -1400,7 +1373,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
  
    if (!aLastCall && aSourceBuffer.IsEmpty()) {
-@@ -2063,16 +2148,25 @@ nsParser::Parse(const nsAString& aSource
+@@ -2040,16 +2124,25 @@ nsParser::Parse(const nsAString& aSource
  NS_IMETHODIMP
  nsParser::ParseFragment(const nsAString& aSourceBuffer,
                          void* aKey,
@@ -1426,7 +1399,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    // Disable observers for fragments
    mFlags &= ~NS_PARSER_FLAG_OBSERVERS_ENABLED;
  
-@@ -2387,16 +2481,21 @@ nsParser::BuildModel()
+@@ -2359,16 +2452,21 @@ nsParser::BuildModel()
  
  /*******************************************************************
    These methods are used to talk to the netlib system...
@@ -1448,7 +1421,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    }
    mParserContext->mStreamListenerState = eOnStart;
    mParserContext->mAutoDetectStatus = eUnknownDetect;
-@@ -2812,33 +2911,51 @@ CheckCharset(const char* aBytes,
+@@ -2784,33 +2882,51 @@ CheckCharset(const char* aBytes,
    }
  }
  
@@ -1506,7 +1479,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
    if (theContext) {
      theContext->mStreamListenerState = eOnDataAvail;
-@@ -2884,16 +3001,22 @@ nsParser::OnDataAvailable(nsIRequest *re
+@@ -2856,16 +2972,22 @@ nsParser::OnDataAvailable(nsIRequest *re
  /**
   *  This is called by the networking library once the last block of data
   *  has been collected from the net.
@@ -1532,7 +1505,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
 --- a/parser/htmlparser/src/nsParser.h
 +++ b/parser/htmlparser/src/nsParser.h
-@@ -420,16 +420,30 @@ class nsParser : public nsIParser,
+@@ -403,16 +403,30 @@ class nsParser : public nsIParser,
       * @update	gess5/18/98
       * @param 
       * @return
@@ -1563,7 +1536,7 @@ diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
  
      /**
       *  Part of the code sandwich, this gets called right before
-@@ -463,18 +477,19 @@ private:
+@@ -446,18 +460,19 @@ private:
       *  @return  TRUE if all went well
       */
      PRBool DidTokenize(PRBool aIsFinalChunk = PR_FALSE);

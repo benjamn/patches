@@ -1,14 +1,14 @@
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -822,17 +822,17 @@ nsParser::Initialize(PRBool aConstructor
+@@ -829,17 +829,17 @@ nsParser::Initialize(PRBool aConstructor
+   mCharset.AssignLiteral("ISO-8859-1");
    mInternalState = NS_OK;
    mStreamStatus = 0;
    mCommand = eViewNormal;
    mFlags = NS_PARSER_FLAG_OBSERVERS_ENABLED |
             NS_PARSER_FLAG_PARSER_ENABLED |
             NS_PARSER_FLAG_CAN_TOKENIZE;
-   mScriptsExecuting = 0;
  
 -  NS_GetCurrentThread(getter_AddRefs(mParserThread));
 +  NS_NewThread(getter_AddRefs(mParserThread));
@@ -20,7 +20,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  }
  
  void
-@@ -2337,16 +2337,19 @@ nsParser::ResumeParse(PRBool allowIterat
+@@ -2319,16 +2319,19 @@ nsParser::ResumeParse(PRBool allowIterat
          // Only allow parsing to be interrupted in the subsequent call to
          // build model.
          SetCanInterrupt(aCanInterrupt);
