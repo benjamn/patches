@@ -2,7 +2,7 @@ diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Bind.h
-@@ -0,0 +1,449 @@
+@@ -0,0 +1,155 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -74,299 +74,6 @@ new file mode 100644
 +// ]]]
 +// [[[end]]]
 +
-+// [[[cog
-+// cog.out("#define COOPT_OUTGOING_PARAM_TYPEDEFS \\\n")
-+// cog.out(tlist("  typedef typename Outgoing::P P;",
-+//               MAX_FUNCTOR_ARITY, sep=" \\\n"))
-+// ]]]
-+#define COOPT_OUTGOING_PARAM_TYPEDEFS \
-+  typedef typename Outgoing::P0 P0; \
-+  typedef typename Outgoing::P1 P1; \
-+  typedef typename Outgoing::P2 P2; \
-+  typedef typename Outgoing::P3 P3; \
-+  typedef typename Outgoing::P4 P4; \
-+  typedef typename Outgoing::P5 P5; \
-+  typedef typename Outgoing::P6 P6; \
-+  typedef typename Outgoing::P7 P7; \
-+  typedef typename Outgoing::P8 P8; \
-+  typedef typename Outgoing::P9 P9;
-+// [[[end]]]
-+
-+/**
-+ * Binder class for use with bind (below).
-+ */
-+template <typename Result, typename Params, typename Bound>
-+class Binder
-+  : public FunctorImpl<Result, typename Params::Tail>
-+{
-+public:
-+  typedef Functor<Result, Params> Incoming;
-+  typedef typename Incoming::ResultType ResultType;
-+  typedef Functor<Result, typename Params::Tail> Outgoing;
-+
-+  COOPT_OUTGOING_PARAM_TYPEDEFS
-+
-+  Binder(Incoming fun, Bound bound)
-+    : mFun(fun)
-+    , mBound(bound)
-+  {}
-+
-+  // [[[cog
-+  // for i in rng:
-+  //   Pps = tlist("P p", i)
-+  //   cps = tlist(", p", i, sep="")
-+  //   cog.out("""
-+  // ResultType operator()(%(Pps)s) {
-+  //   return mFun(mBound%(cps)s);
-+  // }""" % locals())
-+  // ]]]
-+
-+  ResultType operator()() {
-+    return mFun(mBound);
-+  }
-+  ResultType operator()(P0 p0) {
-+    return mFun(mBound, p0);
-+  }
-+  ResultType operator()(P0 p0, P1 p1) {
-+    return mFun(mBound, p0, p1);
-+  }
-+  ResultType operator()(P0 p0, P1 p1, P2 p2) {
-+    return mFun(mBound, p0, p1, p2);
-+  }
-+  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3) {
-+    return mFun(mBound, p0, p1, p2, p3);
-+  }
-+  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4) {
-+    return mFun(mBound, p0, p1, p2, p3, p4);
-+  }
-+  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5) {
-+    return mFun(mBound, p0, p1, p2, p3, p4, p5);
-+  }
-+  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6) {
-+    return mFun(mBound, p0, p1, p2, p3, p4, p5, p6);
-+  }
-+  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7) {
-+    return mFun(mBound, p0, p1, p2, p3, p4, p5, p6, p7);
-+  }
-+  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
-+    return mFun(mBound, p0, p1, p2, p3, p4, p5, p6, p7, p8);
-+  }
-+  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
-+    return mFun(mBound, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9);
-+  }
-+  // [[[end]]]
-+
-+private:
-+  Incoming mFun;
-+  Bound mBound;
-+};
-+
-+/**
-+ * Binder class for use with bind_result (below).
-+ */
-+template <typename NewResult, typename ParentFunctor>
-+class ResultBinder
-+  : public FunctorImpl<NewResult, typename ParentFunctor::ParamList>
-+{
-+public:
-+  typedef ParentFunctor Incoming;
-+  typedef NewResult ResultType;
-+  typedef Functor<NewResult, typename ParentFunctor::ParamList>
-+          Outgoing;
-+
-+  COOPT_OUTGOING_PARAM_TYPEDEFS
-+
-+  ResultBinder(Incoming fun, NewResult bound)
-+    : mFun(fun)
-+    , mBound(bound)
-+  {}
-+
-+  // [[[cog
-+  // for i in rng:
-+  //   Pps = tlist("P p", i)
-+  //   ps = tlist("p", i)
-+  //   cog.out("""
-+  // ResultType operator()(%(Pps)s) {
-+  //   mFun(%(ps)s);
-+  //   return mBound;
-+  // }""" % locals())
-+  // ]]]
-+
-+  ResultType operator()() {
-+    mFun();
-+    return mBound;
-+  }
-+  ResultType operator()(P0 p0) {
-+    mFun(p0);
-+    return mBound;
-+  }
-+  ResultType operator()(P0 p0, P1 p1) {
-+    mFun(p0, p1);
-+    return mBound;
-+  }
-+  ResultType operator()(P0 p0, P1 p1, P2 p2) {
-+    mFun(p0, p1, p2);
-+    return mBound;
-+  }
-+  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3) {
-+    mFun(p0, p1, p2, p3);
-+    return mBound;
-+  }
-+  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4) {
-+    mFun(p0, p1, p2, p3, p4);
-+    return mBound;
-+  }
-+  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5) {
-+    mFun(p0, p1, p2, p3, p4, p5);
-+    return mBound;
-+  }
-+  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6) {
-+    mFun(p0, p1, p2, p3, p4, p5, p6);
-+    return mBound;
-+  }
-+  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7) {
-+    mFun(p0, p1, p2, p3, p4, p5, p6, p7);
-+    return mBound;
-+  }
-+  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
-+    mFun(p0, p1, p2, p3, p4, p5, p6, p7, p8);
-+    return mBound;
-+  }
-+  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
-+    mFun(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9);
-+    return mBound;
-+  }
-+  // [[[end]]]
-+
-+private:
-+  Incoming mFun;
-+  NewResult mBound;
-+};
-+
-+/**
-+ * Binder class for use with void_result (below).  The specialization is
-+ * necessary both because the operator() methods cannot return a value and
-+ * because void would be an invalid type for the mBound data member.
-+ */
-+template <typename ParentFunctor>
-+class ResultBinder<void, ParentFunctor>
-+  : public FunctorImpl<void, typename ParentFunctor::ParamList>
-+{
-+public:
-+  typedef ParentFunctor Incoming;
-+  typedef void ResultType;
-+  typedef Functor<void, typename ParentFunctor::ParamList>
-+          Outgoing;
-+
-+  COOPT_OUTGOING_PARAM_TYPEDEFS
-+
-+  ResultBinder(Incoming fun)
-+    : mFun(fun)
-+  {}
-+
-+  // [[[cog
-+  // for i in rng:
-+  //   Pps = tlist("P p", i)
-+  //   ps = tlist("p", i)
-+  //   cog.out("""
-+  // void operator()(%(Pps)s) {
-+  //   mFun(%(ps)s);
-+  // }""" % locals())
-+  // ]]]
-+
-+  void operator()() {
-+    mFun();
-+  }
-+  void operator()(P0 p0) {
-+    mFun(p0);
-+  }
-+  void operator()(P0 p0, P1 p1) {
-+    mFun(p0, p1);
-+  }
-+  void operator()(P0 p0, P1 p1, P2 p2) {
-+    mFun(p0, p1, p2);
-+  }
-+  void operator()(P0 p0, P1 p1, P2 p2, P3 p3) {
-+    mFun(p0, p1, p2, p3);
-+  }
-+  void operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4) {
-+    mFun(p0, p1, p2, p3, p4);
-+  }
-+  void operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5) {
-+    mFun(p0, p1, p2, p3, p4, p5);
-+  }
-+  void operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6) {
-+    mFun(p0, p1, p2, p3, p4, p5, p6);
-+  }
-+  void operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7) {
-+    mFun(p0, p1, p2, p3, p4, p5, p6, p7);
-+  }
-+  void operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
-+    mFun(p0, p1, p2, p3, p4, p5, p6, p7, p8);
-+  }
-+  void operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
-+    mFun(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9);
-+  }
-+  // [[[end]]]
-+
-+private:
-+  Incoming mFun;
-+};
-+
-+// We should all strive for macro neutrality.  Leave no trace!
-+#undef COOPT_OUTGOING_PARAM_TYPEDEFS
-+
-+/**
-+ * The bind function returns a Functor with one less parameter than the given
-+ * Functor.  When the resulting Functor is invoked, the bound argument will be
-+ * passed as the first argument to the original Functor.
-+ *
-+ * Note that the type used for storing the bound value is determined by the
-+ * value passed to bind, not by the Functor's first parameter type.  This
-+ * distinction becomes important when the stored value needs to be copied or
-+ * AddRefed but the actual parameter type is just a bare pointer.
-+ */
-+template <typename Result, class Params, typename Bound>
-+typename Binder<Result, Params, Bound>::Outgoing
-+bind(Functor<Result, Params> fun, Bound bound) {
-+  typedef Binder<Result, Params, Bound> B;
-+  typedef typename B::Outgoing O;
-+  typedef typename O::ImplType I;
-+  I* binder = new B(fun, bound);
-+  return O(binder);
-+}
-+
-+/**
-+ * Whereas bind binds arguments to a Functor, bind_result fixes the return
-+ * value to a constant, ignoring whatever the Functor actually returns.
-+ */
-+template <typename NewResult, typename Functor>
-+typename ResultBinder<NewResult, Functor>::Outgoing
-+bind_result(Functor fun, NewResult bound) {
-+  typedef ResultBinder<NewResult, Functor> B;
-+  typedef typename B::Outgoing O;
-+  typedef typename O::ImplType I;
-+  I* binder = new B(fun, bound);
-+  return O(binder);
-+}
-+
-+/**
-+ * Whereas bind_result fixes a Functor's return value to a constant,
-+ * void_result renders the Functor void.  The ResultBinder object is
-+ * specialized for the void case so that no storage will be allocated for the
-+ * result.
-+ */
-+template <typename Functor>
-+typename ResultBinder<void, Functor>::Outgoing
-+void_result(Functor fun) {
-+  typedef ResultBinder<void, Functor> B;
-+  typedef typename B::Outgoing O;
-+  typedef typename O::ImplType I;
-+  I* binder = new B(fun);
-+  return O(binder);
-+}
-+
-+
 +/**
 + * Template type inference prefers non-reference types to reference types, so
 + * references passed to bind will be stored by VALUE unless explicitly coerced
@@ -398,7 +105,6 @@ new file mode 100644
 +  return reference_wrapper<T const>(t);
 +}
 +
-+
 +/**
 + * The BIND{1,2,...} macros save some typing by linearizing the syntax for
 + * binding multiple arguments.  Additionally, the BIND0 macro ensures that the
@@ -407,6 +113,7 @@ new file mode 100644
 + * whatever you want. Life is short.
 + */
 +#define BIND0(F) functor(F)
++
 +// [[[cog
 +// slash = "\\"
 +// for (i, j) in ijs:
@@ -415,48 +122,47 @@ new file mode 100644
 +//   alast = "A%d" % i;
 +//   cog.out(r"""
 +// #define BIND%(j)d(F, %(alist)s) %(slash)s
-+//    bind(BIND%(i)d(F%(ainit)s), %(alast)s)
++//   BIND%(i)d(F%(ainit)s).bind(%(alast)s)
 +// """ % locals())
 +// ]]]
 +
 +#define BIND1(F, A0) \
-+   bind(BIND0(F), A0)
++  BIND0(F).bind(A0)
 +
 +#define BIND2(F, A0, A1) \
-+   bind(BIND1(F, A0), A1)
++  BIND1(F, A0).bind(A1)
 +
 +#define BIND3(F, A0, A1, A2) \
-+   bind(BIND2(F, A0, A1), A2)
++  BIND2(F, A0, A1).bind(A2)
 +
 +#define BIND4(F, A0, A1, A2, A3) \
-+   bind(BIND3(F, A0, A1, A2), A3)
++  BIND3(F, A0, A1, A2).bind(A3)
 +
 +#define BIND5(F, A0, A1, A2, A3, A4) \
-+   bind(BIND4(F, A0, A1, A2, A3), A4)
++  BIND4(F, A0, A1, A2, A3).bind(A4)
 +
 +#define BIND6(F, A0, A1, A2, A3, A4, A5) \
-+   bind(BIND5(F, A0, A1, A2, A3, A4), A5)
++  BIND5(F, A0, A1, A2, A3, A4).bind(A5)
 +
 +#define BIND7(F, A0, A1, A2, A3, A4, A5, A6) \
-+   bind(BIND6(F, A0, A1, A2, A3, A4, A5), A6)
++  BIND6(F, A0, A1, A2, A3, A4, A5).bind(A6)
 +
 +#define BIND8(F, A0, A1, A2, A3, A4, A5, A6, A7) \
-+   bind(BIND7(F, A0, A1, A2, A3, A4, A5, A6), A7)
++  BIND7(F, A0, A1, A2, A3, A4, A5, A6).bind(A7)
 +
 +#define BIND9(F, A0, A1, A2, A3, A4, A5, A6, A7, A8) \
-+   bind(BIND8(F, A0, A1, A2, A3, A4, A5, A6, A7), A8)
++  BIND8(F, A0, A1, A2, A3, A4, A5, A6, A7).bind(A8)
 +
 +#define BIND10(F, A0, A1, A2, A3, A4, A5, A6, A7, A8, A9) \
-+   bind(BIND9(F, A0, A1, A2, A3, A4, A5, A6, A7, A8), A9)
++  BIND9(F, A0, A1, A2, A3, A4, A5, A6, A7, A8).bind(A9)
 +// [[[end]]]
-+
 +
 +#endif
 diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Functor.h
-@@ -0,0 +1,647 @@
+@@ -0,0 +1,741 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -625,6 +331,9 @@ new file mode 100644
 +template <class ParentFunctor, typename Method>
 +class MethodHandler;
 +
++template <class ParentFunctor, typename Bound>
++class Binder;
++
 +// [[[cog
 +// cog.out("#define EXTRACT_TYPEDEFS(LIST) \\\n")
 +// cog.out(tlist("  typedef typename tlist::TypeAt<LIST, 0>::type P;",
@@ -676,6 +385,27 @@ new file mode 100644
 +  template <typename Method>
 +  static Functor method(Method m) {
 +    return Functor(new MethodHandler<Functor, Method>(m));
++  }
++
++  /**
++   * The bind method returns a Functor with one less parameter than the Functor
++   * object receiving the bind method invocation.  When the resulting Functor
++   * is invoked, the bound argument will be passed as the first argument to the
++   * original Functor.
++   *
++   * Note that the type used for storing the bound value is determined by the
++   * value passed to bind, not by the Functor's first parameter type.  This
++   * distinction becomes important when the stored value needs to be copied or
++   * AddRefed but the actual parameter type is just a bare pointer.
++   */
++  template <typename Bound>
++  typename Binder<Functor, Bound>::Outgoing
++  bind(Bound bound) {
++    typedef Binder<Functor, Bound> B;
++    typedef typename B::Outgoing O;
++    typedef typename O::ImplType I;
++    I* binder = new B(*this, bound);
++    return O(binder);
 +  }
 +
 +  // [[[cog
@@ -857,6 +587,76 @@ new file mode 100644
 +
 +private:
 +  Method mMethod;
++};
++
++/**
++ * Binder class for use with Functor::bind.
++ */
++template <class Incoming, typename Bound>
++class Binder
++  : public FunctorImpl<typename Incoming::ResultType,
++                       typename Incoming::ParamList::Tail>
++{
++  typedef typename Incoming::ResultType ResultType;
++  typedef typename Incoming::ParamList::Tail ParamList;
++public:
++  typedef Functor<ResultType, ParamList> Outgoing;
++
++  EXTRACT_TYPEDEFS(ParamList)
++
++  Binder(Incoming fun, Bound bound)
++    : mFun(fun)
++    , mBound(bound)
++  {}
++
++  // [[[cog
++  // for i in rng:
++  //   Pps = tlist("P p", i)
++  //   cps = tlist(", p", i, sep="")
++  //   cog.out("""
++  // ResultType operator()(%(Pps)s) {
++  //   return mFun(mBound%(cps)s);
++  // }""" % locals())
++  // ]]]
++
++  ResultType operator()() {
++    return mFun(mBound);
++  }
++  ResultType operator()(P0 p0) {
++    return mFun(mBound, p0);
++  }
++  ResultType operator()(P0 p0, P1 p1) {
++    return mFun(mBound, p0, p1);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2) {
++    return mFun(mBound, p0, p1, p2);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3) {
++    return mFun(mBound, p0, p1, p2, p3);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4) {
++    return mFun(mBound, p0, p1, p2, p3, p4);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5) {
++    return mFun(mBound, p0, p1, p2, p3, p4, p5);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6) {
++    return mFun(mBound, p0, p1, p2, p3, p4, p5, p6);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7) {
++    return mFun(mBound, p0, p1, p2, p3, p4, p5, p6, p7);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
++    return mFun(mBound, p0, p1, p2, p3, p4, p5, p6, p7, p8);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
++    return mFun(mBound, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9);
++  }
++  // [[[end]]]
++
++private:
++  Incoming mFun;
++  Bound mBound;
 +};
 +
 +// Sayonara, macro scum!
