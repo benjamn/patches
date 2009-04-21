@@ -6,7 +6,6 @@ simplify-nsIDTD.diff
 divorce-parser-from-dtd.diff
 functor.diff
 runnable-functor.diff
-bug-467865.diff
 safe-suspect-forget.diff
 hdst-index-bound.diff
 suppress-title-change-events.diff
