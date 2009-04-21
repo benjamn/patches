@@ -1254,7 +1254,7 @@ new file mode 100644
 +  is(BIND2(a2, 2, 3)(), 5);
 +  is(BIND1(BIND1(a2, 2), 3)(), 5);
 +
-+  double x = 5, y = 3;
++  int x = 5, y = 3;
 +  DiffStruct ds;
 +  Functor<int, TLIST2(int, int)> sub = BIND1(&DiffStruct::Sub, &ds);
 +  Functor<int, TLIST1(int)> f = BIND1(sub, x);
