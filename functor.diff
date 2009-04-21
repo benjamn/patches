@@ -1,3 +1,5 @@
+Improved FunctorSupports and Functor::bind implementations (bug 486440).
+
 diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
 new file mode 100644
 --- /dev/null
@@ -907,9 +909,9 @@ new file mode 100644
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
-@@ -119,16 +119,19 @@ SDK_HEADERS = \
- 		nsCycleCollectionParticipant.h \
- 		nsDeque.h \
+@@ -120,16 +120,19 @@ SDK_HEADERS = \
+ 		nsWeakReference.h \
+ 		pldhash.h \
  		$(NULL)
  
  EXPORTS = \
@@ -925,13 +927,13 @@ diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
  		$(LIB_PREFIX)xpcomglue_s.$(LIB_SUFFIX) \
  		$(NULL)
  
- # we don't want the shared lib, but we want to force the creation of a static lib.
- FORCE_STATIC_LIB = 1
+ 
+ ## TODO temp hack until build system handles this
 diff --git a/xpcom/glue/TList.h b/xpcom/glue/TList.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/TList.h
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,169 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -1059,6 +1061,9 @@ new file mode 100644
 +
 +namespace tlist {
 +
++  /**
++   * Length<List>::value gives the length of the typelist List.
++   */
 +  template <typename List>
 +  struct Length { enum { value = 0 }; };
 +
@@ -1068,16 +1073,24 @@ new file mode 100644
 +  };
 +
 +  template <typename List, unsigned N, typename D> struct TypeAt_;
++
 +  template <unsigned N, typename D>
 +  struct TypeAt_<NullType, N, D> { typedef D type; };
++
 +  template <typename T, typename U, unsigned N, typename D>
 +  struct TypeAt_<TList<T, U>, N, D> {
 +    typedef typename TypeAt_<U, N-1, D>::type type;
 +  };
++
 +  template <typename T, typename U, typename D>
 +  struct TypeAt_<TList<T, U>, 0, D> { typedef T type; };
 +
-+  // allows negative indices, a la python
++  /**
++   * typename TypeAt<List, N, T>::type gives the type at position N of the
++   * typelist List.  If the index is too large, the default type T will be the
++   * result.  Negative positions are also allowed: -1 corresponds to the last
++   * position in the list, -2 the second-to-last, &c.
++   */
 +  template <typename List, int N, typename Default=EmptyType>
 +  struct TypeAt {
 +    typedef typename TypeAt_<
@@ -1087,8 +1100,7 @@ new file mode 100644
 +      >::type type;
 +  };
 +
-+
-+};
++}
 +
 +#endif
 diff --git a/xpcom/glue/functor_cog_utils.py b/xpcom/glue/functor_cog_utils.py

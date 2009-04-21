@@ -1,3 +1,5 @@
+Runnable interface for Functors (bug 486440).
+
 diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 --- a/xpcom/glue/Functor.h
 +++ b/xpcom/glue/Functor.h
@@ -19,7 +21,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
   *
   *   Modern C++ Design: Generic Programming and Design Patterns Applied,
   *
-@@ -204,16 +205,20 @@ public:
+@@ -207,16 +208,20 @@ public:
  
    EXTRACT_TYPEDEFS(Params)
  
@@ -40,7 +42,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
    template <typename Method>
    static Functor method(Method m) {
      return Functor(new MethodHandler<Functor, Method>(m));
-@@ -639,9 +644,27 @@ template <typename R, typename P0, typen
+@@ -733,9 +738,27 @@ template <typename R, typename P0, typen
  Functor<R, TLIST9(P0, P1, P2, P3, P4, P5, P6, P7, P8)>
  functor(R (*f)(P0, P1, P2, P3, P4, P5, P6, P7, P8)) {
    return Functor<R, TLIST9(P0, P1, P2, P3, P4, P5, P6, P7, P8)>::callable(f);
@@ -71,8 +73,8 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
-@@ -120,16 +120,17 @@ SDK_HEADERS = \
- 		nsDeque.h \
+@@ -121,16 +121,17 @@ SDK_HEADERS = \
+ 		pldhash.h \
  		$(NULL)
  
  EXPORTS = \
@@ -93,7 +95,7 @@ diff --git a/xpcom/glue/RunnableFunctor.h b/xpcom/glue/RunnableFunctor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/RunnableFunctor.h
-@@ -0,0 +1,88 @@
+@@ -0,0 +1,134 @@
 +#ifndef RunnableFunctor_h__
 +#define RunnableFunctor_h__
 +
@@ -103,6 +105,7 @@ new file mode 100644
 +#include "nsIEventTarget.h"
 +#include "nsThreadUtils.h"
 +#include "nsProxyRelease.h"
++#include "nsIRunnable.h"
 +
 +class RunnableSupports : public nsIRunnable {
 +  NS_DECL_ISUPPORTS
@@ -113,27 +116,50 @@ new file mode 100644
 +inline NS_IMPL_THREADSAFE_RELEASE(RunnableSupports)
 +inline NS_IMPL_THREADSAFE_QUERY_INTERFACE1(RunnableSupports, nsIRunnable)
 +
++/**
++ * AbstractRunnableFunctor is so named because it inherits from
++ * RunnableSupports but does not implement the required Run method.
++ */
 +class AbstractRunnableFunctor
 +  : public RunnableSupports
 +{
 +  PRMonitor* const mMon;
 +  PRBool mRun;
++
 +public:
++
 +  AbstractRunnableFunctor()
 +    : mMon(nsAutoMonitor::NewMonitor("AbstractRunnableFunctor"))
 +    , mRun(PR_FALSE)
 +  {}
++
++  /**
++   * If Wait is called before AfterRun, the Wait call will block until the
++   * monitor is notified.  If Wait is called after AfterRun, it will return
++   * immediately.
++   *
++   * Wait is intentionally not virtual.  If it were virtual, the compiler
++   * would complain about the differing return type of RunnableFunctor::Wait.
++   * Client code should not manipulate AbstractRunnableFunctor pointers or
++   * references, as they will not respond virtually to Wait method calls.
++   */
 +  void Wait()
 +  {
 +    nsAutoMonitor mon(mMon);
 +    if (!mRun)
 +      mon.Wait();
 +  }
++
 +protected:
++
 +  ~AbstractRunnableFunctor()
 +  {
 +    nsAutoMonitor::DestroyMonitor(mMon);
 +  }
++
++  /**
++   * Subclasses call this method just before their Run methods return.
++   */
 +  nsresult AfterRun()
 +  {
 +    nsAutoMonitor mon(mMon);
@@ -143,42 +169,64 @@ new file mode 100644
 +  }
 +};
 +
++/**
++ * This specialization of the RunnableFunctor class provides space for the
++ * non-void value returned by the underlying Functor.  Its Wait method returns
++ * this stored value.
++ *
++ * TODO Return a reference to the stored value when possible; i.e., when the
++ * Result type is not already a reference.
++ */
 +template <typename Result, typename Functor>
 +class RunnableFunctor
 +  : public AbstractRunnableFunctor
 +{
 +  Result mResult;
 +  Functor mFunctor;
++
 +public:
++
 +  RunnableFunctor(Functor functor)
 +    : mFunctor(functor)
 +  {}
-+  Result& Wait()
++
++  Result Wait()
 +  {
 +    AbstractRunnableFunctor::Wait();
 +    return mResult;
 +  }
++
 +  NS_IMETHOD Run()
 +  {
 +    mResult = mFunctor();
 +    return AfterRun();
 +  }
++
 +};
 +
++/**
++ * This specialization of the RunnableFunctor class allocates no space for the
++ * return value of the underlying Functor, since the Functor is void.  In this
++ * case, it suffices to inherit the Wait method of AbstractRunnableFunctor.
++ */
 +template <typename Functor>
 +class RunnableFunctor<void, Functor>
 +  : public AbstractRunnableFunctor
 +{
 +  Functor mFunctor;
++
 +public:
++
 +  RunnableFunctor(Functor functor)
 +    : mFunctor(functor)
 +  {}
++
 +  NS_IMETHOD Run()
 +  {
 +    mFunctor();
 +    return AfterRun();
 +  }
++
 +};
 +
 +#endif
