@@ -1,7 +1,7 @@
 diff --git a/browser/components/places/src/nsPlacesImportExportService.cpp b/browser/components/places/src/nsPlacesImportExportService.cpp
 --- a/browser/components/places/src/nsPlacesImportExportService.cpp
 +++ b/browser/components/places/src/nsPlacesImportExportService.cpp
-@@ -340,18 +340,16 @@ public:
+@@ -351,18 +351,16 @@ public:
                  nsINavBookmarksService* bookmarkService,
                  PRInt64 aFolder,
                  PRBool aIsImportDefaults);
@@ -216,7 +216,7 @@ diff --git a/content/html/document/src/nsHTMLFragmentContentSink.cpp b/content/h
 diff --git a/content/xml/document/src/nsLoadSaveContentSink.cpp b/content/xml/document/src/nsLoadSaveContentSink.cpp
 --- a/content/xml/document/src/nsLoadSaveContentSink.cpp
 +++ b/content/xml/document/src/nsLoadSaveContentSink.cpp
-@@ -88,17 +88,17 @@ NS_INTERFACE_MAP_BEGIN(nsLoadSaveContent
+@@ -88,19 +88,19 @@ NS_INTERFACE_MAP_BEGIN(nsLoadSaveContent
    NS_INTERFACE_MAP_ENTRY(nsIXMLContentSink)
    NS_INTERFACE_MAP_ENTRY(nsIContentSink)
    NS_INTERFACE_MAP_ENTRY(nsIExpatSink)
@@ -226,15 +226,18 @@ diff --git a/content/xml/document/src/nsLoadSaveContentSink.cpp b/content/xml/do
  // nsIContentSink
  NS_IMETHODIMP
 -nsLoadSaveContentSink::WillBuildModel(void)
-+nsLoadSaveContentSink::WillBuildModel(nsDTDMode)
++nsLoadSaveContentSink::WillBuildModel(nsDTDMode aDTDMode)
  {
-   return mBaseSink->WillBuildModel();
+-  return mBaseSink->WillBuildModel();
++  return mBaseSink->WillBuildModel(aDTDMode);
  }
  
  NS_IMETHODIMP
  nsLoadSaveContentSink::DidBuildModel(void)
  {
    return mBaseSink->DidBuildModel();
+ }
+ 
 diff --git a/content/xml/document/src/nsLoadSaveContentSink.h b/content/xml/document/src/nsLoadSaveContentSink.h
 --- a/content/xml/document/src/nsLoadSaveContentSink.h
 +++ b/content/xml/document/src/nsLoadSaveContentSink.h
@@ -524,7 +527,7 @@ diff --git a/parser/htmlparser/public/nsIContentSink.h b/parser/htmlparser/publi
     * @update 5/7/98 gess
     */
 -  NS_IMETHOD WillBuildModel(void)=0;
-+  NS_IMETHOD WillBuildModel(nsDTDMode aDTDMode = eDTDMode_unknown) {
++  NS_IMETHOD WillBuildModel(nsDTDMode aDTDMode) {
 +    return NS_OK;
 +  }
  
