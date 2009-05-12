@@ -1,9 +1,11 @@
+measure-data-available-copy-overhead.diff
 htmltokenizer-getflags.diff
 dtdmode-simplifications.diff
 nsidtd-kill-resume-interrupt.diff
 parser-calls-sink-wbm-dbm.diff
 simplify-nsIDTD.diff
 divorce-parser-from-dtd.diff
+bug-474695.diff
 functor.diff
 runnable-functor.diff
 safe-suspect-forget.diff

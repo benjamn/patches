@@ -1,0 +1,29 @@
+diff --git a/caps/src/nsScriptSecurityManager.cpp b/caps/src/nsScriptSecurityManager.cpp
+--- a/caps/src/nsScriptSecurityManager.cpp
++++ b/caps/src/nsScriptSecurityManager.cpp
+@@ -2334,18 +2334,23 @@ nsScriptSecurityManager::doGetObjectPrin
+         aObj = STOBJ_GET_PARENT(aObj);
+ 
+         if (!aObj)
+             break;
+ 
+         jsClass = STOBJ_GET_CLASS(aObj);
+     } while (1);
+ 
+-    NS_ASSERTION(!aAllowShortCircuit ||
+-                 result == doGetObjectPrincipal(origObj, PR_FALSE),
++#ifdef DEBUG
++    PRBool principalsEqual;
++    nsIPrincipal* origPrincipal;
++#endif
++    NS_ASSERTION(!aAllowShortCircuit || ((origPrincipal = doGetObjectPrincipal(origObj, PR_FALSE)) &&
++                                         NS_SUCCEEDED(result->Equals(origPrincipal, &principalsEqual)) &&
++                                         principalsEqual),
+                  "Principal mismatch.  Not good");
+     
+     return result;
+ }
+ 
+ nsresult
+ nsScriptSecurityManager::SavePrincipal(nsIPrincipal* aToSave)
+ {

@@ -1,3 +1,5 @@
+No longer giving parser references to the DTD.
+
 diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD.h
 --- a/parser/htmlparser/public/nsIDTD.h
 +++ b/parser/htmlparser/public/nsIDTD.h

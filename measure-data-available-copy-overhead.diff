@@ -1,0 +1,213 @@
+Copying network data using nsIInputStream::Read rather than ReadSegments.
+
+diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
+--- a/parser/htmlparser/src/nsParser.cpp
++++ b/parser/htmlparser/src/nsParser.cpp
+@@ -2747,22 +2747,73 @@ nsParser::DetectMetaTag(const char* aByt
+ typedef struct {
+   PRBool mNeedCharsetCheck;
+   nsParser* mParser;
+   nsIParserFilter* mParserFilter;
+   nsScanner* mScanner;
+   nsIRequest* mRequest;
+ } ParserWriteStruct;
+ 
++static inline void
++CheckCharset(const char* aBytes,
++             const PRUint32 aByteCount,
++             nsIRequest* aRequest,
++             nsParser* aParser)
++{
++  PRInt32 guessSource;
++  nsCAutoString guess;
++  nsCAutoString preferred;
++
++  if (aParser->DetectMetaTag(aBytes, aByteCount, guess, guessSource) ||
++      ((aByteCount >= 4) &&
++       DetectByteOrderMark((const unsigned char*)aBytes,
++                           aByteCount, guess, guessSource))) {
++    nsCOMPtr<nsICharsetAlias> alias(do_GetService(NS_CHARSETALIAS_CONTRACTID));
++    // Only continue if it's a recognized charset and not
++    // one of a designated set that we ignore.
++    if (NS_SUCCEEDED(alias->GetPreferred(guess, preferred)) &&
++        ((kCharsetFromByteOrderMark == guessSource) ||
++         (!preferred.EqualsLiteral("UTF-16") &&
++          !preferred.EqualsLiteral("UTF-16BE") &&
++          !preferred.EqualsLiteral("UTF-16LE") &&
++          !preferred.EqualsLiteral("UTF-32") &&
++          !preferred.EqualsLiteral("UTF-32BE") &&
++          !preferred.EqualsLiteral("UTF-32LE")))) {
++      guess = preferred;
++      aParser->SetDocumentCharset(guess, guessSource);
++      aParser->SetSinkCharset(preferred);
++      nsCOMPtr<nsICachingChannel> channel(do_QueryInterface(aRequest));
++      if (channel) {
++        nsCOMPtr<nsISupports> cacheToken;
++        channel->GetCacheToken(getter_AddRefs(cacheToken));
++        if (cacheToken) {
++          nsCOMPtr<nsICacheEntryDescriptor> cacheDescriptor(do_QueryInterface(cacheToken));
++          if (cacheDescriptor) {
++#ifdef DEBUG
++            nsresult rv =
++#endif
++              cacheDescriptor->SetMetaDataElement("charset",
++                                                  guess.get());
++            NS_ASSERTION(NS_SUCCEEDED(rv),"cannot SetMetaDataElement");
++          }
++        }
++      }
++    }
++  }
++}
++
++#define ON_DATA_AVAILABLE__READ_SEGMENTS
++
+ /*
+  * This function is invoked as a result of a call to a stream's
+  * ReadSegments() method. It is called for each contiguous buffer
+  * of data in the underlying stream or pipe. Using ReadSegments
+  * allows us to avoid copying data to read out of the stream.
+  */
++#ifdef ON_DATA_AVAILABLE__READ_SEGMENTS
+ static NS_METHOD
+ ParserWriteFunc(nsIInputStream* in,
+                 void* closure,
+                 const char* fromRawSegment,
+                 PRUint32 toOffset,
+                 PRUint32 count,
+                 PRUint32 *writeCount)
+ {
+@@ -2771,70 +2822,31 @@ ParserWriteFunc(nsIInputStream* in,
+   const char* buf = fromRawSegment;
+   PRUint32 theNumRead = count;
+ 
+   if (!pws) {
+     return NS_ERROR_FAILURE;
+   }
+ 
+   if (pws->mNeedCharsetCheck) {
+-    PRInt32 guessSource;
+-    nsCAutoString guess;
+-    nsCAutoString preferred;
+-
++    CheckCharset(buf, theNumRead, pws->mRequest, pws->mParser);
+     pws->mNeedCharsetCheck = PR_FALSE;
+-    if (pws->mParser->DetectMetaTag(buf, theNumRead, guess, guessSource) ||
+-        ((count >= 4) &&
+-         DetectByteOrderMark((const unsigned char*)buf,
+-                             theNumRead, guess, guessSource))) {
+-      nsCOMPtr<nsICharsetAlias> alias(do_GetService(NS_CHARSETALIAS_CONTRACTID));
+-      result = alias->GetPreferred(guess, preferred);
+-      // Only continue if it's a recognized charset and not
+-      // one of a designated set that we ignore.
+-      if (NS_SUCCEEDED(result) &&
+-          ((kCharsetFromByteOrderMark == guessSource) ||
+-           (!preferred.EqualsLiteral("UTF-16") &&
+-            !preferred.EqualsLiteral("UTF-16BE") &&
+-            !preferred.EqualsLiteral("UTF-16LE") &&
+-            !preferred.EqualsLiteral("UTF-32") &&
+-            !preferred.EqualsLiteral("UTF-32BE") &&
+-            !preferred.EqualsLiteral("UTF-32LE")))) {
+-        guess = preferred;
+-        pws->mParser->SetDocumentCharset(guess, guessSource);
+-        pws->mParser->SetSinkCharset(preferred);
+-        nsCOMPtr<nsICachingChannel> channel(do_QueryInterface(pws->mRequest));
+-        if (channel) {
+-          nsCOMPtr<nsISupports> cacheToken;
+-          channel->GetCacheToken(getter_AddRefs(cacheToken));
+-          if (cacheToken) {
+-            nsCOMPtr<nsICacheEntryDescriptor> cacheDescriptor(do_QueryInterface(cacheToken));
+-            if (cacheDescriptor) {
+-#ifdef DEBUG
+-              nsresult rv =
+-#endif
+-                cacheDescriptor->SetMetaDataElement("charset",
+-                                                    guess.get());
+-              NS_ASSERTION(NS_SUCCEEDED(rv),"cannot SetMetaDataElement");
+-            }
+-          }
+-        }
+-      }
+-    }
+   }
+ 
+   if (pws->mParserFilter)
+     pws->mParserFilter->RawBuffer(buf, &theNumRead);
+ 
+   result = pws->mScanner->Append(buf, theNumRead, pws->mRequest);
+   if (NS_SUCCEEDED(result)) {
+     *writeCount = count;
+   }
+ 
+   return result;
+ }
++#endif
+ 
+ nsresult
+ nsParser::OnDataAvailable(nsIRequest *request, nsISupports* aContext,
+                           nsIInputStream *pIStream, PRUint32 sourceOffset,
+                           PRUint32 aLength)
+ {
+   NS_PRECONDITION((eOnStart == mParserContext->mStreamListenerState ||
+                    eOnDataAvail == mParserContext->mStreamListenerState),
+@@ -2862,28 +2874,60 @@ nsParser::OnDataAvailable(nsIRequest *re
+       if (theContext->mScanner) {
+         nsScannerIterator iter;
+         theContext->mScanner->EndReading(iter);
+         theContext->mScanner->SetPosition(iter, PR_TRUE);
+       }
+     }
+ 
+     PRUint32 totalRead;
++
++#ifdef DEBUG_ben
++    static PRTime total = 0;
++    static int trials = 0;
++    PRTime start = PR_Now();
++#endif
++
++#ifdef ON_DATA_AVAILABLE__READ_SEGMENTS
+     ParserWriteStruct pws;
+     pws.mNeedCharsetCheck =
+       (0 == sourceOffset) && (mCharsetSource < kCharsetFromMetaTag);
+     pws.mParser = this;
+     pws.mParserFilter = mParserFilter;
+     pws.mScanner = theContext->mScanner;
+     pws.mRequest = request;
+ 
+     rv = pIStream->ReadSegments(ParserWriteFunc, &pws, aLength, &totalRead);
+     if (NS_FAILED(rv)) {
+       return rv;
+     }
++#else
++    char *data = new char[aLength + 1];
++    rv = pIStream->Read(data, aLength, &totalRead);
++    if (NS_FAILED(rv)) {
++      delete[] data;
++      return rv;
++    }
++    data[aLength] = 0;
++    if (0 == sourceOffset && mCharsetSource < kCharsetFromMetaTag)
++      CheckCharset(data, totalRead, request, this);
++    if (mParserFilter)
++      mParserFilter->RawBuffer(data, &totalRead);
++    rv = theContext->mScanner->Append(data, totalRead, request);
++    delete[] data;
++    NS_ENSURE_SUCCESS(rv, rv);
++#endif
++
++#ifdef DEBUG_ben
++    total += PR_Now() - start;
++    trials += 1;
++    printf("OYEZ average time: %gms, total: %gms\n",
++           total / (double) trials,
++           double(total));
++#endif
+ 
+     // Don't bother to start parsing until we've seen some
+     // non-whitespace data
+     if (!IsScriptExecuting() &&
+         theContext->mScanner->FirstNonWhitespacePosition() >= 0) {
+       if (mSink) {
+         mSink->WillParse();
+       }
