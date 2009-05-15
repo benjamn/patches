@@ -214,7 +214,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 diff --git a/xpcom/threads/nsThread.cpp b/xpcom/threads/nsThread.cpp
 --- a/xpcom/threads/nsThread.cpp
 +++ b/xpcom/threads/nsThread.cpp
-@@ -368,16 +368,20 @@ nsThread::PutEvent(nsIRunnable *event)
+@@ -368,16 +368,39 @@ nsThread::PutEvent(nsIRunnable *event)
      obs->OnDispatchedEvent(this);
  
    return NS_OK;
@@ -223,8 +223,27 @@ diff --git a/xpcom/threads/nsThread.cpp b/xpcom/threads/nsThread.cpp
  //-----------------------------------------------------------------------------
  // nsIEventTarget
  
++#define MEASURE_TIME_SPENT_IN_THREAD_EVENT_QUEUE
++
 +#ifdef MEASURE_TIME_SPENT_IN_THREAD_EVENT_QUEUE
-+NS_IMPL_THREADSAFE_ISUPPORTS1(nsThread::AgedEventHolder, nsIRunnable)
++class AgedEventHolder : public nsIRunnable {
++public:
++  NS_DECL_ISUPPORTS
++  AgedEventHolder(nsIRunnable* event)
++    : mTimeOfBirth(PR_Now())
++    , mEvent(event)
++  {}
++  virtual ~AgedEventHolder() {}
++  NS_IMETHOD Run() {
++    PRUint32 usecsInQueue = PR_Now() - mTimeOfBirth;
++    return mEvent->Run();
++  }
++private:
++  PRTime mTimeOfBirth;
++  nsCOMPtr<nsIRunnable> mEvent;
++};
++
++NS_IMPL_THREADSAFE_ISUPPORTS1(AgedEventHolder, nsIRunnable)
 +#endif
 +
  NS_IMETHODIMP
@@ -235,7 +254,7 @@ diff --git a/xpcom/threads/nsThread.cpp b/xpcom/threads/nsThread.cpp
    NS_ENSURE_ARG_POINTER(event);
  
    if (flags & DISPATCH_SYNC) {
-@@ -398,17 +402,22 @@ nsThread::Dispatch(nsIRunnable *event, P
+@@ -398,19 +421,26 @@ nsThread::Dispatch(nsIRunnable *event, P
        return rv;
  
      while (wrapper->IsPending())
@@ -253,48 +272,13 @@ diff --git a/xpcom/threads/nsThread.cpp b/xpcom/threads/nsThread.cpp
 +#endif
  }
  
++#undef MEASURE_TIME_SPENT_IN_THREAD_EVENT_QUEUE
++
  NS_IMETHODIMP
  nsThread::IsOnCurrentThread(PRBool *result)
  {
    *result = (PR_GetCurrentThread() == mThread);
    return NS_OK;
  }
-diff --git a/xpcom/threads/nsThread.h b/xpcom/threads/nsThread.h
---- a/xpcom/threads/nsThread.h
-+++ b/xpcom/threads/nsThread.h
-@@ -92,16 +92,35 @@ private:
-   }
  
-   // Wrappers for event queue methods:
-   PRBool GetEvent(PRBool mayWait, nsIRunnable **event) {
-     return mEvents->GetEvent(mayWait, event);
-   }
-   nsresult PutEvent(nsIRunnable *event);
- 
-+#ifdef MEASURE_TIME_SPENT_IN_THREAD_EVENT_QUEUE
-+  class AgedEventHolder : public nsIRunnable {
-+  public:
-+    NS_DECL_ISUPPORTS
-+    AgedEventHolder(nsIRunnable* event)
-+      : mTimeOfBirth(PR_Now())
-+      , mEvent(event)
-+    {}
-+    virtual ~AgedEventHolder() {}
-+    NS_IMETHOD Run() {
-+      PRUint32 usecsInQueue = PR_Now() - mTimeOfBirth;
-+      return mEvent->Run();
-+    }
-+  private:
-+    PRTime mTimeOfBirth;
-+    nsCOMPtr<nsIRunnable> mEvent;
-+  };
-+#endif
-+
-   // Wrapper for nsEventQueue that supports chaining.
-   class nsChainedEventQueue {
-   public:
-     nsChainedEventQueue(nsIThreadEventFilter *filter = nsnull)
-       : mNext(nsnull), mFilter(filter) {
-     }
- 
-     PRBool IsInitialized() {
+ //-----------------------------------------------------------------------------
