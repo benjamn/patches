@@ -180,8 +180,8 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +      thread->Note();
 +      thread->GetStats(&rs);
 +      if (rs)
-+        printf("count: %d  \tmean: %g  \tstdev: %g  \tmax: %g  \tmin: %g\n",
-+               rs->count(), rs->mean(), rs->stdev(), rs->max(), rs->min());
++        printf("last: %g  \tcount: %d  \tmean: %g  \tstdev: %g  \tmax: %g  \tmin: %g\n",
++               rs->last(), rs->count(), rs->mean(), rs->stdev(), rs->max(), rs->min());
 +    }
 +  }
 +
@@ -258,13 +258,14 @@ diff --git a/xpcom/threads/EventStats.h b/xpcom/threads/EventStats.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/threads/EventStats.h
-@@ -0,0 +1,136 @@
+@@ -0,0 +1,134 @@
 +#ifndef EventStats_h__
 +#define EventStats_h__
 +
 +#include "nsCOMPtr.h"
 +#include "nsIRunnable.h"
 +#include "mozilla/TimeStamp.h"
++#include "nsThreadUtils.h"
 +#include <math.h>
 +
 +template <typename UnitType>
@@ -273,7 +274,8 @@ new file mode 100644
 +  UnitType mSoSD,  // sum of squared deviations
 +           mMean,  // sample mean
 +           mMax,   // sample maximum
-+           mMin;   // sample minimum
++           mMin,   // sample minimum
++           mLast;  // most recent value
 +public:
 +  RunningStats()
 +    : mCount(0)
@@ -288,6 +290,7 @@ new file mode 100644
 +  UnitType stdev() const { return UnitType(sqrt(var())); }
 +  UnitType max()   const { return mMax; }
 +  UnitType min()   const { return mMin; }
++  UnitType last()  const { return mLast; }
 +  PRUint32 count() const { return mCount; }
 +
 +  RunningStats* update(UnitType x) {
@@ -306,6 +309,7 @@ new file mode 100644
 +    } else mMin = mMax = x;
 +
 +    mMean = mean;
++    mLast = x;
 +
 +    return this;
 +  }
@@ -336,7 +340,7 @@ new file mode 100644
 +  EventStatsWrapper* mESW;
 +};
 +
-+class EventStatsWrapper : public nsIRunnable {
++class EventStatsWrapper : public nsRunnable {
 +
 +  const mozilla::TimeStamp  mCreationTime;
 +  mozilla::TimeStamp        mRunTime;
@@ -348,8 +352,6 @@ new file mode 100644
 +  RVType* const mRunningStats;
 +
 +public:
-+
-+  NS_DECL_ISUPPORTS
 +
 +  EventStatsWrapper(nsIRunnable* event,
 +                    RVType* rvp,
@@ -389,10 +391,6 @@ new file mode 100644
 +  }
 +
 +};
-+
-+inline NS_IMPL_THREADSAFE_ADDREF(EventStatsWrapper)
-+inline NS_IMPL_THREADSAFE_RELEASE(EventStatsWrapper)
-+inline NS_IMPL_THREADSAFE_QUERY_INTERFACE1(EventStatsWrapper, nsIRunnable)
 +
 +#endif
 diff --git a/xpcom/threads/Makefile.in b/xpcom/threads/Makefile.in
