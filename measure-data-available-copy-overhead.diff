@@ -258,7 +258,7 @@ diff --git a/xpcom/threads/EventStats.h b/xpcom/threads/EventStats.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/threads/EventStats.h
-@@ -0,0 +1,123 @@
+@@ -0,0 +1,136 @@
 +#ifndef EventStats_h__
 +#define EventStats_h__
 +
@@ -285,7 +285,7 @@ new file mode 100644
 +
 +  UnitType mean()  const { return mMean; }
 +  UnitType var()   const { return mCount > 0 ? mSoSD / mCount : 0; }
-+  UnitType stdev() const { return UnitType(sqrt(double(var()))); }
++  UnitType stdev() const { return UnitType(sqrt(var())); }
 +  UnitType max()   const { return mMax; }
 +  UnitType min()   const { return mMin; }
 +  PRUint32 count() const { return mCount; }
@@ -321,9 +321,18 @@ new file mode 100644
 +class EventStatsObserver {
 +public:
 +  EventStatsObserver() : mESW(0) {}
-+  virtual void OnESWRun(EventStatsWrapper* esw) { mESW = esw; }
-+  virtual EventStatsWrapper* GetESW() const { return mESW; }
-+protected:
++
++  virtual EventStatsWrapper*
++  SetESW(EventStatsWrapper* esw) {
++    EventStatsWrapper* old = mESW;
++    mESW = esw;
++    return old;
++  }
++
++  virtual EventStatsWrapper*
++  GetESW() { return mESW; }
++
++private:
 +  EventStatsWrapper* mESW;
 +};
 +
@@ -358,12 +367,16 @@ new file mode 100644
 +    NS_ASSERTION(mRunTime.IsNull(),
 +                 "Calling EventStatsWrapper::Run more than once?");
 +    mRunTime = mozilla::TimeStamp::Now();
-+    mObserver->OnESWRun(this);
++    EventStatsWrapper* const old = mObserver->SetESW(this);
 +    if (mNoted) {
 +      mNoted = PR_FALSE;
 +      Note();
 +    }
-+    return mEvent->Run();
++    nsresult rv = mEvent->Run();
++    if (mObserver->SetESW(old) != this) {
++      NS_WARNING("EventStatsWrapper changed during mEvent execution?");
++    }
++    return rv;
 +  }
 +
 +  const RVType* Note() {
