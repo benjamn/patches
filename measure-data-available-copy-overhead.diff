@@ -258,7 +258,7 @@ diff --git a/xpcom/threads/EventStats.h b/xpcom/threads/EventStats.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/threads/EventStats.h
-@@ -0,0 +1,134 @@
+@@ -0,0 +1,135 @@
 +#ifndef EventStats_h__
 +#define EventStats_h__
 +
@@ -283,6 +283,7 @@ new file mode 100644
 +    , mMean(0)
 +    , mMax(0)
 +    , mMin(0)
++    , mLast(0)
 +  {}
 +
 +  UnitType mean()  const { return mMean; }

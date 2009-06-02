@@ -353,7 +353,26 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
          }
        }
        break;
-@@ -1622,17 +1604,17 @@ CNavDTD::HandleEndToken(CToken* aToken)
+@@ -1606,17 +1588,17 @@ CNavDTD::HandleEndToken(CToken* aToken)
+ 
+   switch (theChildTag) {
+     case eHTMLTag_link:
+     case eHTMLTag_meta:
+       break;
+ 
+     case eHTMLTag_head:
+       StripWSFollowingTag(theChildTag, mTokenizer, mTokenAllocator,
+-                          IsParserInDocWrite() ? nsnull : &mLineNumber);
++                          !mCountLines ? nsnull : &mLineNumber);
+       if (mBodyContext->LastOf(eHTMLTag_head) != kNotFound) {
+         result = CloseContainersTo(eHTMLTag_head, PR_FALSE);
+       }
+       mFlags &= ~NS_DTD_FLAG_HAS_EXPLICIT_HEAD;
+       break;
+ 
+     case eHTMLTag_form:
+       result = CloseContainer(eHTMLTag_form, PR_FALSE);
+@@ -1626,25 +1608,25 @@ CNavDTD::HandleEndToken(CToken* aToken)
        {
          // This is special NAV-QUIRKS code that allows users to use </BR>, even
          // though that isn't a legitimate tag.
@@ -371,8 +390,17 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
      case eHTMLTag_body:
      case eHTMLTag_html:
        StripWSFollowingTag(theChildTag, mTokenizer, mTokenAllocator,
-                           mLineNumber);
-@@ -1717,21 +1699,21 @@ CNavDTD::HandleEndToken(CToken* aToken)
+-                          IsParserInDocWrite() ? nsnull : &mLineNumber);
++                          !mCountLines ? nsnull : &mLineNumber);
+       break;
+ 
+     case eHTMLTag_script:
+       // Note: we don't fall through to the default case because
+       // CloseContainersTo() has the bad habit of closing tags that are opened
+       // by document.write(). Fortunately, the tokenizer guarantees that no
+       // actual tags appear between <script> and </script> so we won't be
+       // closing the wrong tag.
+@@ -1721,21 +1703,21 @@ CNavDTD::HandleEndToken(CToken* aToken)
                    // regular flow of HandleToken.
                    IF_HOLD(aToken);
                    mTokenizer->PushTokenFront(aToken);
@@ -396,7 +424,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
            if (result == NS_OK) {
              eHTMLTags theTarget =
                FindAutoCloseTargetForEndTag(theChildTag, *mBodyContext,
-@@ -1842,17 +1824,17 @@ CNavDTD::HandleSavedTokens(PRInt32 anInd
+@@ -1846,17 +1828,17 @@ CNavDTD::HandleSavedTokens(PRInt32 anInd
                continue;
              }
            }
@@ -415,7 +443,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
          // handling saved tokens, because the parser does not track forms on its
          // mBodyContext stack.
          CloseContainersTo(theTopIndex, mBodyContext->TagAt(theTopIndex),
-@@ -1909,17 +1891,17 @@ CNavDTD::HandleEntityToken(CToken* aToke
+@@ -1913,17 +1895,17 @@ CNavDTD::HandleEntityToken(CToken* aToke
      nsAutoString entityName;
      entityName.AssignLiteral("&");
      entityName.Append(theStr);
@@ -434,7 +462,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
  
    PRInt32 theParentContains = -1;
    if (CanOmit(theParentTag, eHTMLTag_entity, theParentContains)) {
-@@ -2021,17 +2003,17 @@ CNavDTD::HandleProcessingInstructionToke
+@@ -2025,17 +2007,17 @@ CNavDTD::HandleProcessingInstructionToke
  nsresult
  CNavDTD::HandleDocTypeDeclToken(CToken* aToken)
  {
@@ -453,7 +481,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
    if (pos != kNotFound) {
      // First remove '>' from the end.
      docTypeStr.Cut(pos, len - pos);
-@@ -2081,17 +2063,17 @@ CNavDTD::CollectAttributes(nsIParserNode
+@@ -2085,17 +2067,17 @@ CNavDTD::CollectAttributes(nsIParserNode
          if (theType != eToken_attribute) {
            // If you're here then it means that the token does not
            // belong to this node. Put the token back into the tokenizer
@@ -472,7 +500,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
            // add it to the node.
            if (!((CAttributeToken*)theToken)->GetKey().IsEmpty()) {
              aNode->AddAttribute(theToken);
-@@ -3120,11 +3102,11 @@ CNavDTD::CreateContextStackFor(eHTMLTags
+@@ -3124,11 +3106,11 @@ CNavDTD::CreateContextStackFor(eHTMLTags
  
    // Now, build up the stack according to the tags.
    while (theLen) {
@@ -656,7 +684,7 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.h b/parser/htmlparser/src/nsExp
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -1520,17 +1520,17 @@ nsParser::DidBuildModel(nsresult anError
+@@ -1542,17 +1542,17 @@ nsParser::DidBuildModel(nsresult anError
  
    if (IsComplete()) {
      if (mParserContext && !mParserContext->mPrevContext) {
@@ -675,7 +703,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
        mParserContext->mRequest = 0;
      }
    }
-@@ -2337,17 +2337,23 @@ nsParser::BuildModel()
+@@ -2359,17 +2359,23 @@ nsParser::BuildModel()
    nsresult result = NS_OK;
    if (mParserContext) {
      result = mParserContext->GetTokenizer(mDTD, mSink, theTokenizer);
@@ -685,7 +713,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      if (mDTD) {
        MOZ_TIMER_START(mDTDTime);
 -      result = mDTD->BuildModel(this, theTokenizer);
-+      // XXXbenjamn CanInterrupt() and !inDocWrite appear to be redundant.
++      // XXXbenjamn CanInterrupt() and !inDocWrite appear to be covariant.
 +      PRBool inDocWrite = !!mParserContext->mPrevContext;
 +      result = mDTD->BuildModel(theTokenizer,
 +                                // ignore interruptions in document.write
