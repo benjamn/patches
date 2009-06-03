@@ -662,25 +662,25 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
 diff --git a/parser/htmlparser/src/nsExpatDriver.h b/parser/htmlparser/src/nsExpatDriver.h
 --- a/parser/htmlparser/src/nsExpatDriver.h
 +++ b/parser/htmlparser/src/nsExpatDriver.h
-@@ -59,17 +59,17 @@ public:
-   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-   NS_DECL_NSIDTD
-   NS_DECL_NSITOKENIZER
-   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsExpatDriver, nsIDTD)
+@@ -94,17 +94,17 @@ public:
+                               const PRUnichar* aPubid);
+   nsresult HandleUnparsedEntityDecl(const PRUnichar* aEntityName,
+                                     const PRUnichar* aBase,
+                                     const PRUnichar* aSysid,
+                                     const PRUnichar* aPubid,
+                                     const PRUnichar* aNotationName);
  
-   nsExpatDriver();
-   virtual ~nsExpatDriver();
- 
+ private:
 -  nsresult HandleToken(CToken* aToken, nsIParser* aParser);
 +  nsresult HandleToken(CToken* aToken);
  
-   int HandleExternalEntityRef(const PRUnichar *aOpenEntityNames,
-                               const PRUnichar *aBase,
-                               const PRUnichar *aSystemId,
-                               const PRUnichar *aPublicId);
-   nsresult HandleStartElement(const PRUnichar *aName, const PRUnichar **aAtts);
-   nsresult HandleEndElement(const PRUnichar *aName);
-   nsresult HandleCharacterData(const PRUnichar *aCData, const PRUint32 aLength);
+   // Load up an external stream to get external entity information
+   nsresult OpenInputStreamFromExternalDTD(const PRUnichar* aFPIStr,
+                                           const PRUnichar* aURLStr,
+                                           const PRUnichar* aBaseURL,
+                                           nsIInputStream** aStream,
+                                           nsAString& aAbsURL);
+ 
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp

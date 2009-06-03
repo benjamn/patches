@@ -197,7 +197,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
          // Keep track of the top index.
          PRInt32 topIndex = mBodyContext->mContextTopIndex;
          
-@@ -2117,17 +2113,17 @@ CNavDTD::CollectAttributes(nsIParserNode
+@@ -2121,17 +2117,17 @@ CNavDTD::CollectAttributes(nsIParserNode
   *  This method is called to determine whether or not a tag
   *  of one type can contain a tag of another type.
   *  
@@ -216,7 +216,7 @@ diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.c
        IsInlineElement(aParent, aParent) &&
        HasOpenContainer(eHTMLTag_nobr)) {
      return PR_FALSE;
-@@ -2296,17 +2292,17 @@ CNavDTD::CanOmit(eHTMLTags aParent, eHTM
+@@ -2300,17 +2296,17 @@ CNavDTD::CanOmit(eHTMLTags aParent, eHTM
  /**
   *  This method gets called to determine whether a given 
   *  tag is itself a container
@@ -380,25 +380,25 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
 diff --git a/parser/htmlparser/src/nsExpatDriver.h b/parser/htmlparser/src/nsExpatDriver.h
 --- a/parser/htmlparser/src/nsExpatDriver.h
 +++ b/parser/htmlparser/src/nsExpatDriver.h
-@@ -59,16 +59,18 @@ public:
-   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-   NS_DECL_NSIDTD
-   NS_DECL_NSITOKENIZER
-   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsExpatDriver, nsIDTD)
+@@ -94,16 +94,18 @@ public:
+                               const PRUnichar* aPubid);
+   nsresult HandleUnparsedEntityDecl(const PRUnichar* aEntityName,
+                                     const PRUnichar* aBase,
+                                     const PRUnichar* aSysid,
+                                     const PRUnichar* aPubid,
+                                     const PRUnichar* aNotationName);
  
-   nsExpatDriver();
-   virtual ~nsExpatDriver();
- 
+ private:
 +  nsresult HandleToken(CToken* aToken, nsIParser* aParser);
 +
-   int HandleExternalEntityRef(const PRUnichar *aOpenEntityNames,
-                               const PRUnichar *aBase,
-                               const PRUnichar *aSystemId,
-                               const PRUnichar *aPublicId);
-   nsresult HandleStartElement(const PRUnichar *aName, const PRUnichar **aAtts);
-   nsresult HandleEndElement(const PRUnichar *aName);
-   nsresult HandleCharacterData(const PRUnichar *aCData, const PRUint32 aLength);
-   nsresult HandleComment(const PRUnichar *aName);
+   // Load up an external stream to get external entity information
+   nsresult OpenInputStreamFromExternalDTD(const PRUnichar* aFPIStr,
+                                           const PRUnichar* aURLStr,
+                                           const PRUnichar* aBaseURL,
+                                           nsIInputStream** aStream,
+                                           nsAString& aAbsURL);
+ 
+   /**
 @@ -151,15 +153,20 @@ private:
    // Necko
    PRPackedBool     mIsFinalChunk;
@@ -469,7 +469,7 @@ diff --git a/parser/htmlparser/src/nsHTMLTokenizer.h b/parser/htmlparser/src/nsH
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -1520,17 +1520,17 @@ nsParser::DidBuildModel(nsresult anError
+@@ -1542,17 +1542,17 @@ nsParser::DidBuildModel(nsresult anError
  
    if (IsComplete()) {
      if (mParserContext && !mParserContext->mPrevContext) {
@@ -488,7 +488,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
        mParserContext->mRequest = 0;
      }
    }
-@@ -2337,17 +2337,17 @@ nsParser::BuildModel()
+@@ -2359,17 +2359,17 @@ nsParser::BuildModel()
    nsresult result = NS_OK;
    if (mParserContext) {
      result = mParserContext->GetTokenizer(mDTD, mSink, theTokenizer);
