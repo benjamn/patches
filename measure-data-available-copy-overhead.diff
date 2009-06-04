@@ -80,7 +80,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +}
 +
 +#define ON_DATA_AVAILABLE__READ_SEGMENTS
-+// #define MEASURE_DATA_COPY_OVERHEAD
++#define MEASURE_DATA_COPY_OVERHEAD
 +
  /*
   * This function is invoked as a result of a call to a stream's
@@ -97,7 +97,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
                  PRUint32 count,
                  PRUint32 *writeCount)
  {
-@@ -2793,82 +2847,56 @@ ParserWriteFunc(nsIInputStream* in,
+@@ -2793,82 +2847,61 @@ ParserWriteFunc(nsIInputStream* in,
    const char* buf = fromRawSegment;
    PRUint32 theNumRead = count;
  
@@ -174,6 +174,11 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
    NS_PRECONDITION(NS_InputStreamIsBuffered(pIStream),
                    "Must have a buffered input stream");
  
++#ifdef MEASURE_DATA_COPY_OVERHEAD
++  static mozilla::TimeStamp firstODA = mozilla::TimeStamp::Now();
++  printf("+—————\n");
++#endif
++
 +  {
 +    nsIThread* thread = 0;
 +    NS_GetCurrentThread(&thread);
@@ -182,7 +187,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +      thread->Note();
 +      thread->GetStats(&rs);
 +      if (rs)
-+        printf("last: %g  \tcount: %d  \tmean: %g  \tstdev: %g  \tmax: %g  \tmin: %g\n",
++        printf("| last: %g  \tcount: %d  \tmean: %g  \tstdev: %g  \tmax: %g  \tmin: %g\n",
 +               rs->last(), rs->count(), rs->mean(), rs->stdev(), rs->max(), rs->min());
 +    }
 +  }
@@ -195,7 +200,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      theContext = theContext->mPrevContext;
    }
  
-@@ -2884,28 +2912,62 @@ nsParser::OnDataAvailable(nsIRequest *re
+@@ -2884,28 +2917,62 @@ nsParser::OnDataAvailable(nsIRequest *re
        if (theContext->mScanner) {
          nsScannerIterator iter;
          theContext->mScanner->EndReading(iter);
@@ -245,7 +250,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +    mozilla::TimeDuration time = mozilla::TimeStamp::Now() - start;
 +    total += time;
 +    trials += 1;
-+    printf("\ttime: %gs  \taverage time: %gs  \ttotal: %gs\n",
++    printf("| time: %gs  \taverage time: %gs  \ttotal: %gs\n",
 +           time.ToSeconds(),
 +           total.ToSeconds() / (double) trials,
 +           total.ToSeconds());
