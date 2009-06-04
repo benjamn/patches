@@ -1,3 +1,4 @@
+measure-data-available-copy-overhead.diff
 htmltokenizer-getflags.diff
 dtdmode-simplifications.diff
 nsidtd-kill-resume-interrupt.diff

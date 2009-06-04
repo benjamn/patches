@@ -3,7 +3,7 @@ Copying network data using nsIInputStream::Read rather than ReadSegments.
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -69,16 +69,17 @@
+@@ -69,16 +69,18 @@
  #include "nsNetUtil.h"
  #include "nsScriptLoader.h"
  #include "nsDataHashtable.h"
@@ -13,6 +13,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  #include "nsICSSLoaderObserver.h"
  #include "nsICSSLoader.h"
 +#include "EventStats.h"
++#include "mozilla/TimeStamp.h"
  
  #ifdef MOZ_VIEW_SOURCE
  #include "nsViewSourceHTML.h"
@@ -21,7 +22,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  #define NS_PARSER_FLAG_PARSER_ENABLED         0x00000002
  #define NS_PARSER_FLAG_OBSERVERS_ENABLED      0x00000004
  #define NS_PARSER_FLAG_PENDING_CONTINUE_EVENT 0x00000008
-@@ -2769,22 +2770,73 @@ nsParser::DetectMetaTag(const char* aByt
+@@ -2769,22 +2771,74 @@ nsParser::DetectMetaTag(const char* aByt
  typedef struct {
    PRBool mNeedCharsetCheck;
    nsParser* mParser;
@@ -79,6 +80,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +}
 +
 +#define ON_DATA_AVAILABLE__READ_SEGMENTS
++// #define MEASURE_DATA_COPY_OVERHEAD
 +
  /*
   * This function is invoked as a result of a call to a stream's
@@ -95,7 +97,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
                  PRUint32 count,
                  PRUint32 *writeCount)
  {
-@@ -2793,82 +2845,56 @@ ParserWriteFunc(nsIInputStream* in,
+@@ -2793,82 +2847,56 @@ ParserWriteFunc(nsIInputStream* in,
    const char* buf = fromRawSegment;
    PRUint32 theNumRead = count;
  
@@ -193,7 +195,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      theContext = theContext->mPrevContext;
    }
  
-@@ -2884,28 +2910,60 @@ nsParser::OnDataAvailable(nsIRequest *re
+@@ -2884,28 +2912,62 @@ nsParser::OnDataAvailable(nsIRequest *re
        if (theContext->mScanner) {
          nsScannerIterator iter;
          theContext->mScanner->EndReading(iter);
@@ -203,10 +205,10 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
      PRUint32 totalRead;
 +
-+#ifdef DEBUG_ben
-+    static PRTime total = 0;
++#ifdef MEASURE_DATA_COPY_OVERHEAD
++    static mozilla::TimeDuration total = 0;
 +    static int trials = 0;
-+    PRTime start = PR_Now();
++    mozilla::TimeStamp start = mozilla::TimeStamp::Now();
 +#endif
 +
 +#ifdef ON_DATA_AVAILABLE__READ_SEGMENTS
@@ -239,12 +241,14 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +    NS_ENSURE_SUCCESS(rv, rv);
 +#endif
 +
-+#ifdef DEBUG_ben
-+    total += PR_Now() - start;
++#ifdef MEASURE_DATA_COPY_OVERHEAD
++    mozilla::TimeDuration time = mozilla::TimeStamp::Now() - start;
++    total += time;
 +    trials += 1;
-+    printf("OYEZ average time: %gms, total: %gms\n",
-+           total / (double) trials,
-+           double(total));
++    printf("\ttime: %gs  \taverage time: %gs  \ttotal: %gs\n",
++           time.ToSeconds(),
++           total.ToSeconds() / (double) trials,
++           total.ToSeconds());
 +#endif
  
      // Don't bother to start parsing until we've seen some
