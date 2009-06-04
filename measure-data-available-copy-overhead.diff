@@ -97,7 +97,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
                  PRUint32 count,
                  PRUint32 *writeCount)
  {
-@@ -2793,82 +2847,61 @@ ParserWriteFunc(nsIInputStream* in,
+@@ -2793,82 +2847,63 @@ ParserWriteFunc(nsIInputStream* in,
    const char* buf = fromRawSegment;
    PRUint32 theNumRead = count;
  
@@ -177,6 +177,8 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +#ifdef MEASURE_DATA_COPY_OVERHEAD
 +  static mozilla::TimeStamp firstODA = mozilla::TimeStamp::Now();
 +  printf("+—————\n");
++  printf("| time first nsParser::OnDataAvailable call: %gs\n",
++         (mozilla::TimeStamp::Now() - firstODA).ToSeconds());
 +#endif
 +
 +  {
@@ -200,7 +202,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      theContext = theContext->mPrevContext;
    }
  
-@@ -2884,28 +2917,62 @@ nsParser::OnDataAvailable(nsIRequest *re
+@@ -2884,28 +2919,62 @@ nsParser::OnDataAvailable(nsIRequest *re
        if (theContext->mScanner) {
          nsScannerIterator iter;
          theContext->mScanner->EndReading(iter);
