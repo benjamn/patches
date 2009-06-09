@@ -73,9 +73,9 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
-@@ -121,16 +121,17 @@ SDK_HEADERS = \
- 		pldhash.h \
- 		$(NULL)
+@@ -123,16 +123,17 @@ SDK_HEADERS = \
+ 
+ EXPORTS_NAMESPACES = mozilla
  
  EXPORTS = \
  		nsThreadUtils.h \
@@ -87,10 +87,10 @@ diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
  		Bind.h \
  		$(NULL)
  
- SDK_LIBRARY     =                        \
- 		$(LIB_PREFIX)xpcomglue_s.$(LIB_SUFFIX) \
- 		$(NULL)
- 
+ EXPORTS_mozilla = \
+   BlockingResourceBase.h \
+   CondVar.h \
+   DeadlockDetector.h \
 diff --git a/xpcom/glue/RunnableFunctor.h b/xpcom/glue/RunnableFunctor.h
 new file mode 100644
 --- /dev/null
