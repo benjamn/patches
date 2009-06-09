@@ -909,10 +909,10 @@ new file mode 100644
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
-@@ -120,16 +120,19 @@ SDK_HEADERS = \
- 		nsWeakReference.h \
- 		pldhash.h \
+@@ -122,16 +122,19 @@ SDK_HEADERS = \
  		$(NULL)
+ 
+ EXPORTS_NAMESPACES = mozilla
  
  EXPORTS = \
  		nsThreadUtils.h \
@@ -923,12 +923,12 @@ diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 +		Bind.h \
  		$(NULL)
  
- SDK_LIBRARY     =                        \
- 		$(LIB_PREFIX)xpcomglue_s.$(LIB_SUFFIX) \
- 		$(NULL)
- 
- 
- ## TODO temp hack until build system handles this
+ EXPORTS_mozilla = \
+   BlockingResourceBase.h \
+   CondVar.h \
+   DeadlockDetector.h \
+   Monitor.h \
+   Mutex.h \
 diff --git a/xpcom/glue/TList.h b/xpcom/glue/TList.h
 new file mode 100644
 --- /dev/null
