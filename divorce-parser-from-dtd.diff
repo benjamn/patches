@@ -1,4 +1,4 @@
-No longer giving parser references to the DTD.
+Bug 484121 (6/6) - Don't let DTDs hold parser references. r+sr=mrbkap
 
 diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD.h
 --- a/parser/htmlparser/public/nsIDTD.h
@@ -684,7 +684,7 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.h b/parser/htmlparser/src/nsExp
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -1542,17 +1542,17 @@ nsParser::DidBuildModel(nsresult anError
+@@ -1600,17 +1600,17 @@ nsParser::DidBuildModel(nsresult anError
  
    if (IsComplete()) {
      if (mParserContext && !mParserContext->mPrevContext) {
@@ -696,14 +696,14 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 -        nsresult dtdResult =  mDTD->DidBuildModel(anErrorCode,this),
 +        nsresult dtdResult =  mDTD->DidBuildModel(anErrorCode),
                  sinkResult = mSink->DidBuildModel();
-         result = NS_FAILED(sinkResult) ? sinkResult : dtdResult;
-       }
- 
-       //Ref. to bug 61462.
-       mParserContext->mRequest = 0;
-     }
-   }
-@@ -2359,17 +2359,23 @@ nsParser::BuildModel()
+         // nsIDTD::DidBuildModel used to be responsible for calling
+         // nsIContentSink::DidBuildModel, but that obligation isn't expressible
+         // in the nsIDTD interface itself, so it's sounder and simpler to give
+         // that responsibility back to the parser. The former behavior of the
+         // DTD was to NS_ENSURE_SUCCESS the sink DidBuildModel call, so if the
+         // sink returns failure we should use sinkResult instead of dtdResult,
+         // to preserve the old error handling behavior of the DTD:
+@@ -2424,17 +2424,23 @@ nsParser::BuildModel()
    nsresult result = NS_OK;
    if (mParserContext) {
      result = mParserContext->GetTokenizer(mDTD, mSink, theTokenizer);
@@ -938,7 +938,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
    printf("\n");
  #endif
  
-@@ -710,16 +699,18 @@ nsresult CViewSourceHTML::WriteTag(PRInt
+@@ -712,16 +701,18 @@ nsresult CViewSourceHTML::WriteTag(PRInt
    nsresult result=NS_OK;
  
    // adjust line number to what it will be after we finish writing this tag
@@ -957,7 +957,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
      return NS_ERROR_FAILURE;
  
    // Highlight all parts of all erroneous tags.
-@@ -830,35 +821,34 @@ nsresult CViewSourceHTML::WriteTag(PRInt
+@@ -832,35 +823,34 @@ nsresult CViewSourceHTML::WriteTag(PRInt
  
  /**
   *
@@ -996,7 +996,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
      case eToken_end:
        {
          const nsSubstring& endValue = aToken->GetStringValue();
-@@ -1043,31 +1033,26 @@ void CViewSourceHTML::WriteHrefAttribute
+@@ -1045,31 +1035,26 @@ void CViewSourceHTML::WriteHrefAttribute
  nsresult CViewSourceHTML::CreateViewSourceURL(const nsAString& linkUrl,
                                                nsString& viewSourceUrl) {
    nsCOMPtr<nsIURI> baseURI;
@@ -1029,7 +1029,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
  
    // URLs that execute script (e.g. "javascript:" URLs) should just be
    // ignored.  There's nothing reasonable we can do with them, and allowing
-@@ -1195,24 +1180,19 @@ nsresult CViewSourceHTML::GetBaseURI(nsI
+@@ -1197,24 +1182,19 @@ nsresult CViewSourceHTML::GetBaseURI(nsI
    if (!mBaseURI) {
      rv = SetBaseURI(mFilename);
    }

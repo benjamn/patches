@@ -1,3 +1,5 @@
+Bug 484121 (4/6) - Let the parser call nsIContentSink::{Will,Did}BuildModel directly. r+sr=mrbkap
+
 diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD.h
 --- a/parser/htmlparser/public/nsIDTD.h
 +++ b/parser/htmlparser/public/nsIDTD.h
@@ -203,7 +205,75 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -1499,17 +1499,19 @@ nsParser::WillBuildModel(nsString& aFile
+@@ -1482,16 +1482,67 @@ nsParser::CancelParsingEvents()
+     mContinueEvent = nsnull;
+     mFlags &= ~NS_PARSER_FLAG_PENDING_CONTINUE_EVENT;
+   }
+   return NS_OK;
+ }
+ 
+ ////////////////////////////////////////////////////////////////////////
+ 
++/**
++ * Evalutes EXPR1 and EXPR2 exactly once each, in that order.  Stores the value
++ * of EXPR2 in RV is EXPR2 fails, otherwise RV contains the result of EXPR1
++ * (which could be success or failure).
++ *
++ * To understand the motivation for this construct, consider these example
++ * methods:
++ *
++ *   nsresult nsSomething::DoThatThing(nsIWhatever* obj) {
++ *     nsresult rv = NS_OK;
++ *     ...
++ *     return obj->DoThatThing();
++ *     NS_ENSURE_SUCCESS(rv, rv);
++ *     ...
++ *     return rv;
++ *   }
++ *
++ *   void nsCaller::MakeThingsHappen() {
++ *     return mSomething->DoThatThing(mWhatever);
++ *   }
++ *
++ * Suppose, for whatever reason*, we want to shift responsibility for calling
++ * mWhatever->DoThatThing() from nsSomething::DoThatThing up to
++ * nsCaller::MakeThingsHappen.  We might rewrite the two methods as follows:
++ *
++ *   nsresult nsSomething::DoThatThing() {
++ *     nsresult rv = NS_OK;
++ *     ...
++ *     ...
++ *     return rv;
++ *   }
++ *
++ *   void nsCaller::MakeThingsHappen() {
++ *     nsresult rv;
++ *     PREFER_LATTER_ERROR_CODE(mSomething->DoThatThing(),
++ *                              mWhatever->DoThatThing(),
++ *                              rv);
++ *     return rv;
++ *   }
++ *
++ * *Possible reasons include: nsCaller doesn't want to give mSomething access
++ * to mWhatever, nsCaller wants to guarantee that mWhatever->DoThatThing() will
++ * be called regardless of how nsSomething::DoThatThing behaves, &c.
++ */
++#define PREFER_LATTER_ERROR_CODE(EXPR1, EXPR2, RV) {                          \
++  nsresult RV##__temp = EXPR1;                                                \
++  RV = EXPR2;                                                                 \
++  if (NS_FAILED(RV)) {                                                        \
++    RV = RV##__temp;                                                          \
++  }                                                                           \
++}
+ 
+ /**
+  * This gets called just prior to the model actually
+  * being constructed. It's important to make this the
+  * last thing that happens right before parsing, so we
+  * can delay until the last moment the resolution of
+  * which DTD to use (unless of course we're assigned one).
+  */
+@@ -1520,17 +1571,26 @@ nsParser::WillBuildModel(nsString& aFile
                 "Clobbering DTD for non-root parser context!");
    mDTD = FindSuitableDTD(*mParserContext);
    NS_ENSURE_TRUE(mDTD, NS_ERROR_OUT_OF_MEMORY);
@@ -215,6 +285,13 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 -  return mDTD->WillBuildModel(*mParserContext, tokenizer, mSink);
 +  rv = mDTD->WillBuildModel(*mParserContext, tokenizer, mSink);
 +  nsresult sinkResult = mSink->WillBuildModel(mDTD->GetMode());
++  // nsIDTD::WillBuildModel used to be responsible for calling
++  // nsIContentSink::WillBuildModel, but that obligation isn't expressible
++  // in the nsIDTD interface itself, so it's sounder and simpler to give that
++  // responsibility back to the parser. The former behavior of the DTD was to
++  // NS_ENSURE_SUCCESS the sink WillBuildModel call, so if the sink returns
++  // failure we should use sinkResult instead of rv, to preserve the old error
++  // handling behavior of the DTD:
 +  return NS_FAILED(sinkResult) ? sinkResult : rv;
  }
  
@@ -224,7 +301,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
   * have to check for a prev. context before closing out the DTD/sink.
   */
  nsresult
-@@ -1519,17 +1521,19 @@ nsParser::DidBuildModel(nsresult anError
+@@ -1540,17 +1600,26 @@ nsParser::DidBuildModel(nsresult anError
  
    if (IsComplete()) {
      if (mParserContext && !mParserContext->mPrevContext) {
@@ -236,6 +313,13 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 -        result = mDTD->DidBuildModel(anErrorCode,PR_TRUE,this,mSink);
 +        nsresult dtdResult =  mDTD->DidBuildModel(anErrorCode,this,mSink),
 +                sinkResult = mSink->DidBuildModel();
++        // nsIDTD::DidBuildModel used to be responsible for calling
++        // nsIContentSink::DidBuildModel, but that obligation isn't expressible
++        // in the nsIDTD interface itself, so it's sounder and simpler to give
++        // that responsibility back to the parser. The former behavior of the
++        // DTD was to NS_ENSURE_SUCCESS the sink DidBuildModel call, so if the
++        // sink returns failure we should use sinkResult instead of dtdResult,
++        // to preserve the old error handling behavior of the DTD:
 +        result = NS_FAILED(sinkResult) ? sinkResult : dtdResult;
        }
  

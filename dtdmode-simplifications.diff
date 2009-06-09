@@ -1,7 +1,9 @@
+Bug 484121 (2/6) - Add nsIDTD::GetMode to eliminate heinous const_cast. r+sr=mrbkap
+
 diff --git a/browser/components/places/src/nsPlacesImportExportService.cpp b/browser/components/places/src/nsPlacesImportExportService.cpp
 --- a/browser/components/places/src/nsPlacesImportExportService.cpp
 +++ b/browser/components/places/src/nsPlacesImportExportService.cpp
-@@ -351,18 +351,16 @@ public:
+@@ -350,18 +350,16 @@ public:
                  nsINavBookmarksService* bookmarkService,
                  PRInt64 aFolder,
                  PRBool aIsImportDefaults);
@@ -104,7 +106,7 @@ diff --git a/content/html/document/src/nsHTMLContentSink.cpp b/content/html/docu
    virtual void FlushPendingNotifications(mozFlushType aType);
    NS_IMETHOD SetDocumentCharset(nsACString& aCharset);
    virtual nsISupports *GetTarget();
-@@ -1743,38 +1743,31 @@ HTMLContentSink::Init(nsIDocument* aDoc,
+@@ -1737,38 +1737,31 @@ HTMLContentSink::Init(nsIDocument* aDoc,
  
  NS_IMETHODIMP
  HTMLContentSink::WillParse(void)
@@ -281,7 +283,7 @@ diff --git a/content/xml/document/src/nsLoadSaveContentSink.h b/content/xml/docu
 diff --git a/content/xml/document/src/nsXMLContentSink.cpp b/content/xml/document/src/nsXMLContentSink.cpp
 --- a/content/xml/document/src/nsXMLContentSink.cpp
 +++ b/content/xml/document/src/nsXMLContentSink.cpp
-@@ -205,17 +205,17 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+@@ -206,17 +206,17 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
  // nsIContentSink
  NS_IMETHODIMP
  nsXMLContentSink::WillParse(void)
@@ -806,7 +808,7 @@ diff --git a/parser/htmlparser/src/nsLoggingSink.h b/parser/htmlparser/src/nsLog
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -1009,31 +1009,16 @@ nsParser::SetContentSink(nsIContentSink*
+@@ -1031,31 +1031,16 @@ nsParser::SetContentSink(nsIContentSink*
   */
  NS_IMETHODIMP_(nsIContentSink*)
  nsParser::GetContentSink()
@@ -903,7 +905,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
    * The parser uses a code sandwich to wrap the parsing process. Before
    * the process begins, WillBuildModel() is called. Afterwards the parser
    * calls DidBuildModel().
-@@ -606,16 +595,23 @@ NS_IMETHODIMP_(void)
+@@ -606,16 +595,25 @@ NS_IMETHODIMP_(void)
  CViewSourceHTML::Terminate() {
  }
  
@@ -915,7 +917,9 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
 +NS_IMETHODIMP_(nsDTDMode)
 +CViewSourceHTML::GetMode() const
 +{
-+  return eDTDMode_full_standards; // lie, lie, lie
++  // Quirks mode needn't affect how the source is viewed, so parse the source
++  // view in full standards mode no matter what:
++  return eDTDMode_full_standards;
 +}
 +
 +
@@ -1011,7 +1015,7 @@ diff --git a/rdf/base/src/nsRDFContentSink.cpp b/rdf/base/src/nsRDFContentSink.c
      NS_IMETHOD SetDocumentCharset(nsACString& aCharset) { return NS_OK; }
      virtual nsISupports *GetTarget() { return nsnull; }
  
-@@ -609,17 +610,17 @@ RDFContentSinkImpl::ReportError(const PR
+@@ -615,17 +616,17 @@ RDFContentSinkImpl::ReportError(const PR
  NS_IMETHODIMP 
  RDFContentSinkImpl::WillParse(void)
  {

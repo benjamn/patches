@@ -1,4 +1,4 @@
-Bug 484121 - Avoid repeatedly passing nsIContentSink parameters to nsIDTD methods.
+Bug 484121 (5/6) - Avoid needlessly passing nsIContentSink parameters to nsIDTD methods. r+sr=mrbkap
 
 diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD.h
 --- a/parser/htmlparser/public/nsIDTD.h
@@ -469,7 +469,7 @@ diff --git a/parser/htmlparser/src/nsHTMLTokenizer.h b/parser/htmlparser/src/nsH
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -1542,17 +1542,17 @@ nsParser::DidBuildModel(nsresult anError
+@@ -1600,17 +1600,17 @@ nsParser::DidBuildModel(nsresult anError
  
    if (IsComplete()) {
      if (mParserContext && !mParserContext->mPrevContext) {
@@ -481,14 +481,14 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 -        nsresult dtdResult =  mDTD->DidBuildModel(anErrorCode,this,mSink),
 +        nsresult dtdResult =  mDTD->DidBuildModel(anErrorCode,this),
                  sinkResult = mSink->DidBuildModel();
-         result = NS_FAILED(sinkResult) ? sinkResult : dtdResult;
-       }
- 
-       //Ref. to bug 61462.
-       mParserContext->mRequest = 0;
-     }
-   }
-@@ -2359,17 +2359,17 @@ nsParser::BuildModel()
+         // nsIDTD::DidBuildModel used to be responsible for calling
+         // nsIContentSink::DidBuildModel, but that obligation isn't expressible
+         // in the nsIDTD interface itself, so it's sounder and simpler to give
+         // that responsibility back to the parser. The former behavior of the
+         // DTD was to NS_ENSURE_SUCCESS the sink DidBuildModel call, so if the
+         // sink returns failure we should use sinkResult instead of dtdResult,
+         // to preserve the old error handling behavior of the DTD:
+@@ -2424,17 +2424,17 @@ nsParser::BuildModel()
    nsresult result = NS_OK;
    if (mParserContext) {
      result = mParserContext->GetTokenizer(mDTD, mSink, theTokenizer);
@@ -578,7 +578,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
  
      mParser=(nsParser*)aParser;  //debug XXX
      STOP_TIMER();
-@@ -619,30 +624,34 @@ void CViewSourceHTML::SetVerification(PR
+@@ -621,30 +626,34 @@ void CViewSourceHTML::SetVerification(PR
   *  This method is called to determine whether or not a tag
   *  of one type can contain a tag of another type.
   *
@@ -615,7 +615,7 @@ diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/
   *  This method gets called when a tag needs to write it's attributes
   *
   *  @update  gess 3/25/98
-@@ -820,17 +829,18 @@ nsresult CViewSourceHTML::WriteTag(PRInt
+@@ -822,17 +831,18 @@ nsresult CViewSourceHTML::WriteTag(PRInt
  }
  
  /**

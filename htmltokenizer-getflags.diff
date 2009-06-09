@@ -1,3 +1,5 @@
+Bug 484121 (1/6) - Decompose nsHTMLTokenizer::GetFlags. r+sr=mrbkap
+
 diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.cpp
 --- a/parser/htmlparser/src/CNavDTD.cpp
 +++ b/parser/htmlparser/src/CNavDTD.cpp

@@ -1,3 +1,5 @@
+Bug 484121 (3/6) - Get rid of nsIDTD::Will{Resume,Interrupt}Parse. r+sr=mrbkap
+
 diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD.h
 --- a/parser/htmlparser/public/nsIDTD.h
 +++ b/parser/htmlparser/public/nsIDTD.h
@@ -54,7 +56,7 @@ diff --git a/parser/htmlparser/public/nsIDTD.h b/parser/htmlparser/public/nsIDTD
 diff --git a/parser/htmlparser/src/CNavDTD.cpp b/parser/htmlparser/src/CNavDTD.cpp
 --- a/parser/htmlparser/src/CNavDTD.cpp
 +++ b/parser/htmlparser/src/CNavDTD.cpp
-@@ -3140,37 +3140,8 @@ CNavDTD::CreateContextStackFor(eHTMLTags
+@@ -3144,37 +3144,8 @@ CNavDTD::CreateContextStackFor(eHTMLTags
      theTag = (eHTMLTags)mScratch[--theLen];
  
      // Note: These tokens should all wind up on contextstack, so don't recycle
@@ -127,7 +129,7 @@ diff --git a/parser/htmlparser/src/nsExpatDriver.cpp b/parser/htmlparser/src/nsE
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -2215,17 +2215,17 @@ nsParser::ResumeParse(PRBool allowIterat
+@@ -2223,17 +2223,17 @@ nsParser::ResumeParse(PRBool allowIterat
  
      result = WillBuildModel(mParserContext->mScanner->GetFilename());
      if (NS_FAILED(result)) {
@@ -146,7 +148,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
            // Insert the unused input into the source buffer
            // as if it was read from the input stream.
            // Adding UngetReadable() per vidur!!
-@@ -2252,20 +2252,17 @@ nsParser::ResumeParse(PRBool allowIterat
+@@ -2260,20 +2260,17 @@ nsParser::ResumeParse(PRBool allowIterat
          // Make sure not to stop parsing too early. Therefore, before shutting
          // down the parser, it's important to check whether the input buffer
          // has been scanned to completion (theTokenizerResult should be kEOF).
@@ -168,7 +170,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
            return NS_OK;
          }
          if (NS_ERROR_HTMLPARSER_STOPPARSING == result) {
-@@ -2311,27 +2308,25 @@ nsParser::ResumeParse(PRBool allowIterat
+@@ -2319,27 +2316,25 @@ nsParser::ResumeParse(PRBool allowIterat
                  }
  
                  delete theContext;
@@ -201,13 +203,13 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 diff --git a/parser/htmlparser/src/nsViewSourceHTML.cpp b/parser/htmlparser/src/nsViewSourceHTML.cpp
 --- a/parser/htmlparser/src/nsViewSourceHTML.cpp
 +++ b/parser/htmlparser/src/nsViewSourceHTML.cpp
-@@ -601,45 +601,16 @@ CViewSourceHTML::GetType() {
- }
- 
+@@ -603,45 +603,16 @@ CViewSourceHTML::GetType() {
  NS_IMETHODIMP_(nsDTDMode)
  CViewSourceHTML::GetMode() const
  {
-   return eDTDMode_full_standards; // lie, lie, lie
+   // Quirks mode needn't affect how the source is viewed, so parse the source
+   // view in full standards mode no matter what:
+   return eDTDMode_full_standards;
  }
  
 -
