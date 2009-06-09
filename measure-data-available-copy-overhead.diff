@@ -1,28 +1,7 @@
-Copying network data using nsIInputStream::Read rather than ReadSegments.
-
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -69,16 +69,18 @@
- #include "nsNetUtil.h"
- #include "nsScriptLoader.h"
- #include "nsDataHashtable.h"
- #include "nsIThreadPool.h"
- #include "nsXPCOMCIDInternal.h"
- #include "nsICSSStyleSheet.h"
- #include "nsICSSLoaderObserver.h"
- #include "nsICSSLoader.h"
-+#include "EventStats.h"
-+#include "mozilla/TimeStamp.h"
- 
- #ifdef MOZ_VIEW_SOURCE
- #include "nsViewSourceHTML.h"
- #endif
- 
- #define NS_PARSER_FLAG_PARSER_ENABLED         0x00000002
- #define NS_PARSER_FLAG_OBSERVERS_ENABLED      0x00000004
- #define NS_PARSER_FLAG_PENDING_CONTINUE_EVENT 0x00000008
-@@ -2769,22 +2771,74 @@ nsParser::DetectMetaTag(const char* aByt
+@@ -2769,22 +2769,78 @@ nsParser::DetectMetaTag(const char* aByt
  typedef struct {
    PRBool mNeedCharsetCheck;
    nsParser* mParser;
@@ -82,6 +61,10 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +#define ON_DATA_AVAILABLE__READ_SEGMENTS
 +#define MEASURE_DATA_COPY_OVERHEAD
 +
++#ifdef MEASURE_DATA_COPY_OVERHEAD
++#include "mozilla/TimeStamp.h"
++#endif
++
  /*
   * This function is invoked as a result of a call to a stream's
   * ReadSegments() method. It is called for each contiguous buffer
@@ -97,7 +80,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
                  PRUint32 count,
                  PRUint32 *writeCount)
  {
-@@ -2793,82 +2847,63 @@ ParserWriteFunc(nsIInputStream* in,
+@@ -2793,82 +2849,50 @@ ParserWriteFunc(nsIInputStream* in,
    const char* buf = fromRawSegment;
    PRUint32 theNumRead = count;
  
@@ -176,23 +159,10 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  
 +#ifdef MEASURE_DATA_COPY_OVERHEAD
 +  static mozilla::TimeStamp firstODA = mozilla::TimeStamp::Now();
-+  printf("+—————\n");
-+  printf("| time first nsParser::OnDataAvailable call: %gs\n",
++  printf("+----------\n");
++  printf("| time since first nsParser::OnDataAvailable call: %gs\n",
 +         (mozilla::TimeStamp::Now() - firstODA).ToSeconds());
 +#endif
-+
-+  {
-+    nsIThread* thread = 0;
-+    NS_GetCurrentThread(&thread);
-+    if (thread) {
-+      RunningStats<double>* rs = 0;
-+      thread->Note();
-+      thread->GetStats(&rs);
-+      if (rs)
-+        printf("| last: %g  \tcount: %d  \tmean: %g  \tstdev: %g  \tmax: %g  \tmin: %g\n",
-+               rs->last(), rs->count(), rs->mean(), rs->stdev(), rs->max(), rs->min());
-+    }
-+  }
 +
    nsresult rv = NS_OK;
  
@@ -202,7 +172,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
      theContext = theContext->mPrevContext;
    }
  
-@@ -2884,28 +2919,62 @@ nsParser::OnDataAvailable(nsIRequest *re
+@@ -2884,28 +2908,63 @@ nsParser::OnDataAvailable(nsIRequest *re
        if (theContext->mScanner) {
          nsScannerIterator iter;
          theContext->mScanner->EndReading(iter);
@@ -252,10 +222,11 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +    mozilla::TimeDuration time = mozilla::TimeStamp::Now() - start;
 +    total += time;
 +    trials += 1;
-+    printf("| time: %gs  \taverage time: %gs  \ttotal: %gs\n",
-+           time.ToSeconds(),
-+           total.ToSeconds() / (double) trials,
-+           total.ToSeconds());
++    printf("| time: %gms  \tcount: %d  \tmean: %gms  \ttotal: %gms\n",
++           1000 * time.ToSeconds(),
++           trials,
++           1000 * total.ToSeconds() / (double) trials,
++           1000 * total.ToSeconds());
 +#endif
  
      // Don't bother to start parsing until we've seen some
@@ -265,329 +236,3 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
        if (mSink) {
          mSink->WillParse();
        }
-diff --git a/xpcom/threads/EventStats.h b/xpcom/threads/EventStats.h
-new file mode 100644
---- /dev/null
-+++ b/xpcom/threads/EventStats.h
-@@ -0,0 +1,135 @@
-+#ifndef EventStats_h__
-+#define EventStats_h__
-+
-+#include "nsCOMPtr.h"
-+#include "nsIRunnable.h"
-+#include "mozilla/TimeStamp.h"
-+#include "nsThreadUtils.h"
-+#include <math.h>
-+
-+template <typename UnitType>
-+class RunningStats {
-+  PRUint32 mCount; // current sample size
-+  UnitType mSoSD,  // sum of squared deviations
-+           mMean,  // sample mean
-+           mMax,   // sample maximum
-+           mMin,   // sample minimum
-+           mLast;  // most recent value
-+public:
-+  RunningStats()
-+    : mCount(0)
-+    , mSoSD(0)
-+    , mMean(0)
-+    , mMax(0)
-+    , mMin(0)
-+    , mLast(0)
-+  {}
-+
-+  UnitType mean()  const { return mMean; }
-+  UnitType var()   const { return mCount > 0 ? mSoSD / mCount : 0; }
-+  UnitType stdev() const { return UnitType(sqrt(var())); }
-+  UnitType max()   const { return mMax; }
-+  UnitType min()   const { return mMin; }
-+  UnitType last()  const { return mLast; }
-+  PRUint32 count() const { return mCount; }
-+
-+  RunningStats* update(UnitType x) {
-+    UnitType mean((mMean * mCount + x) / (mCount + 1)),
-+             xDev(x - mean), mInc(mean - mMean);
-+
-+    mSoSD +=
-+      // squared deviation of x:
-+      (xDev * xDev) +
-+      // increase in mSoSD due to new sample mean:
-+      (mInc * mInc) * mCount;
-+
-+    if (mCount++ > 0) {
-+      if (x < mMin) mMin = x;
-+      if (x > mMax) mMax = x;
-+    } else mMin = mMax = x;
-+
-+    mMean = mean;
-+    mLast = x;
-+
-+    return this;
-+  }
-+};
-+
-+// // Inlining would hide this from the debugger:
-+// const RunningStats<double>* Stats() const;
-+// static nsThread* GetCurrent();
-+// static const RunningStats<double>* NoteCurrentEvent();
-+
-+class EventStatsWrapper;
-+
-+class EventStatsObserver {
-+public:
-+  EventStatsObserver() : mESW(0) {}
-+
-+  virtual EventStatsWrapper*
-+  SetESW(EventStatsWrapper* esw) {
-+    EventStatsWrapper* old = mESW;
-+    mESW = esw;
-+    return old;
-+  }
-+
-+  virtual EventStatsWrapper*
-+  GetESW() { return mESW; }
-+
-+private:
-+  EventStatsWrapper* mESW;
-+};
-+
-+class EventStatsWrapper : public nsRunnable {
-+
-+  const mozilla::TimeStamp  mCreationTime;
-+  mozilla::TimeStamp        mRunTime;
-+  nsCOMPtr<nsIRunnable>     mEvent;
-+  EventStatsObserver* const mObserver;
-+  PRBool                    mNoted;
-+
-+  typedef RunningStats<double> RVType;
-+  RVType* const mRunningStats;
-+
-+public:
-+
-+  EventStatsWrapper(nsIRunnable* event,
-+                    RVType* rvp,
-+                    EventStatsObserver* obs)
-+    : mCreationTime(mozilla::TimeStamp::Now())
-+    , mEvent(event)
-+    , mObserver(obs)
-+    , mNoted(PR_FALSE)
-+    , mRunningStats(rvp)
-+  {}
-+
-+  ~EventStatsWrapper() {}
-+
-+  NS_IMETHOD Run() {
-+    NS_ASSERTION(mRunTime.IsNull(),
-+                 "Calling EventStatsWrapper::Run more than once?");
-+    mRunTime = mozilla::TimeStamp::Now();
-+    EventStatsWrapper* const old = mObserver->SetESW(this);
-+    if (mNoted) {
-+      mNoted = PR_FALSE;
-+      Note();
-+    }
-+    nsresult rv = mEvent->Run();
-+    if (mObserver->SetESW(old) != this) {
-+      NS_WARNING("EventStatsWrapper changed during mEvent execution?");
-+    }
-+    return rv;
-+  }
-+
-+  const RVType* Note() {
-+    if (!mNoted) {
-+      mNoted = PR_TRUE;
-+      if (mRunningStats && !mRunTime.IsNull())
-+        mRunningStats->update((mRunTime - mCreationTime).ToSeconds());
-+    }
-+    return mRunningStats;
-+  }
-+
-+};
-+
-+#endif
-diff --git a/xpcom/threads/Makefile.in b/xpcom/threads/Makefile.in
---- a/xpcom/threads/Makefile.in
-+++ b/xpcom/threads/Makefile.in
-@@ -65,16 +65,17 @@ CPPSRCS		= \
- 		nsTimerImpl.cpp \
- 		TimerThread.cpp \
- 		$(NULL)
- 
- EXPORTS		= \
- 		nsProcess.h \
- 		nsEventQueue.h \
- 		nsThreadUtilsInternal.h \
-+		EventStats.h \
- 		$(NULL)
- 
- XPIDLSRCS	= \
- 		nsIEventTarget.idl \
- 		nsIThread.idl \
- 		nsIThreadInternal.idl \
- 		nsIThreadManager.idl \
- 		nsIThreadPool.idl \
-diff --git a/xpcom/threads/nsIThread.idl b/xpcom/threads/nsIThread.idl
---- a/xpcom/threads/nsIThread.idl
-+++ b/xpcom/threads/nsIThread.idl
-@@ -33,17 +33,24 @@
-  * and other provisions required by the GPL or the LGPL. If you do not delete
-  * the provisions above, a recipient may use your version of this file under
-  * the terms of any one of the MPL, the GPL or the LGPL.
-  *
-  * ***** END LICENSE BLOCK ***** */
- 
- #include "nsIEventTarget.idl"
- 
-+%{C++
-+template <typename T> class RunningStats;
-+typedef RunningStats<double> Stats;
-+
-+%}
-+
- [ptr] native PRThread(PRThread);
-+[ptr] native Stats(Stats);
- 
- /**
-  * This interface provides a high-level abstraction for an operating system
-  * thread.
-  *
-  * Threads have a built-in event queue, and a thread is an event target that
-  * can receive nsIRunnable objects (events) to be processed on the thread.
-  *
-@@ -53,16 +60,19 @@
- interface nsIThread : nsIEventTarget
- {
-   /**
-    * @returns
-    *   The NSPR thread object corresponding to this nsIThread.
-    */
-   [noscript] readonly attribute PRThread PRThread;
- 
-+  [noscript] readonly attribute Stats Stats;
-+  [noscript] void note();
-+
-   /**
-    * Shutdown the thread.  This method prevents further dispatch of events to
-    * the thread, and it causes any pending events to run to completion before
-    * the thread joins (see PR_JoinThread) with the current thread.  During this
-    * method call, events for the current thread may be processed.
-    *
-    * This method MAY NOT be executed from the thread itself.  Instead, it is
-    * meant to be executed from another thread (usually the thread that created
-diff --git a/xpcom/threads/nsThread.cpp b/xpcom/threads/nsThread.cpp
---- a/xpcom/threads/nsThread.cpp
-+++ b/xpcom/threads/nsThread.cpp
-@@ -369,16 +369,38 @@ nsThread::PutEvent(nsIRunnable *event)
- 
-   return NS_OK;
- }
- 
- //-----------------------------------------------------------------------------
- // nsIEventTarget
- 
- NS_IMETHODIMP
-+nsThread::GetStats(RunningStats<double>** rsp)
-+{
-+#ifdef MEASURE_TIME_SPENT_IN_THREAD_EVENT_QUEUE
-+  if (rsp)
-+    *rsp = &mRunningStats;
-+  return NS_OK;
-+#else
-+  return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
-+}
-+
-+NS_IMETHODIMP
-+nsThread::Note()
-+{
-+#ifdef MEASURE_TIME_SPENT_IN_THREAD_EVENT_QUEUE
-+  if (GetESW())
-+    GetESW()->Note();
-+#endif
-+  return NS_OK;
-+}
-+
-+NS_IMETHODIMP
- nsThread::Dispatch(nsIRunnable *event, PRUint32 flags)
- {
-   LOG(("THRD(%p) Dispatch [%p %x]\n", this, event, flags));
- 
-   NS_ENSURE_ARG_POINTER(event);
- 
-   if (flags & DISPATCH_SYNC) {
-     nsThread *thread = nsThreadManager::get()->GetCurrentThread();
-@@ -398,17 +420,22 @@ nsThread::Dispatch(nsIRunnable *event, P
-       return rv;
- 
-     while (wrapper->IsPending())
-       NS_ProcessNextEvent(thread);
-     return rv;
-   }
- 
-   NS_ASSERTION(flags == NS_DISPATCH_NORMAL, "unexpected dispatch flags");
--  return PutEvent(event);
-+  return PutEvent(
-+#ifdef MEASURE_TIME_SPENT_IN_THREAD_EVENT_QUEUE
-+                  new EventStatsWrapper(event, &mRunningStats, this));
-+#else
-+                  event);
-+#endif
- }
- 
- NS_IMETHODIMP
- nsThread::IsOnCurrentThread(PRBool *result)
- {
-   *result = (PR_GetCurrentThread() == mThread);
-   return NS_OK;
- }
-diff --git a/xpcom/threads/nsThread.h b/xpcom/threads/nsThread.h
---- a/xpcom/threads/nsThread.h
-+++ b/xpcom/threads/nsThread.h
-@@ -41,19 +41,24 @@
- 
- #include "nsIThreadInternal.h"
- #include "nsISupportsPriority.h"
- #include "nsEventQueue.h"
- #include "nsThreadUtils.h"
- #include "nsString.h"
- #include "nsAutoLock.h"
- #include "nsAutoPtr.h"
-+#include "EventStats.h"
-+
-+#define MEASURE_TIME_SPENT_IN_THREAD_EVENT_QUEUE
- 
- // A native thread
--class nsThread : public nsIThreadInternal, public nsISupportsPriority
-+class nsThread : public nsIThreadInternal
-+               , public nsISupportsPriority
-+               , public EventStatsObserver
- {
- public:
-   NS_DECL_ISUPPORTS
-   NS_DECL_NSIEVENTTARGET
-   NS_DECL_NSITHREAD
-   NS_DECL_NSITHREADINTERNAL
-   NS_DECL_NSISUPPORTSPRIORITY
- 
-@@ -141,16 +146,21 @@ private:
-   PRUint32  mRunningEvent;  // counter
- 
-   struct nsThreadShutdownContext *mShutdownContext;
- 
-   PRPackedBool mShutdownRequired;
-   PRPackedBool mShutdownPending;
-   // Set to true when events posted to this thread will never run.
-   PRPackedBool mEventsAreDoomed;
-+
-+#ifdef MEASURE_TIME_SPENT_IN_THREAD_EVENT_QUEUE
-+  RunningStats<double> mRunningStats;
-+#endif
-+
- };
- 
- //-----------------------------------------------------------------------------
- 
- class nsThreadSyncDispatch : public nsRunnable {
- public:
-   nsThreadSyncDispatch(nsIThread *origin, nsIRunnable *task)
-     : mOrigin(origin), mSyncTask(task) {
