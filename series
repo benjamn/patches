@@ -1,5 +1,5 @@
-measure-data-available-copy-overhead.diff
 measure-event-queue-latency.diff
+measure-data-available-copy-overhead.diff
 htmltokenizer-getflags.diff
 dtdmode-simplifications.diff
 nsidtd-kill-resume-interrupt.diff

@@ -1,7 +1,7 @@
 diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
 --- a/parser/htmlparser/src/nsParser.cpp
 +++ b/parser/htmlparser/src/nsParser.cpp
-@@ -2769,22 +2769,78 @@ nsParser::DetectMetaTag(const char* aByt
+@@ -2771,22 +2771,78 @@ nsParser::DetectMetaTag(const char* aByt
  typedef struct {
    PRBool mNeedCharsetCheck;
    nsParser* mParser;
@@ -80,7 +80,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
                  PRUint32 count,
                  PRUint32 *writeCount)
  {
-@@ -2793,82 +2849,50 @@ ParserWriteFunc(nsIInputStream* in,
+@@ -2795,82 +2851,49 @@ ParserWriteFunc(nsIInputStream* in,
    const char* buf = fromRawSegment;
    PRUint32 theNumRead = count;
  
@@ -93,8 +93,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 -    nsCAutoString guess;
 -    nsCAutoString preferred;
 -
-+    CheckCharset(buf, theNumRead, pws->mRequest, pws->mParser);
-     pws->mNeedCharsetCheck = PR_FALSE;
+-    pws->mNeedCharsetCheck = PR_FALSE;
 -    if (pws->mParser->DetectMetaTag(buf, theNumRead, guess, guessSource) ||
 -        ((count >= 4) &&
 -         DetectByteOrderMark((const unsigned char*)buf,
@@ -132,6 +131,7 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 -        }
 -      }
 -    }
++    CheckCharset(buf, theNumRead, pws->mRequest, pws->mParser);
    }
  
    if (pws->mParserFilter)
@@ -164,15 +164,15 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +         (mozilla::TimeStamp::Now() - firstODA).ToSeconds());
 +#endif
 +
-   nsresult rv = NS_OK;
- 
-   CParserContext *theContext = mParserContext;
- 
-   while (theContext && theContext->mRequest != request) {
-     theContext = theContext->mPrevContext;
-   }
- 
-@@ -2884,28 +2908,63 @@ nsParser::OnDataAvailable(nsIRequest *re
+   {
+     nsIThread* thread = 0;
+     NS_GetCurrentThread(&thread);
+     if (thread) {
+       RunningStats<double>* rs = 0;
+       thread->Note();
+       thread->GetStats(&rs);
+       if (rs)
+@@ -2901,28 +2924,63 @@ nsParser::OnDataAvailable(nsIRequest *re
        if (theContext->mScanner) {
          nsScannerIterator iter;
          theContext->mScanner->EndReading(iter);

@@ -22,14 +22,14 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
  #define NS_PARSER_FLAG_PARSER_ENABLED         0x00000002
  #define NS_PARSER_FLAG_OBSERVERS_ENABLED      0x00000004
  #define NS_PARSER_FLAG_PENDING_CONTINUE_EVENT 0x00000008
-@@ -2883,16 +2885,29 @@ nsParser::OnDataAvailable(nsIRequest *re
- 
- #ifdef MEASURE_DATA_COPY_OVERHEAD
-   static mozilla::TimeStamp firstODA = mozilla::TimeStamp::Now();
-   printf("+----------\n");
-   printf("| time since first nsParser::OnDataAvailable call: %gs\n",
-          (mozilla::TimeStamp::Now() - firstODA).ToSeconds());
- #endif
+@@ -2859,16 +2861,31 @@ nsParser::OnDataAvailable(nsIRequest *re
+                           PRUint32 aLength)
+ {
+   NS_PRECONDITION((eOnStart == mParserContext->mStreamListenerState ||
+                    eOnDataAvail == mParserContext->mStreamListenerState),
+             "Error: OnStartRequest() must be called before OnDataAvailable()");
+   NS_PRECONDITION(NS_InputStreamIsBuffered(pIStream),
+                   "Must have a buffered input stream");
  
 +  {
 +    nsIThread* thread = 0;
@@ -41,6 +41,8 @@ diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser
 +      if (rs)
 +        printf("| last: %g  \tcount: %d  \tmean: %g  \tstdev: %g  \tmax: %g  \tmin: %g\n",
 +               rs->last(), rs->count(), rs->mean(), rs->stdev(), rs->max(), rs->min());
++      if (rs->count() > 3)
++        printf("| might want to break here...\n");
 +    }
 +  }
 +
