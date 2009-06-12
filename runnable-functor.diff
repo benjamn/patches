@@ -30,7 +30,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
    Functor(ImplType* impl)   : mImpl(impl) {}
   ~Functor() {}
  
-+  nsRefPtr<RunnableFunctor<Result, Functor> >
++  nsRefPtr<AbstractRunnableFunctor<Result> >
 +  proxy(nsIThread* target,
 +        PRUint32 flags = NS_DISPATCH_SYNC);
 +
@@ -52,15 +52,15 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
  
  
 +template <typename Result, class Params>
-+nsRefPtr<RunnableFunctor<Result, Functor<Result, Params> > >
++nsRefPtr<AbstractRunnableFunctor<Result> >
 +Functor<Result, Params>::proxy(nsIThread* target, PRUint32 flags)
 +{
 +  static nsIThread* mainThread = nsnull;
 +  if (!target && (mainThread || NS_SUCCEEDED(NS_GetMainThread(&mainThread))))
 +      target = mainThread;
 +
-+  typedef RunnableFunctor<Result, Functor> Event;
-+  nsRefPtr<Event> event(new Event(*this));
++  nsRefPtr<AbstractRunnableFunctor<Result> > event =
++    new RunnableFunctor<Result, Functor>(*this);
 +
 +  PRBool dispatched = target && NS_SUCCEEDED(target->Dispatch(event, flags));
 +  NS_ASSERTION(dispatched, "Failed to dispatch event to thread.");
@@ -95,7 +95,7 @@ diff --git a/xpcom/glue/RunnableFunctor.h b/xpcom/glue/RunnableFunctor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/RunnableFunctor.h
-@@ -0,0 +1,134 @@
+@@ -0,0 +1,142 @@
 +#ifndef RunnableFunctor_h__
 +#define RunnableFunctor_h__
 +
@@ -120,6 +120,7 @@ new file mode 100644
 + * AbstractRunnableFunctor is so named because it inherits from
 + * RunnableSupports but does not implement the required Run method.
 + */
++template <typename Result>
 +class AbstractRunnableFunctor
 +  : public RunnableSupports
 +{
@@ -137,24 +138,20 @@ new file mode 100644
 +   * If Wait is called before AfterRun, the Wait call will block until the
 +   * monitor is notified.  If Wait is called after AfterRun, it will return
 +   * immediately.
-+   *
-+   * Wait is intentionally not virtual.  If it were virtual, the compiler
-+   * would complain about the differing return type of RunnableFunctor::Wait.
-+   * Client code should not manipulate AbstractRunnableFunctor pointers or
-+   * references, as they will not respond virtually to Wait method calls.
 +   */
-+  void Wait()
-+  {
-+    nsAutoMonitor mon(mMon);
-+    if (!mRun)
-+      mon.Wait();
-+  }
++  virtual Result Wait() = 0;
 +
 +protected:
 +
 +  ~AbstractRunnableFunctor()
 +  {
 +    nsAutoMonitor::DestroyMonitor(mMon);
++  }
++
++  void VoidWait() {
++    nsAutoMonitor mon(mMon);
++    if (!mRun)
++      mon.Wait();
 +  }
 +
 +  /**
@@ -177,29 +174,34 @@ new file mode 100644
 + * TODO Return a reference to the stored value when possible; i.e., when the
 + * Result type is not already a reference.
 + */
-+template <typename Result, typename Functor>
++template <typename Result, typename Thunk>
 +class RunnableFunctor
-+  : public AbstractRunnableFunctor
++  : public AbstractRunnableFunctor<Result>
 +{
 +  Result mResult;
-+  Functor mFunctor;
++  Thunk mThunk;
++
++  typedef AbstractRunnableFunctor<Result> BaseType;
 +
 +public:
 +
-+  RunnableFunctor(Functor functor)
-+    : mFunctor(functor)
++  // Using the term "thunk" to emphasize that the callable entity passed into
++  // the constructor must accept zero arguments, and also to avoid confusion
++  // with the Functor template class defined in Functor.h.
++  RunnableFunctor(Thunk thunk)
++    : mThunk(thunk)
 +  {}
 +
 +  Result Wait()
 +  {
-+    AbstractRunnableFunctor::Wait();
++    BaseType::VoidWait();
 +    return mResult;
 +  }
 +
 +  NS_IMETHOD Run()
 +  {
-+    mResult = mFunctor();
-+    return AfterRun();
++    mResult = mThunk();
++    return BaseType::AfterRun();
 +  }
 +
 +};
@@ -209,22 +211,28 @@ new file mode 100644
 + * return value of the underlying Functor, since the Functor is void.  In this
 + * case, it suffices to inherit the Wait method of AbstractRunnableFunctor.
 + */
-+template <typename Functor>
-+class RunnableFunctor<void, Functor>
-+  : public AbstractRunnableFunctor
++template <typename Thunk>
++class RunnableFunctor<void, Thunk>
++  : public AbstractRunnableFunctor<void>
 +{
-+  Functor mFunctor;
++  Thunk mThunk;
++
++  typedef AbstractRunnableFunctor<void> BaseType;
 +
 +public:
 +
-+  RunnableFunctor(Functor functor)
-+    : mFunctor(functor)
++  RunnableFunctor(Thunk thunk)
++    : mThunk(thunk)
 +  {}
++
++  void Wait() {
++    BaseType::VoidWait();
++  }
 +
 +  NS_IMETHOD Run()
 +  {
-+    mFunctor();
-+    return AfterRun();
++    mThunk();
++    return BaseType::AfterRun();
 +  }
 +
 +};
@@ -255,11 +263,12 @@ diff --git a/xpcom/tests/TestRunnableFunctor.cpp b/xpcom/tests/TestRunnableFunct
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/TestRunnableFunctor.cpp
-@@ -0,0 +1,37 @@
+@@ -0,0 +1,43 @@
 +#include <iostream>
 +#include "nsAutoPtr.h"
 +#include "Bind.h"
 +#include "RunnableFunctor.h"
++#include "nsIRunnable.h"
 +
 +int one() { return 1; }
 +int plus_two(int x) { return x + 2; }
@@ -287,6 +296,11 @@ new file mode 100644
 +  rf5->Run();
 +
 +  is(rf1->Wait() + rf5->Wait(), 6);
++
++  static_cast<nsIRunnable*>(f1.proxy(0))->Run();
++
++  nsRefPtr<AbstractRunnableFunctor<int> > arf = f1.proxy(0).get();
++  is(plus_two(arf->Wait()), 3);
 +}
 +
 +int main() {
