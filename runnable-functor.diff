@@ -30,7 +30,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
    Functor(ImplType* impl)   : mImpl(impl) {}
   ~Functor() {}
  
-+  nsRefPtr<AbstractRunnableFunctor<Result> >
++  nsRefPtr<RunnableFunctor<Result> >
 +  proxy(nsIThread* target,
 +        PRUint32 flags = NS_DISPATCH_SYNC);
 +
@@ -52,15 +52,15 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
  
  
 +template <typename Result, class Params>
-+nsRefPtr<AbstractRunnableFunctor<Result> >
++nsRefPtr<RunnableFunctor<Result> >
 +Functor<Result, Params>::proxy(nsIThread* target, PRUint32 flags)
 +{
 +  static nsIThread* mainThread = nsnull;
 +  if (!target && (mainThread || NS_SUCCEEDED(NS_GetMainThread(&mainThread))))
 +      target = mainThread;
 +
-+  nsRefPtr<AbstractRunnableFunctor<Result> > event =
-+    new RunnableFunctor<Result, Functor>(*this);
++  nsRefPtr<RunnableFunctor<Result> > event =
++    new RunnableFunctorImpl<Result, Functor>(*this);
 +
 +  PRBool dispatched = target && NS_SUCCEEDED(target->Dispatch(event, flags));
 +  NS_ASSERTION(dispatched, "Failed to dispatch event to thread.");
@@ -121,7 +121,7 @@ new file mode 100644
 + * RunnableSupports but does not implement the required Run method.
 + */
 +template <typename Result>
-+class AbstractRunnableFunctor
++class RunnableFunctor
 +  : public RunnableSupports
 +{
 +  PRMonitor* const mMon;
@@ -129,8 +129,8 @@ new file mode 100644
 +
 +public:
 +
-+  AbstractRunnableFunctor()
-+    : mMon(nsAutoMonitor::NewMonitor("AbstractRunnableFunctor"))
++  RunnableFunctor()
++    : mMon(nsAutoMonitor::NewMonitor("RunnableFunctor"))
 +    , mRun(PR_FALSE)
 +  {}
 +
@@ -143,7 +143,7 @@ new file mode 100644
 +
 +protected:
 +
-+  ~AbstractRunnableFunctor()
++  ~RunnableFunctor()
 +  {
 +    nsAutoMonitor::DestroyMonitor(mMon);
 +  }
@@ -167,7 +167,7 @@ new file mode 100644
 +};
 +
 +/**
-+ * This specialization of the RunnableFunctor class provides space for the
++ * This specialization of the RunnableFunctorImpl class provides space for the
 + * non-void value returned by the underlying Functor.  Its Wait method returns
 + * this stored value.
 + *
@@ -175,20 +175,20 @@ new file mode 100644
 + * Result type is not already a reference.
 + */
 +template <typename Result, typename Thunk>
-+class RunnableFunctor
-+  : public AbstractRunnableFunctor<Result>
++class RunnableFunctorImpl
++  : public RunnableFunctor<Result>
 +{
 +  Result mResult;
 +  Thunk mThunk;
 +
-+  typedef AbstractRunnableFunctor<Result> BaseType;
++  typedef RunnableFunctor<Result> BaseType;
 +
 +public:
 +
 +  // Using the term "thunk" to emphasize that the callable entity passed into
 +  // the constructor must accept zero arguments, and also to avoid confusion
 +  // with the Functor template class defined in Functor.h.
-+  RunnableFunctor(Thunk thunk)
++  RunnableFunctorImpl(Thunk thunk)
 +    : mThunk(thunk)
 +  {}
 +
@@ -207,21 +207,21 @@ new file mode 100644
 +};
 +
 +/**
-+ * This specialization of the RunnableFunctor class allocates no space for the
-+ * return value of the underlying Functor, since the Functor is void.  In this
-+ * case, it suffices to inherit the Wait method of AbstractRunnableFunctor.
++ * This specialization of the RunnableFunctorImpl class allocates no space for
++ * the return value of the underlying Functor, since the Functor is void.  In
++ * this case, it suffices to inherit the Wait method of RunnableFunctor.
 + */
 +template <typename Thunk>
-+class RunnableFunctor<void, Thunk>
-+  : public AbstractRunnableFunctor<void>
++class RunnableFunctorImpl<void, Thunk>
++  : public RunnableFunctor<void>
 +{
 +  Thunk mThunk;
 +
-+  typedef AbstractRunnableFunctor<void> BaseType;
++  typedef RunnableFunctor<void> BaseType;
 +
 +public:
 +
-+  RunnableFunctor(Thunk thunk)
++  RunnableFunctorImpl(Thunk thunk)
 +    : mThunk(thunk)
 +  {}
 +
@@ -280,7 +280,7 @@ new file mode 100644
 +
 +void test() {
 +  typedef Functor<int, TLIST0()> ftype;
-+  typedef RunnableFunctor<int, ftype> rftype;
++  typedef RunnableFunctorImpl<int, ftype> rftype;
 +
 +  ftype f1 = functor(&one);
 +  ftype f5 = BIND1(&plus_two, 3);
@@ -299,7 +299,7 @@ new file mode 100644
 +
 +  static_cast<nsIRunnable*>(f1.proxy(0))->Run();
 +
-+  nsRefPtr<AbstractRunnableFunctor<int> > arf = f1.proxy(0).get();
++  nsRefPtr<RunnableFunctor<int> > arf = f1.proxy(0).get();
 +  is(plus_two(arf->Wait()), 3);
 +}
 +
