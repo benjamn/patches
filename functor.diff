@@ -4,7 +4,7 @@ diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Bind.h
-@@ -0,0 +1,233 @@
+@@ -0,0 +1,238 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -78,41 +78,43 @@ new file mode 100644
 +// [[[end]]]
 +
 +/**
-+ * Template type inference prefers non-reference types to reference types, so
-+ * references passed to bind will be stored by VALUE unless explicitly coerced
-+ * using the ref and cref (const reference) functions below.
-+ *
-+ * The reference_wrapper<T> interface is identical to the one found in Boost.
++ * ClientManagedStoragePolicy assumes nothing about the allocation and
++ * management of T, and consequently provides the client no assistance of that
++ * sort.  This policy class is intended primarily for use by ref and cref.
 + */
-+
-+
 +template <typename T>
-+class FreeUsagePolicy
++class ClientManagedStoragePolicy
 +{
-+  // No restrictions.
-+};
-+
-+template <typename T>
-+class ConstUsagePolicy
-+{
-+  typedef void non_const_pointer_unavailable;
++  T* const mPtr;
 +protected:
-+  // Attempts to use these methods will fail, or at least be ambiguous with any
-+  // other inherited versions (due to the lack of return-type overloading).
-+  non_const_pointer_unavailable GetPointer();
-+};
-+
-+
-+template <typename T>
-+class ClientProvidedStoragePolicy
-+{
-+  T* mPtr;
-+protected:
-+  ClientProvidedStoragePolicy(T& t) : mPtr(&t) {}
++  ClientManagedStoragePolicy(T* tp) : mPtr(tp) {}
 +  T* GetPointer() { return mPtr; }
-+  const T* GetConstPointer() { return mPtr; }
++  const T* GetConstPointer() const { return mPtr; }
 +};
 +
++/**
++ * nsRefPtr<T> enforces the availability of T::AddRef and T::Release, so it may
++ * be assumed that any object of type T is both reference counted and not stack
++ * allocated.  This guarantee makes it safe to provide a T* constructor without
++ * worry that the client may pass in a stack address.  For convenience, a zero-
++ * parameter constructor is also provided for situations where T is default-
++ * constructible and the client wants RefPtrStoragePolicy to do the allocation.
++ */
++template <typename T>
++class RefPtrStoragePolicy
++{
++  nsRefPtr<T> mPtr;
++protected:
++  RefPtrStoragePolicy() : mPtr(new T()) {}
++  RefPtrStoragePolicy(T* tp) : mPtr(tp) {}
++  T* GetPointer() { return mPtr; }
++  const T* GetConstPointer() const { return mPtr; }
++};
++
++/**
++ * RefCountingStoragePolicy provides only a zero-parameter constructor to force
++ * heap allocation of the underlying T value.
++ */
 +template <typename T>
 +class RefCountingStoragePolicy
 +{
@@ -122,11 +124,11 @@ new file mode 100644
 +    nsrefcnt AddRef();
 +    nsrefcnt Release();
 +  };
-+  nsRefPtr<Holder> mHolder;
++  nsRefPtr<Holder> mHolderPtr;
 +protected:
-+  RefCountingStoragePolicy() : mHolder(new Holder()) {}
-+  T* GetPointer() { return &mHolder->mVal; }
-+  const T* GetConstPointer() { return &mHolder->mVal; }
++  RefCountingStoragePolicy() : mHolderPtr(new Holder()) {}
++  T* GetPointer() { return &mHolderPtr->mVal; }
++  const T* GetConstPointer() const { return &mHolderPtr->mVal; }
 +};
 +template <typename T>
 +inline NS_IMPL_THREADSAFE_ADDREF(RefCountingStoragePolicy<T>::Holder)
@@ -137,24 +139,21 @@ new file mode 100644
 +template
 +<
 +  typename T, // Reference types do not work, and that is as it should be.
-+  template <typename> class StoragePolicy = ClientProvidedStoragePolicy,
-+  template <typename> class UsagePolicy = FreeUsagePolicy
++  template <typename> class StoragePolicy = RefCountingStoragePolicy
 +>
-+class Arg
-+  : private StoragePolicy<T>
-+  , private UsagePolicy<T>
++class Arg : private StoragePolicy<T>
 +{
 +public:
 +  explicit Arg() {}
-+  explicit Arg(T& t) : StoragePolicy<T>(t) {}
++  explicit Arg(T* tp) : StoragePolicy<T>(tp) {}
 +
++  // Any type that can be assigned to a dereferenced T* is legal here:
 +  template <typename R>
 +  Arg& operator=(R rhs) {
 +    *this->GetPointer() = rhs;
 +    return *this;
 +  }
 +
-+  // XXX do THIS-> with runnablefunctorimpls, too!
 +  operator T&() { return *this->GetPointer(); }
 +  operator const T&() const { return *this->GetConstPointer(); }
 +
@@ -163,25 +162,31 @@ new file mode 100644
 +};
 +
 +
++/**
++ * Template type inference prefers non-reference types to reference types, so
++ * references passed to bind will be stored by VALUE unless explicitly coerced
++ * using the ref and cref (const reference) functions below.
++ */
++
 +template <typename T>
-+Arg<T>
++Arg<T, ClientManagedStoragePolicy>
 +ref(T& t)
 +{
-+  return Arg<T>(t);
++  return Arg<T, ClientManagedStoragePolicy>(&t);
 +}
 +
 +template <typename T>
-+const Arg<T>
-+cref(T const& t)
++const Arg<const T, ClientManagedStoragePolicy>
++cref(const T& t)
 +{
-+  return Arg<T>(t);
++  typedef const Arg<const T, ClientManagedStoragePolicy> type;
++  return type(&t);
 +}
 +
 +template <typename T>
 +struct OutParam
 +{
-+  typedef Arg<T, RefCountingStoragePolicy, FreeUsagePolicy> type;
-+  typedef Arg<T, RefCountingStoragePolicy, ConstUsagePolicy> ctype;
++  typedef Arg<T, RefCountingStoragePolicy> type;
 +};
 +
 +
@@ -1265,7 +1270,7 @@ diff --git a/xpcom/tests/TestFunctor.cpp b/xpcom/tests/TestFunctor.cpp
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/TestFunctor.cpp
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,98 @@
 +#include <iostream>
 +#include "Functor.h"
 +#include "Bind.h"
@@ -1349,11 +1354,14 @@ new file mode 100644
 +  is(f(y), x - y);
 +}
 +
-+void test_Arg()
++int test_Arg()
 +{
 +  OutParam<int>::type out;
 +  out = 1;
-+  int n = out;
++  int n;
++  ref(n) = 2;
++  // cref(n) = 3;
++  return cref(n);
 +}
 +
 +int main() {
