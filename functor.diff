@@ -4,7 +4,7 @@ diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Bind.h
-@@ -0,0 +1,155 @@
+@@ -0,0 +1,246 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -47,6 +47,7 @@ new file mode 100644
 +#define Bind_h__
 +
 +#include "Functor.h"
++#include "nsAutoPtr.h"
 +
 +/**
 + * For an overview of BIND usage, see bug 486440.
@@ -83,29 +84,119 @@ new file mode 100644
 + *
 + * The reference_wrapper<T> interface is identical to the one found in Boost.
 + */
-+template <typename T>
-+class reference_wrapper {
-+  T* mPtr;
-+public:
-+  typedef T type;
-+  explicit reference_wrapper(T& t) : mPtr(&t) {}
 +
-+  operator T&() const { return *mPtr; }
-+  T& get() const { return *mPtr; };
-+  T* get_pointer() const { return mPtr; };
++
++template <typename T>
++class FreeUsagePolicy
++{
++  // No restrictions.
 +};
 +
 +template <typename T>
-+reference_wrapper<T>
-+ref(T& t) {
-+  return reference_wrapper<T>(t);
++class ConstUsagePolicy
++{
++  typedef void non_const_pointer_unavailable;
++protected:
++  // Attempts to use these methods will fail, or at least be ambiguous with any
++  // other inherited versions (due to the lack of return-type overloading).
++  non_const_pointer_unavailable GetPointer();
++};
++
++
++template <typename T>
++class ClientProvidedStoragePolicy
++{
++  T* mPtr;
++protected:
++  ClientProvidedStoragePolicy(T& t) : mPtr(&t) {}
++  T* GetPointer() { return mPtr; }
++  const T* GetConstPointer() { return mPtr; }
++};
++
++template <typename T>
++class RefCountingStoragePolicy
++{
++  struct Holder {
++    T mVal; // must be default-constructible
++    nsAutoRefCnt mRefCnt;
++    nsrefcnt AddRef();
++    nsrefcnt Release();
++  };
++  nsRefPtr<Holder> mHolder;
++protected:
++  RefCountingStoragePolicy() : mHolder(new Holder()) {}
++  T* GetPointer() { return &mHolder->mVal; }
++  const T* GetConstPointer() { return &mHolder->mVal; }
++};
++template <typename T>
++inline NS_IMPL_THREADSAFE_ADDREF(RefCountingStoragePolicy<T>::Holder)
++template <typename T>
++inline NS_IMPL_THREADSAFE_RELEASE(RefCountingStoragePolicy<T>::Holder)
++
++
++template <typename Base>
++struct BaseRefTraits {
++  typedef Base& ref_type;
++  typedef Base base_type;
++  typedef Base* ptr_type;
++};
++template <typename T> class RefTraits     : public BaseRefTraits<T> {};
++template <typename T> class RefTraits<T&> : public BaseRefTraits<T> {};
++
++template
++<
++  typename T,
++  template <typename> class StoragePolicy = ClientProvidedStoragePolicy,
++  template <typename> class UsagePolicy = FreeUsagePolicy
++>
++class Arg
++  // The use of RefTraits guarantees that StoragePolicy and UsagePolicy are
++  // never instantiated with a reference type:
++  : private StoragePolicy<typename RefTraits<T>::base_type>
++  , private UsagePolicy<typename RefTraits<T>::base_type>
++{
++  typedef typename RefTraits<T>::ref_type   RefType;
++  typedef typename RefTraits<T>::base_type BaseType;
++  typedef typename RefTraits<T>::ptr_type   PtrType;
++public:
++  explicit Arg() {}
++  explicit Arg(RefType t) : StoragePolicy<BaseType>(t) {}
++
++  template <typename U>
++  Arg& operator=(U other) {
++    *this->GetPointer() = other;
++    return *this;
++  }
++
++  // XXX do THIS-> with runnablefunctorimpls, too!
++  operator RefType() { return *this->GetPointer(); }
++  operator const RefType() const { return *this->GetConstPointer(); }
++
++  operator PtrType() { return this->GetPointer(); }
++  operator const PtrType() const { return this->GetConstPointer(); }
++};
++
++
++template <typename T>
++Arg<T>
++ref(T& t)
++{
++  return Arg<T>(t);
 +}
 +
 +template <typename T>
-+reference_wrapper<T const>
-+cref(T const& t) {
-+  return reference_wrapper<T const>(t);
++const Arg<T>
++cref(T const& t)
++{
++  return Arg<T>(t);
 +}
++
++template <typename T>
++struct OutParam
++{
++  typedef Arg<T, RefCountingStoragePolicy, FreeUsagePolicy> type;
++  typedef Arg<T, RefCountingStoragePolicy, ConstUsagePolicy> ctype;
++};
 +
 +/**
 + * The BIND{1,2,...} macros save some typing by linearizing the syntax for
@@ -1187,7 +1278,7 @@ diff --git a/xpcom/tests/TestFunctor.cpp b/xpcom/tests/TestFunctor.cpp
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/TestFunctor.cpp
-@@ -0,0 +1,81 @@
+@@ -0,0 +1,95 @@
 +#include <iostream>
 +#include "Functor.h"
 +#include "Bind.h"
@@ -1212,6 +1303,10 @@ new file mode 100644
 +    return a + b;
 +  }
 +};
++
++void NoReturn(int x, int y) {
++  printf("%d, %d\n", x, y);
++}
 +
 +void is(int x, int y) {
 +  std::cout << (x == y ? "OK: " : "FAIL: ")
@@ -1239,6 +1334,9 @@ new file mode 100644
 +  // is(std::bind2nd(ds, 6)(4), -2);
 +
 +  is(a2(2, 3), 5);
++
++  functor(&NoReturn)(1, 2);
++  return functor(&NoReturn).bind(1)(2);
 +}
 +
 +void test_bind()
@@ -1262,6 +1360,13 @@ new file mode 100644
 +  is(sub(y, x), y - x);
 +  is(f(x), 0);
 +  is(f(y), x - y);
++}
++
++void test_Arg()
++{
++  OutParam<int>::type out;
++  out = 1;
++  int n = out;
 +}
 +
 +int main() {
