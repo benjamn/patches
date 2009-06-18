@@ -4,7 +4,7 @@ diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Bind.h
-@@ -0,0 +1,246 @@
+@@ -0,0 +1,233 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -134,46 +134,32 @@ new file mode 100644
 +inline NS_IMPL_THREADSAFE_RELEASE(RefCountingStoragePolicy<T>::Holder)
 +
 +
-+template <typename Base>
-+struct BaseRefTraits {
-+  typedef Base& ref_type;
-+  typedef Base base_type;
-+  typedef Base* ptr_type;
-+};
-+template <typename T> class RefTraits     : public BaseRefTraits<T> {};
-+template <typename T> class RefTraits<T&> : public BaseRefTraits<T> {};
-+
 +template
 +<
-+  typename T,
++  typename T, // Reference types do not work, and that is as it should be.
 +  template <typename> class StoragePolicy = ClientProvidedStoragePolicy,
 +  template <typename> class UsagePolicy = FreeUsagePolicy
 +>
 +class Arg
-+  // The use of RefTraits guarantees that StoragePolicy and UsagePolicy are
-+  // never instantiated with a reference type:
-+  : private StoragePolicy<typename RefTraits<T>::base_type>
-+  , private UsagePolicy<typename RefTraits<T>::base_type>
++  : private StoragePolicy<T>
++  , private UsagePolicy<T>
 +{
-+  typedef typename RefTraits<T>::ref_type   RefType;
-+  typedef typename RefTraits<T>::base_type BaseType;
-+  typedef typename RefTraits<T>::ptr_type   PtrType;
 +public:
 +  explicit Arg() {}
-+  explicit Arg(RefType t) : StoragePolicy<BaseType>(t) {}
++  explicit Arg(T& t) : StoragePolicy<T>(t) {}
 +
-+  template <typename U>
-+  Arg& operator=(U other) {
-+    *this->GetPointer() = other;
++  template <typename R>
++  Arg& operator=(R rhs) {
++    *this->GetPointer() = rhs;
 +    return *this;
 +  }
 +
 +  // XXX do THIS-> with runnablefunctorimpls, too!
-+  operator RefType() { return *this->GetPointer(); }
-+  operator const RefType() const { return *this->GetConstPointer(); }
++  operator T&() { return *this->GetPointer(); }
++  operator const T&() const { return *this->GetConstPointer(); }
 +
-+  operator PtrType() { return this->GetPointer(); }
-+  operator const PtrType() const { return this->GetConstPointer(); }
++  operator T*() { return this->GetPointer(); }
++  operator const T*() const { return this->GetConstPointer(); }
 +};
 +
 +
@@ -197,6 +183,7 @@ new file mode 100644
 +  typedef Arg<T, RefCountingStoragePolicy, FreeUsagePolicy> type;
 +  typedef Arg<T, RefCountingStoragePolicy, ConstUsagePolicy> ctype;
 +};
++
 +
 +/**
 + * The BIND{1,2,...} macros save some typing by linearizing the syntax for
