@@ -4,7 +4,7 @@ diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Bind.h
-@@ -0,0 +1,238 @@
+@@ -0,0 +1,255 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -79,8 +79,8 @@ new file mode 100644
 +
 +/**
 + * ClientManagedStoragePolicy assumes nothing about the allocation and
-+ * management of T, and consequently provides the client no assistance of that
-+ * sort.  This policy class is intended primarily for use by ref and cref.
++ * management of T, and consequently provides the client no assistance to that
++ * end.  This policy class is intended primarily for use by ref and cref.
 + */
 +template <typename T>
 +class ClientManagedStoragePolicy
@@ -112,6 +112,9 @@ new file mode 100644
 +};
 +
 +/**
++ * Unlike RefPtrStoragePolicy, this policy class is completely agnostic about
++ * the type of T and assumes full responsibility for counting references.
++ *
 + * RefCountingStoragePolicy provides only a zero-parameter constructor to force
 + * heap allocation of the underlying T value.
 + */
@@ -135,7 +138,21 @@ new file mode 100644
 +template <typename T>
 +inline NS_IMPL_THREADSAFE_RELEASE(RefCountingStoragePolicy<T>::Holder)
 +
-+
++/**
++ * A Location represents a single assignable place in memory.  Location
++ * objects may be cheaply copied, but every copy refers to the same location.
++ * Conversion operators expose both references and pointers to the underlying
++ * value, so Locations are good for imposing constraints on out-parameters.
++ * These constraints are expressed through a StoragePolicy template parameter,
++ * which is responsible for implementing GetPointer, GetConstPointer, and one
++ * or more constructors.  If the client avoids using a certain method (such as
++ * operator=), any demands that method makes on the StoragePolicy base class
++ * (such as the availability of a GetPointer method) are waived, because the
++ * compiler does not generate code for unused template methods.
++ *
++ * You've probably already guessed that Andrei Alexandrescu has a chapter about
++ * policy classes in his Modern C++ Design book.
++ */
 +template
 +<
 +  typename T, // Reference types do not work, and that is as it should be.
