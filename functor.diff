@@ -134,9 +134,9 @@ new file mode 100644
 +  const T* GetConstPointer() const { return &mHolderPtr->mVal; }
 +};
 +template <typename T>
-+inline NS_IMPL_THREADSAFE_ADDREF(RefCountingStoragePolicy<T>::Holder)
++NS_IMPL_THREADSAFE_ADDREF(RefCountingStoragePolicy<T>::Holder)
 +template <typename T>
-+inline NS_IMPL_THREADSAFE_RELEASE(RefCountingStoragePolicy<T>::Holder)
++NS_IMPL_THREADSAFE_RELEASE(RefCountingStoragePolicy<T>::Holder)
 +
 +/**
 + * A Location represents a single assignable place in memory.  Location
