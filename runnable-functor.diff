@@ -22,13 +22,13 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
   *   Modern C++ Design: Generic Programming and Design Patterns Applied,
   *
 @@ -207,16 +208,20 @@ public:
+   typedef FunctorImpl<Result, Params> ImplType;
+   typedef Result ResultType;
+   typedef Params ParamList;
  
-   EXTRACT_TYPEDEFS(Params)
- 
- public:
    Functor(const Functor& f) : mImpl(f.mImpl) {}
    Functor(ImplType* impl)   : mImpl(impl) {}
-  ~Functor() {}
+  ~Functor() {} // deliberately non-virtual
  
 +  nsRefPtr<RunnableFunctor<Result> >
 +  proxy(nsIThread* target,
@@ -42,7 +42,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
    template <typename Method>
    static Functor method(Method m) {
      return Functor(new MethodHandler<Functor, Method>(m));
-@@ -733,9 +738,27 @@ template <typename R, typename P0, typen
+@@ -813,9 +818,27 @@ template <typename R, typename P0, typen
  Functor<R, TLIST9(P0, P1, P2, P3, P4, P5, P6, P7, P8)>
  functor(R (*f)(P0, P1, P2, P3, P4, P5, P6, P7, P8)) {
    return Functor<R, TLIST9(P0, P1, P2, P3, P4, P5, P6, P7, P8)>::callable(f);

@@ -149,7 +149,7 @@ new file mode 100644
 +
 +  // Any type that can be assigned to a dereferenced T* is legal here:
 +  template <typename R>
-+  Arg& operator=(R rhs) {
++  Arg& operator=(const R& rhs) {
 +    *this->GetPointer() = rhs;
 +    return *this;
 +  }
@@ -247,7 +247,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Functor.h
-@@ -0,0 +1,741 @@
+@@ -0,0 +1,821 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -419,6 +419,9 @@ new file mode 100644
 +template <class ParentFunctor, typename Bound>
 +class Binder;
 +
++template <class ParentFunctor, typename Location>
++class Voider;
++
 +// [[[cog
 +// cog.out("#define EXTRACT_TYPEDEFS(LIST) \\\n")
 +// cog.out(tlist("  typedef typename tlist::TypeAt<LIST, 0>::type P;",
@@ -455,12 +458,9 @@ new file mode 100644
 +  typedef Result ResultType;
 +  typedef Params ParamList;
 +
-+  EXTRACT_TYPEDEFS(Params)
-+
-+public:
 +  Functor(const Functor& f) : mImpl(f.mImpl) {}
 +  Functor(ImplType* impl)   : mImpl(impl) {}
-+ ~Functor() {}
++ ~Functor() {} // deliberately non-virtual
 +
 +  template <typename Callable>
 +  static Functor callable(Callable c) {
@@ -492,6 +492,18 @@ new file mode 100644
 +    I* binder = new B(*this, bound);
 +    return O(binder);
 +  }
++
++  template <typename Location>
++  typename Voider<Functor, Location>::Outgoing
++  bind_result(Location loc) {
++    typedef Voider<Functor, Location> V;
++    typedef typename V::Outgoing O;
++    typedef typename O::ImplType I;
++    I* voider = new V(*this, loc);
++    return O(voider);
++  }
++
++  EXTRACT_TYPEDEFS(ParamList)
 +
 +  // [[[cog
 +  // for i in rng:
@@ -556,11 +568,12 @@ new file mode 100644
 +      typename ParentFunctor::ParamList>
 +{
 +public:
-+  typedef typename ParentFunctor::ResultType ResultType;
-+
-+  EXTRACT_TYPEDEFS(typename ParentFunctor::ParamList)
-+
 +  CallableHandler(Callable c) : mCallable(c) {}
++
++  typedef typename ParentFunctor::ResultType ResultType;
++  typedef typename ParentFunctor::ParamList  ParamList;
++
++  EXTRACT_TYPEDEFS(ParamList)
 +
 +  // [[[cog
 +  // for i in rng:
@@ -622,11 +635,12 @@ new file mode 100644
 +      typename ParentFunctor::ParamList>
 +{
 +public:
-+  typedef typename ParentFunctor::ResultType ResultType;
-+
-+  EXTRACT_TYPEDEFS(typename ParentFunctor::ParamList)
-+
 +  MethodHandler(Method m) : mMethod(m) {}
++
++  typedef typename ParentFunctor::ResultType ResultType;
++  typedef typename ParentFunctor::ParamList  ParamList;
++
++  EXTRACT_TYPEDEFS(ParamList)
 +
 +  // [[[cog
 +  // for i in rng[1:]:
@@ -677,22 +691,22 @@ new file mode 100644
 +/**
 + * Binder class for use with Functor::bind.
 + */
-+template <class Incoming, typename Bound>
++template <class ParentFunctor, typename Bound>
 +class Binder
-+  : public FunctorImpl<typename Incoming::ResultType,
-+                       typename Incoming::ParamList::Tail>
++  : public FunctorImpl<typename ParentFunctor::ResultType,
++                       typename ParentFunctor::ParamList::Tail>
 +{
-+  typedef typename Incoming::ResultType ResultType;
-+  typedef typename Incoming::ParamList::Tail ParamList;
 +public:
-+  typedef Functor<ResultType, ParamList> Outgoing;
-+
-+  EXTRACT_TYPEDEFS(ParamList)
-+
-+  Binder(Incoming fun, Bound bound)
++  Binder(ParentFunctor fun, Bound bound)
 +    : mFun(fun)
 +    , mBound(bound)
 +  {}
++
++  typedef typename ParentFunctor::ResultType      ResultType;
++  typedef typename ParentFunctor::ParamList::Tail ParamList;
++  typedef Functor<ResultType, ParamList>          Outgoing;
++
++  EXTRACT_TYPEDEFS(ParamList)
 +
 +  // [[[cog
 +  // for i in rng:
@@ -740,8 +754,74 @@ new file mode 100644
 +  // [[[end]]]
 +
 +private:
-+  Incoming mFun;
++  ParentFunctor mFun;
 +  Bound mBound;
++};
++
++template <class ParentFunctor, typename Location>
++class Voider
++  : public FunctorImpl<void, typename ParentFunctor::ParamList>
++{
++public:
++  Voider(ParentFunctor fun, Location loc)
++    : mFun(fun)
++    , mLoc(loc)
++  {}
++
++  typedef void ResultType;
++  typedef typename ParentFunctor::ParamList ParamList;
++  typedef Functor<ResultType, ParamList> Outgoing;
++
++  EXTRACT_TYPEDEFS(ParamList)
++
++  // [[[cog
++  // for i in rng:
++  //   Pps = tlist("P p", i)
++  //   cps = tlist("p", i)
++  //   cog.out("""
++  // ResultType operator()(%(Pps)s) {
++  //   mLoc = mFun(%(cps)s);
++  // }""" % locals())
++  // ]]]
++
++  ResultType operator()() {
++    mLoc = mFun();
++  }
++  ResultType operator()(P0 p0) {
++    mLoc = mFun(p0);
++  }
++  ResultType operator()(P0 p0, P1 p1) {
++    mLoc = mFun(p0, p1);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2) {
++    mLoc = mFun(p0, p1, p2);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3) {
++    mLoc = mFun(p0, p1, p2, p3);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4) {
++    mLoc = mFun(p0, p1, p2, p3, p4);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5) {
++    mLoc = mFun(p0, p1, p2, p3, p4, p5);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6) {
++    mLoc = mFun(p0, p1, p2, p3, p4, p5, p6);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7) {
++    mLoc = mFun(p0, p1, p2, p3, p4, p5, p6, p7);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
++    mLoc = mFun(p0, p1, p2, p3, p4, p5, p6, p7, p8);
++  }
++  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
++    mLoc = mFun(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9);
++  }
++  // [[[end]]]
++
++private:
++  ParentFunctor mFun;
++  Location mLoc;
 +};
 +
 +// Sayonara, macro scum!
@@ -1270,7 +1350,7 @@ diff --git a/xpcom/tests/TestFunctor.cpp b/xpcom/tests/TestFunctor.cpp
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/TestFunctor.cpp
-@@ -0,0 +1,98 @@
+@@ -0,0 +1,103 @@
 +#include <iostream>
 +#include "Functor.h"
 +#include "Bind.h"
@@ -1357,15 +1437,20 @@ new file mode 100644
 +int test_Arg()
 +{
 +  OutParam<int>::type out;
-+  out = 1;
 +  int n;
++  out = n = 1;
 +  ref(n) = 2;
 +  // cref(n) = 3;
 +  return cref(n);
 +}
 +
++void test_bind_result()
++{
++  int n;
++  functor(&Succ).bind_result(ref(n))(1);
++  is(n, 2);
++}
++
 +int main() {
-+  example();
-+  test_bind();
 +  return 0;
 +}
