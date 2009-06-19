@@ -141,15 +141,15 @@ new file mode 100644
 +  typename T, // Reference types do not work, and that is as it should be.
 +  template <typename> class StoragePolicy = RefCountingStoragePolicy
 +>
-+class Arg : private StoragePolicy<T>
++class Location : private StoragePolicy<T>
 +{
 +public:
-+  explicit Arg() {}
-+  explicit Arg(T* tp) : StoragePolicy<T>(tp) {}
++  explicit Location() {}
++  explicit Location(T* tp) : StoragePolicy<T>(tp) {}
 +
 +  // Any type that can be assigned to a dereferenced T* is legal here:
 +  template <typename R>
-+  Arg& operator=(const R& rhs) {
++  Location& operator=(const R& rhs) {
 +    *this->GetPointer() = rhs;
 +    return *this;
 +  }
@@ -169,24 +169,24 @@ new file mode 100644
 + */
 +
 +template <typename T>
-+Arg<T, ClientManagedStoragePolicy>
++Location<T, ClientManagedStoragePolicy>
 +ref(T& t)
 +{
-+  return Arg<T, ClientManagedStoragePolicy>(&t);
++  return Location<T, ClientManagedStoragePolicy>(&t);
 +}
 +
 +template <typename T>
-+const Arg<const T, ClientManagedStoragePolicy>
++const Location<const T, ClientManagedStoragePolicy>
 +cref(const T& t)
 +{
-+  typedef const Arg<const T, ClientManagedStoragePolicy> type;
++  typedef const Location<const T, ClientManagedStoragePolicy> type;
 +  return type(&t);
 +}
 +
 +template <typename T>
 +struct OutParam
 +{
-+  typedef Arg<T, RefCountingStoragePolicy> type;
++  typedef Location<T, RefCountingStoragePolicy> type;
 +};
 +
 +
@@ -1350,7 +1350,7 @@ diff --git a/xpcom/tests/TestFunctor.cpp b/xpcom/tests/TestFunctor.cpp
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/TestFunctor.cpp
-@@ -0,0 +1,103 @@
+@@ -0,0 +1,107 @@
 +#include <iostream>
 +#include "Functor.h"
 +#include "Bind.h"
@@ -1434,7 +1434,7 @@ new file mode 100644
 +  is(f(y), x - y);
 +}
 +
-+int test_Arg()
++int test_Location()
 +{
 +  OutParam<int>::type out;
 +  int n;
@@ -1452,5 +1452,9 @@ new file mode 100644
 +}
 +
 +int main() {
++  example();
++  test_bind();
++  test_Location();
++  test_bind_result();
 +  return 0;
 +}
