@@ -264,7 +264,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Functor.h
-@@ -0,0 +1,821 @@
+@@ -0,0 +1,834 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -726,7 +726,7 @@ new file mode 100644
 +  EXTRACT_TYPEDEFS(ParamList)
 +
 +  // [[[cog
-+  // for i in rng:
++  // for i in rng[:-1]:
 +  //   Pps = tlist("P p", i)
 +  //   cps = tlist(", p", i, sep="")
 +  //   cog.out("""
@@ -764,9 +764,6 @@ new file mode 100644
 +  }
 +  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8) {
 +    return mFun(mBound, p0, p1, p2, p3, p4, p5, p6, p7, p8);
-+  }
-+  ResultType operator()(P0 p0, P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9) {
-+    return mFun(mBound, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9);
 +  }
 +  // [[[end]]]
 +
@@ -859,8 +856,10 @@ new file mode 100644
 +}
 +
 +// [[[cog
-+// for (i, j) in ijs:
-+//   const = ""
++// # The i parameter specifies the number of parameters the adapted
++// # functions/functors/methods should support:
++// def output_global_adapters(i):
++//   j = i + 1
 +//   ctnPs = tlist(", typename P", i, sep="")
 +//   cPs = tlist(", P", i, sep="")
 +//   Ps = tlist("P", i)
@@ -874,12 +873,15 @@ new file mode 100644
 +//
 +//   plural = "s"[int(i==1):]
 +//
-+//   cog.out("""
++//   # Can't actually handle methods with MAX_FUNCTOR_ARITY parameters, since
++//   # the first parameter is reserved for the receiving object:
++//   if i < MAX_FUNCTOR_ARITY:
++//     cog.out("""
 +// // Adapters for methods with %d parameter%s:""" % (i, plural))
-+//   cog.out(tmpl % locals())
-+//
-+//   const = " const"
-+//   cog.out(tmpl % locals())
++//     const = ""
++//     cog.out(tmpl % locals())
++//     const = " const"
++//     cog.out(tmpl % locals())
 +//
 +//   cog.out("""
 +// // Adapter for global functions with %d parameter%s:""" % (i, plural))
@@ -891,6 +893,9 @@ new file mode 100644
 +// }
 +//
 +// """ % locals())
++//
++// for i in rng:
++//   output_global_adapters(i)
 +// ]]]
 +
 +// Adapters for methods with 0 parameters:
@@ -1080,6 +1085,14 @@ new file mode 100644
 +Functor<R, TLIST9(P0, P1, P2, P3, P4, P5, P6, P7, P8)>
 +functor(R (*f)(P0, P1, P2, P3, P4, P5, P6, P7, P8)) {
 +  return Functor<R, TLIST9(P0, P1, P2, P3, P4, P5, P6, P7, P8)>::callable(f);
++}
++
++
++// Adapter for global functions with 10 parameters:
++template <typename R, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7, typename P8, typename P9>
++Functor<R, TLIST10(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9)>
++functor(R (*f)(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9)) {
++  return Functor<R, TLIST10(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9)>::callable(f);
 +}
 +
 +// [[[end]]]
