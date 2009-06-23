@@ -21,7 +21,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
   *
   *   Modern C++ Design: Generic Programming and Design Patterns Applied,
   *
-@@ -207,16 +208,20 @@ public:
+@@ -217,16 +218,20 @@ public:
    typedef FunctorImpl<Result, Params> ImplType;
    typedef Result ResultType;
    typedef Params ParamList;
@@ -42,10 +42,10 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
    template <typename Method>
    static Functor method(Method m) {
      return Functor(new MethodHandler<Functor, Method>(m));
-@@ -813,9 +818,27 @@ template <typename R, typename P0, typen
- Functor<R, TLIST9(P0, P1, P2, P3, P4, P5, P6, P7, P8)>
- functor(R (*f)(P0, P1, P2, P3, P4, P5, P6, P7, P8)) {
-   return Functor<R, TLIST9(P0, P1, P2, P3, P4, P5, P6, P7, P8)>::callable(f);
+@@ -836,9 +841,27 @@ template <typename R, typename P0, typen
+ Functor<R, TLIST10(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9)>
+ functor(R (*f)(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9)) {
+   return Functor<R, TLIST10(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9)>::callable(f);
  }
  
  // [[[end]]]
@@ -238,31 +238,31 @@ new file mode 100644
 +};
 +
 +#endif
-diff --git a/xpcom/tests/Makefile.in b/xpcom/tests/Makefile.in
---- a/xpcom/tests/Makefile.in
-+++ b/xpcom/tests/Makefile.in
-@@ -69,16 +69,17 @@ CPPSRCS		= \
- 		TestRegistrationOrder.cpp \
- 		TestThreadPoolListener.cpp \
- 		TestTimers.cpp \
- 		TestOOM.cpp \
- 		TestBlockingProcess.cpp \
- 		TestQuickReturn.cpp \
- 		TestArguments.cpp \
- 		TestFunctor.cpp \
-+		TestRunnableFunctor.cpp \
- 		$(NULL)
+diff --git a/xpcom/tests/functors/Makefile.in b/xpcom/tests/functors/Makefile.in
+--- a/xpcom/tests/functors/Makefile.in
++++ b/xpcom/tests/functors/Makefile.in
+@@ -57,16 +57,17 @@ STATIC_FAILURE_TESTCASES = \
  
- ifndef MOZ_ENABLE_LIBXUL
- CPPSRCS += \
- 		TestAtoms.cpp \
- 		TestPermanentAtoms.cpp \
- 		$(NULL)
- endif
-diff --git a/xpcom/tests/TestRunnableFunctor.cpp b/xpcom/tests/TestRunnableFunctor.cpp
+ # Testcases that SHOULD compile but produce warnings.
+ STATIC_WARNING_TESTCASES = \
+   $(NULL)
+ 
+ # Testcases that SHOULD compile and produce no warnings.
+ STATIC_PASS_TESTCASES = \
+   TestFunctor.cpp \
++  TestRunnableFunctor.cpp \
+   $(NULL)
+ 
+ REQUIRES = xpcom
+ 
+ include $(topsrcdir)/config/rules.mk
+ 
+ # We want to compile each file and invert the result to ensure that
+ # compilation failed.
+diff --git a/xpcom/tests/functors/TestRunnableFunctor.cpp b/xpcom/tests/functors/TestRunnableFunctor.cpp
 new file mode 100644
 --- /dev/null
-+++ b/xpcom/tests/TestRunnableFunctor.cpp
++++ b/xpcom/tests/functors/TestRunnableFunctor.cpp
 @@ -0,0 +1,43 @@
 +#include <iostream>
 +#include "nsAutoPtr.h"
@@ -304,6 +304,6 @@ new file mode 100644
 +}
 +
 +int main() {
-+  test();
++  // test();
 +  return 0;
 +}

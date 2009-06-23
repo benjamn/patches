@@ -264,7 +264,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Functor.h
-@@ -0,0 +1,834 @@
+@@ -0,0 +1,844 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -333,24 +333,34 @@ new file mode 100644
 + */
 +
 +// [[[cog
++// # Any insuffciency of functor parameters can be solved by increasing
++// # MAX_FUNCTOR_ARITY:
 +// from functor_cog_utils import tlist, MAX_FUNCTOR_ARITY
 +// rng = range(MAX_FUNCTOR_ARITY+1)
 +// ijs = zip(rng, rng[1:])
 +// ]]]
 +// [[[end]]]
 +
-+class FunctorSupports : public nsISupports {
-+  NS_DECL_ISUPPORTS
++/**
++ * Reference counting base class from which all the FunctorImpl partial
++ * specializations inherit.  AddRef and Release need to be atomic because
++ * Functors may be copied between threads, but the burden of keeping bound
++ * arguments thread-safe still falls entirely on the client.
++ */
++class FunctorSupports {
++  nsAutoRefCnt mRefCnt;
++public:
++  nsrefcnt AddRef();
++  nsrefcnt Release();
 +protected:
 +  virtual ~FunctorSupports() {}
 +};
 +inline NS_IMPL_THREADSAFE_ADDREF(FunctorSupports)
 +inline NS_IMPL_THREADSAFE_RELEASE(FunctorSupports)
-+inline NS_IMPL_THREADSAFE_QUERY_INTERFACE0(FunctorSupports)
 +
 +/**
 + * Abstract interface for the heap-allocated functor objects (CallableHandler,
-+ * MethodHandler, Binder, &c.) to which Functors hold references. Since
++ * MethodHandler, Binder, Voider, &c.) to which Functors hold references. Since
 + * FunctorImpl inherits from FunctorSupports, derived classes inherit the
 + * AddRef and Release methods required by nsRefPtr<FunctorImpl>.
 + */
@@ -1358,30 +1368,147 @@ new file mode 100644
 diff --git a/xpcom/tests/Makefile.in b/xpcom/tests/Makefile.in
 --- a/xpcom/tests/Makefile.in
 +++ b/xpcom/tests/Makefile.in
-@@ -68,16 +68,17 @@ CPPSRCS		= \
- 		TestRacingServiceManager.cpp \
- 		TestRegistrationOrder.cpp \
- 		TestThreadPoolListener.cpp \
- 		TestTimers.cpp \
- 		TestOOM.cpp \
- 		TestBlockingProcess.cpp \
- 		TestQuickReturn.cpp \
- 		TestArguments.cpp \
-+		TestFunctor.cpp \
- 		$(NULL)
+@@ -43,17 +43,17 @@ VPATH		= @srcdir@
+ include $(DEPTH)/config/autoconf.mk
+ 
+ MODULE		= xpcom
  
  ifndef MOZ_ENABLE_LIBXUL
- CPPSRCS += \
- 		TestAtoms.cpp \
- 		TestPermanentAtoms.cpp \
- 		$(NULL)
+ MOZILLA_INTERNAL_API = 1
  endif
-diff --git a/xpcom/tests/TestFunctor.cpp b/xpcom/tests/TestFunctor.cpp
+ 
+-DIRS		= dynamic services external
++DIRS		= dynamic services external functors
+ ifeq ($(OS_ARCH),WINNT)
+ DIRS		+= windows
+ endif
+ 
+ ifdef DEHYDRA_PATH
+ DIRS += static-checker
+ endif
+ 
+diff --git a/xpcom/tests/functors/Makefile.in b/xpcom/tests/functors/Makefile.in
 new file mode 100644
 --- /dev/null
-+++ b/xpcom/tests/TestFunctor.cpp
-@@ -0,0 +1,107 @@
-+#include <iostream>
++++ b/xpcom/tests/functors/Makefile.in
+@@ -0,0 +1,109 @@
++# ***** BEGIN LICENSE BLOCK *****
++# Version: MPL 1.1/GPL 2.0/LGPL 2.1
++#
++# The contents of this file are subject to the Mozilla Public License Version
++# 1.1 (the "License"); you may not use this file except in compliance with
++# the License. You may obtain a copy of the License at
++# http://www.mozilla.org/MPL/
++#
++# Software distributed under the License is distributed on an "AS IS" basis,
++# WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++# for the specific language governing rights and limitations under the
++# License.
++#
++# The Original Code is Mozilla 2.
++#
++# The Initial Developer of the Original Code is
++# the Mozilla Foundation <http://www.mozilla.org>.
++#
++# Portions created by the Initial Developer are Copyright (C) 2009
++# the Initial Developer. All Rights Reserved.
++#
++# Contributor(s):
++#   Benjamin Smedberg <benjamin@smedbergs.us> (Inspiration)
++#   Ben Newman <b{newma,enjam}n@mozilla.com> (Author)
++#
++# Alternatively, the contents of this file may be used under the terms of
++# either the GNU General Public License Version 2 or later (the "GPL"), or
++# the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++# in which case the provisions of the GPL or the LGPL are applicable instead
++# of those above. If you wish to allow use of your version of this file only
++# under the terms of either the GPL or the LGPL, and not to allow others to
++# use your version of this file under the terms of the MPL, indicate your
++# decision by deleting the provisions above and replace them with the notice
++# and other provisions required by the GPL or the LGPL. If you do not delete
++# the provisions above, a recipient may use your version of this file under
++# the terms of any one of the MPL, the GPL or the LGPL.
++#
++# ***** END LICENSE BLOCK *****
++
++DEPTH = ../../..
++topsrcdir = @top_srcdir@
++srcdir = @srcdir@
++VPATH = @srcdir@
++
++# We will do compilations that create dependency files.
++NEED_MDDEPDIR = 1
++
++include $(DEPTH)/config/autoconf.mk
++
++CPP_UNIT_TESTS = \
++	TestFunctor.cpp \
++	$(NULL)
++
++# Testcases that SHOULD fail to compile.
++STATIC_FAILURE_TESTCASES = \
++  $(NULL)
++
++# Testcases that SHOULD compile but produce warnings.
++STATIC_WARNING_TESTCASES = \
++  $(NULL)
++
++# Testcases that SHOULD compile and produce no warnings.
++STATIC_PASS_TESTCASES = \
++  TestFunctor.cpp \
++  $(NULL)
++
++REQUIRES = xpcom
++
++include $(topsrcdir)/config/rules.mk
++
++# We want to compile each file and invert the result to ensure that
++# compilation failed.
++static:: \
++  $(STATIC_FAILURE_TESTCASES:.cpp=.s-fail) \
++  $(STATIC_WARNING_TESTCASES:.cpp=.s-warn) \
++  $(STATIC_PASS_TESTCASES:.cpp=.s-pass)
++
++check:: static
++
++%.s-fail: %.cpp $(GLOBAL_DEPS)
++	@printf "Compiling $(<F) to check that the static-analysis script is checking properly..."
++	@if $(CCC) $(OUTOPTION)/dev/null -S $(COMPILE_CXXFLAGS) $(_VPATH_SRCS) >$(*F).errlog 2>&1; then \
++	  printf "fail:\nerror: compilation of $(<F) succeeded. It shouldn't have!\n"; \
++	  exit 1; \
++	else \
++	  printf "ok.\n"; \
++	fi
++
++%.s-warn: %.cpp $(GLOBAL_DEPS)
++	@printf "Compiling $(<F) to check that the static-analysis script is checking properly..."
++	@if $(CCC) -Werror $(OUTOPTION)/dev/null -S $(COMPILE_CXXFLAGS) $(_VPATH_SRCS) >$(*F).errlog 2>&1; then \
++	  printf "fail:\nerror: compilation of $(<F) succeeded with -Werror. It shouldn't have!\n"; \
++	  exit 1; \
++	fi
++	@if $(CCC) $(OUTOPTION)/dev/null -S $(COMPILE_CXXFLAGS) $(_VPATH_SRCS) >$(*F).werrlog 2>&1; then \
++	  printf "ok.\n"; \
++	else \
++	  printf "fail:\nerror: compilation of $(<F) without -Werror failed. A warning should have been issued.\n"; \
++	  exit 1; \
++	fi
++
++%.s-pass: %.cpp $(GLOBAL_DEPS)
++	@printf "Compiling $(<F) to check that the static-analysis script is checking properly..."
++	@if $(CCC) -Werror $(OUTOPTION)/dev/null -S $(COMPILE_CXXFLAGS) $(_VPATH_SRCS) >$(*F).errlog 2>&1; then \
++	  printf "ok.\n"; \
++	else \
++	  printf "fail:\nerror: compilation of $(<F) failed. It shouldn't have!\n"; \
++	  exit 1; \
++	fi
+diff --git a/xpcom/tests/functors/TestFunctor.cpp b/xpcom/tests/functors/TestFunctor.cpp
+new file mode 100644
+--- /dev/null
++++ b/xpcom/tests/functors/TestFunctor.cpp
+@@ -0,0 +1,111 @@
++#include "TestUtils.h"
++
++#include <sstream>
 +#include "Functor.h"
 +#include "Bind.h"
 +
@@ -1408,11 +1535,6 @@ new file mode 100644
 +
 +void NoReturn(int x, int y) {
 +  printf("%d, %d\n", x, y);
-+}
-+
-+void is(int x, int y) {
-+  std::cout << (x == y ? "OK: " : "FAIL: ")
-+            << x << " = " << y << std::endl;
 +}
 +
 +void example()
@@ -1482,9 +1604,49 @@ new file mode 100644
 +}
 +
 +int main() {
++  ScopedXPCOM xpcom("FunctorTests");
++  if (xpcom.failed())
++    return 1;
++
++  nsresult rv = NS_OK;
++
 +  example();
 +  test_bind();
 +  test_Location();
 +  test_bind_result();
-+  return 0;
++
++  return rv;
 +}
+diff --git a/xpcom/tests/functors/TestUtils.h b/xpcom/tests/functors/TestUtils.h
+new file mode 100644
+--- /dev/null
++++ b/xpcom/tests/functors/TestUtils.h
+@@ -0,0 +1,28 @@
++#ifndef TestUtils_h__
++#define TestUtils_h__
++
++#include "../TestHarness.h"
++#include <sstream>
++
++void silence_unused_function_warnings() {
++  StartProfiling("");
++  StopProfiling();
++}
++// #undef silence_unused_function_warnings
++
++template <typename T>
++void is_helper(const char* lhs_str, const char* rhs_str, T lhs, T rhs)
++{
++  std::stringstream ss;
++  if (lhs == rhs) {
++    ss << lhs_str << " == " << rhs_str << ": (" << lhs << ", " << rhs << ")";
++    passed(ss.str().c_str());
++  } else {
++    ss << lhs_str << " != " << rhs_str << ": (" << lhs << ", " << rhs << ")";
++    fail(ss.str().c_str());
++  }
++}
++
++#define is(LHS, RHS) is_helper(#LHS, #RHS, LHS, RHS)
++
++#endif
