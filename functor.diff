@@ -1590,7 +1590,7 @@ diff --git a/xpcom/tests/functors/TestFunctor.cpp b/xpcom/tests/functors/TestFun
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestFunctor.cpp
-@@ -0,0 +1,112 @@
+@@ -0,0 +1,155 @@
 +#include "TestUtils.h"
 +
 +#include <sstream>
@@ -1639,9 +1639,6 @@ new file mode 100644
 +  is(p(b), b - 1);
 +  is(ds(new DiffStruct, s(a), p(b)), a - b + 2);
 +
-+  // is(std::bind1st(ds, 6)(4), 2);
-+  // is(std::bind2nd(ds, 6)(4), -2);
-+
 +  is(a2(2, 3), 5);
 +
 +  functor(&Unequal)(1, 2);
@@ -1657,9 +1654,9 @@ new file mode 100644
 +  is(BIND1(&Pred::operator(), new Pred)(2), 1);
 +
 +  Functor<int, TLIST2(int, int)> a2 = functor(&DiffStruct::Add2);
-+  is(BIND1(a2, 2)(3), 5);
-+  is(BIND2(a2, 2, 3)(), 5);
-+  is(BIND1(BIND1(a2, 2), 3)(), 5);
++  is(a2.bind(2)(3), 5);
++  is(a2.bind(2).bind(3)(), 5);
++  is(BIND2(&DiffStruct::Add2, 2, 3)(), 5);
 +
 +  int x = 5, y = 3;
 +  DiffStruct ds;
@@ -1671,11 +1668,28 @@ new file mode 100644
 +  is(f(y), x - y);
 +}
 +
-+int test_ref_cref()
++template <typename T> void set(T t, int value) { t = value; }
++template <typename T> void set_ref(T& tref, int value) { tref = value; }
++void test_ref_cref()
 +{
-+  int n = 3;
-+  ok(ref(n) == n);
-+  ok(cref(n) == n);
++  int n = 0, &nref = n;
++  set(nref, n+1);
++  is(n, 0);
++  set(ref(n), n+1);
++  is(n, 1);
++  set_ref(nref, n+1);
++  is(n, 2);
++  set_ref(*ref(n), n+1);
++  is(n, 3);
++}
++
++template <typename T> T generic_identity(T t) { return t; }
++void test_templatized_functor()
++{
++  Functor<int, TLIST0()> f =
++    functor((int(*)(int))generic_identity).bind(2);
++  is(f(), 2);
++  is(functor(static_cast<int(*)(int)>(generic_identity))(1), 1);
 +}
 +
 +void test_bind_result(int n)
@@ -1689,6 +1703,33 @@ new file mode 100644
 +  is(int(out), n);
 +}
 +
++struct CopyCounter {
++  int* const mCountPtr;
++  explicit CopyCounter(int* countPtr) : mCountPtr(countPtr) {}
++  CopyCounter(const CopyCounter& other)
++    : mCountPtr(other.mCountPtr)
++  { ++*mCountPtr; }
++  CopyCounter& operator=(const CopyCounter& cc) {
++    is(mCountPtr, cc.mCountPtr);
++    return *this;
++  }
++  CopyCounter Method(int a, int b, int c) { return *this; }
++};
++
++void test_result_copying()
++{
++  int count = 0;
++  CopyCounter cc(&count);
++  Functor<CopyCounter, TLIST0()> f =
++    functor(&CopyCounter::Method).bind(&cc).bind(1).bind(2).bind(3);
++  is(*f().mCountPtr, 1); // make sure the compiler can elide the tail copies
++  f(); f(); f();
++  is(count, 4);
++  Functor<void, TLIST0()> fvoid = f.bind_result(ref(cc));
++  fvoid(); fvoid(); fvoid();
++  is(count, 7);
++}
++
 +int main() {
 +  ScopedXPCOM xpcom("FunctorTests");
 +  if (xpcom.failed())
@@ -1699,7 +1740,9 @@ new file mode 100644
 +  example();
 +  test_bind();
 +  test_ref_cref();
++  test_templatized_functor();
 +  test_bind_result(3);
++  test_result_copying();
 +
 +  return rv;
 +}
