@@ -250,7 +250,7 @@ diff --git a/xpcom/tests/functors/Makefile.in b/xpcom/tests/functors/Makefile.in
  # Testcases that SHOULD compile and produce no warnings.
  STATIC_PASS_TESTCASES = \
    $(CPP_UNIT_TESTS) \
-+  TestRunnableFunctor.h \
++  TestRunnableFunctor.cpp \
    $(NULL)
  
  REQUIRES = xpcom
