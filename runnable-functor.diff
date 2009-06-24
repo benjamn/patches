@@ -3,8 +3,7 @@ Runnable interface for Functors (bug 486440).
 diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 --- a/xpcom/glue/Functor.h
 +++ b/xpcom/glue/Functor.h
-@@ -38,16 +38,17 @@
- 
+@@ -39,16 +39,17 @@
  #ifndef Functor_h__
  #define Functor_h__
  
@@ -12,6 +11,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
  #include "nsIRunnable.h"
  #include "nsAutoPtr.h"
  #include "TList.h"
+ #include "Location.h"
 +#include "RunnableFunctor.h"
  
  /**
@@ -21,7 +21,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
   *
   *   Modern C++ Design: Generic Programming and Design Patterns Applied,
   *
-@@ -217,16 +218,20 @@ public:
+@@ -218,16 +219,20 @@ public:
    typedef FunctorImpl<Result, Params> ImplType;
    typedef Result ResultType;
    typedef Params ParamList;
@@ -42,7 +42,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
    template <typename Method>
    static Functor method(Method m) {
      return Functor(new MethodHandler<Functor, Method>(m));
-@@ -836,9 +841,27 @@ template <typename R, typename P0, typen
+@@ -851,9 +856,27 @@ template <typename R, typename P0, typen
  Functor<R, TLIST10(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9)>
  functor(R (*f)(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9)) {
    return Functor<R, TLIST10(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9)>::callable(f);
@@ -73,14 +73,14 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
-@@ -123,16 +123,17 @@ SDK_HEADERS = \
- 
+@@ -124,16 +124,17 @@ SDK_HEADERS = \
  EXPORTS_NAMESPACES = mozilla
  
  EXPORTS = \
  		nsThreadUtils.h \
  		nsProxyRelease.h \
  		nsXPTCUtils.h \
+ 		Location.h \
  		TList.h \
 +		RunnableFunctor.h \
  		Functor.h \
@@ -241,7 +241,7 @@ new file mode 100644
 diff --git a/xpcom/tests/functors/Makefile.in b/xpcom/tests/functors/Makefile.in
 --- a/xpcom/tests/functors/Makefile.in
 +++ b/xpcom/tests/functors/Makefile.in
-@@ -57,16 +57,17 @@ STATIC_FAILURE_TESTCASES = \
+@@ -58,16 +58,17 @@ STATIC_FAILURE_TESTCASES = \
  
  # Testcases that SHOULD compile but produce warnings.
  STATIC_WARNING_TESTCASES = \
@@ -249,8 +249,8 @@ diff --git a/xpcom/tests/functors/Makefile.in b/xpcom/tests/functors/Makefile.in
  
  # Testcases that SHOULD compile and produce no warnings.
  STATIC_PASS_TESTCASES = \
-   TestFunctor.cpp \
-+  TestRunnableFunctor.cpp \
+   $(CPP_UNIT_TESTS) \
++  TestRunnableFunctor.h \
    $(NULL)
  
  REQUIRES = xpcom
