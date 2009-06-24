@@ -4,7 +4,7 @@ diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Bind.h
-@@ -0,0 +1,255 @@
+@@ -0,0 +1,127 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -77,134 +77,6 @@ new file mode 100644
 +// ]]]
 +// [[[end]]]
 +
-+/**
-+ * ClientManagedStoragePolicy assumes nothing about the allocation and
-+ * management of T, and consequently provides the client no assistance to that
-+ * end.  This policy class is intended primarily for use by ref and cref.
-+ */
-+template <typename T>
-+class ClientManagedStoragePolicy
-+{
-+  T* const mPtr;
-+protected:
-+  ClientManagedStoragePolicy(T* tp) : mPtr(tp) {}
-+  T* GetPointer() { return mPtr; }
-+  const T* GetConstPointer() const { return mPtr; }
-+};
-+
-+/**
-+ * nsRefPtr<T> enforces the availability of T::AddRef and T::Release, so it may
-+ * be assumed that any object of type T is both reference counted and not stack
-+ * allocated.  This guarantee makes it safe to provide a T* constructor without
-+ * worry that the client may pass in a stack address.  For convenience, a zero-
-+ * parameter constructor is also provided for situations where T is default-
-+ * constructible and the client wants RefPtrStoragePolicy to do the allocation.
-+ */
-+template <typename T>
-+class RefPtrStoragePolicy
-+{
-+  nsRefPtr<T> mPtr;
-+protected:
-+  RefPtrStoragePolicy() : mPtr(new T()) {}
-+  RefPtrStoragePolicy(T* tp) : mPtr(tp) {}
-+  T* GetPointer() { return mPtr; }
-+  const T* GetConstPointer() const { return mPtr; }
-+};
-+
-+/**
-+ * Unlike RefPtrStoragePolicy, this policy class is completely agnostic about
-+ * the type of T and assumes full responsibility for counting references.
-+ *
-+ * RefCountingStoragePolicy provides only a zero-parameter constructor to force
-+ * heap allocation of the underlying T value.
-+ */
-+template <typename T>
-+class RefCountingStoragePolicy
-+{
-+  struct Holder {
-+    T mVal; // must be default-constructible
-+    nsAutoRefCnt mRefCnt;
-+    nsrefcnt AddRef();
-+    nsrefcnt Release();
-+  };
-+  nsRefPtr<Holder> mHolderPtr;
-+protected:
-+  RefCountingStoragePolicy() : mHolderPtr(new Holder()) {}
-+  T* GetPointer() { return &mHolderPtr->mVal; }
-+  const T* GetConstPointer() const { return &mHolderPtr->mVal; }
-+};
-+template <typename T>
-+NS_IMPL_THREADSAFE_ADDREF(RefCountingStoragePolicy<T>::Holder)
-+template <typename T>
-+NS_IMPL_THREADSAFE_RELEASE(RefCountingStoragePolicy<T>::Holder)
-+
-+/**
-+ * A Location represents a single assignable place in memory.  Location
-+ * objects may be cheaply copied, but every copy refers to the same location.
-+ * Conversion operators expose both references and pointers to the underlying
-+ * value, so Locations are good for imposing constraints on out-parameters.
-+ * These constraints are expressed through a StoragePolicy template parameter,
-+ * which is responsible for implementing GetPointer, GetConstPointer, and one
-+ * or more constructors.  If the client avoids using a certain method (such as
-+ * operator=), any demands that method makes on the StoragePolicy base class
-+ * (such as the availability of a GetPointer method) are waived, because the
-+ * compiler does not generate code for unused template methods.
-+ *
-+ * You've probably already guessed that Andrei Alexandrescu has a chapter about
-+ * policy classes in his Modern C++ Design book.
-+ */
-+template
-+<
-+  typename T, // Reference types do not work, and that is as it should be.
-+  template <typename> class StoragePolicy = RefCountingStoragePolicy
-+>
-+class Location : private StoragePolicy<T>
-+{
-+public:
-+  explicit Location() {}
-+  explicit Location(T* tp) : StoragePolicy<T>(tp) {}
-+
-+  // Any type that can be assigned to a dereferenced T* is legal here:
-+  template <typename R>
-+  Location& operator=(const R& rhs) {
-+    *this->GetPointer() = rhs;
-+    return *this;
-+  }
-+
-+  operator T&() { return *this->GetPointer(); }
-+  operator const T&() const { return *this->GetConstPointer(); }
-+
-+  operator T*() { return this->GetPointer(); }
-+  operator const T*() const { return this->GetConstPointer(); }
-+};
-+
-+
-+/**
-+ * Template type inference prefers non-reference types to reference types, so
-+ * references passed to bind will be stored by VALUE unless explicitly coerced
-+ * using the ref and cref (const reference) functions below.
-+ */
-+
-+template <typename T>
-+Location<T, ClientManagedStoragePolicy>
-+ref(T& t)
-+{
-+  return Location<T, ClientManagedStoragePolicy>(&t);
-+}
-+
-+template <typename T>
-+const Location<const T, ClientManagedStoragePolicy>
-+cref(const T& t)
-+{
-+  typedef const Location<const T, ClientManagedStoragePolicy> type;
-+  return type(&t);
-+}
-+
-+template <typename T>
-+struct OutParam
-+{
-+  typedef Location<T, RefCountingStoragePolicy> type;
-+};
 +
 +
 +/**
@@ -264,7 +136,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Functor.h
-@@ -0,0 +1,844 @@
+@@ -0,0 +1,859 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -310,6 +182,7 @@ new file mode 100644
 +#include "nsIRunnable.h"
 +#include "nsAutoPtr.h"
 +#include "TList.h"
++#include "Location.h"
 +
 +/**
 + * For an overview of Functor usage, see bug 486440.
@@ -446,7 +319,7 @@ new file mode 100644
 +template <class ParentFunctor, typename Bound>
 +class Binder;
 +
-+template <class ParentFunctor, typename Location>
++template <class ParentFunctor, template <typename> class StoragePolicy>
 +class Voider;
 +
 +// [[[cog
@@ -520,10 +393,22 @@ new file mode 100644
 +    return O(binder);
 +  }
 +
-+  template <typename Location>
-+  typename Voider<Functor, Location>::Outgoing
-+  bind_result(Location loc) {
-+    typedef Voider<Functor, Location> V;
++  /**
++   * The bind_result method may be called against non-void Functors and returns
++   * a void Functor that puts the return value of the original Functor into the
++   * provided Location<ResultType, StoragePolicy> argument.  See Location.h for
++   * an explanation of Location objects (N.B. the ref/cref functions).
++   *
++   * Example:
++   *   Counter c;
++   *   Location<int> out;
++   *   functor(&Counter::GetCount).bind_result(out)(&c);
++   *   int count = out;
++   */
++  template <template <typename> class StoragePolicy>
++  typename Voider<Functor, StoragePolicy>::Outgoing
++  bind_result(Location<ResultType, StoragePolicy> loc) {
++    typedef Voider<Functor, StoragePolicy> V;
 +    typedef typename V::Outgoing O;
 +    typedef typename O::ImplType I;
 +    I* voider = new V(*this, loc);
@@ -782,12 +667,14 @@ new file mode 100644
 +  Bound mBound;
 +};
 +
-+template <class ParentFunctor, typename Location>
++template <class ParentFunctor, template <typename> class StoragePolicy>
 +class Voider
 +  : public FunctorImpl<void, typename ParentFunctor::ParamList>
 +{
++  typedef Location<typename ParentFunctor::ResultType, StoragePolicy>
++          LocationType;
 +public:
-+  Voider(ParentFunctor fun, Location loc)
++  Voider(ParentFunctor fun, LocationType loc)
 +    : mFun(fun)
 +    , mLoc(loc)
 +  {}
@@ -845,7 +732,7 @@ new file mode 100644
 +
 +private:
 +  ParentFunctor mFun;
-+  Location mLoc;
++  LocationType mLoc;
 +};
 +
 +// Sayonara, macro scum!
@@ -1109,10 +996,195 @@ new file mode 100644
 +
 +
 +#endif
+diff --git a/xpcom/glue/Location.h b/xpcom/glue/Location.h
+new file mode 100644
+--- /dev/null
++++ b/xpcom/glue/Location.h
+@@ -0,0 +1,180 @@
++/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is Location.
++ *
++ * The Initial Developer of the Original Code is
++ *   Mozilla Corporation.
++ * Portions created by the Initial Developer are Copyright (C) 2009
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *   Ben Newman <b{enjam,newma}n@mozilla.com> (Original Author)
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++#ifndef Location_h__
++#define Location_h__
++
++#include "nsAutoPtr.h" // for nsRefPtr
++
++// Forward declaration of StoragePolicy classes:
++template <typename T> class ClientManagedStoragePolicy;
++template <typename T> class RefPtrStoragePolicy;
++template <typename T> class RefCountingStoragePolicy;
++
++/**
++ * A Location represents a single assignable place in memory.  Location
++ * objects may be cheaply copied, but every copy refers to the same location.
++ * Conversion operators expose both references and pointers to the underlying
++ * value, so Locations are good for imposing constraints on out-parameters.
++ * These constraints are expressed through a StoragePolicy template parameter,
++ * which is responsible for implementing GetPointer, GetConstPointer, and one
++ * or more constructors.  If the client avoids using a certain method (such as
++ * operator=), any demands the method makes on the StoragePolicy base class
++ * (such as the availability of a GetPointer method) are waived, because the
++ * compiler does not generate code for unused template methods.
++ *
++ * Andrei Alexandrescu has a chapter about policy classes in his Modern C++
++ * Design book.
++ */
++template
++<
++  typename T, // Reference types do not work, and that is as it should be.
++  template <typename> class StoragePolicy = RefCountingStoragePolicy
++>
++class Location : private StoragePolicy<T>
++{
++public:
++  explicit Location() {}
++  explicit Location(T* tp) : StoragePolicy<T>(tp) {}
++
++  // Any type that can be assigned to a dereferenced T* is legal here:
++  template <typename R>
++  Location& operator=(const R& rhs) {
++    *this->GetPointer() = rhs;
++    return *this;
++  }
++
++  operator T&() { return *this->GetPointer(); }
++  operator const T&() const { return *this->GetConstPointer(); }
++
++  operator T*() { return this->GetPointer(); }
++  operator const T*() const { return this->GetConstPointer(); }
++};
++
++
++/**
++ * ClientManagedStoragePolicy assumes nothing about the allocation and
++ * management of T, and consequently provides the client no assistance to that
++ * end.  This policy class is intended primarily for use by ref and cref.
++ */
++template <typename T>
++class ClientManagedStoragePolicy
++{
++  T* const mPtr;
++protected:
++  ClientManagedStoragePolicy(T* tp) : mPtr(tp) {}
++  T* GetPointer() { return mPtr; }
++  const T* GetConstPointer() const { return mPtr; }
++};
++
++/**
++ * nsRefPtr<T> enforces the availability of T::AddRef and T::Release, so it may
++ * be assumed that any object of type T is both reference counted and not stack
++ * allocated.  This guarantee makes it safe to provide a T* constructor without
++ * worry that the client may pass in a stack address.  For convenience, a zero-
++ * parameter constructor is also provided for situations where T is default-
++ * constructible and the client wants RefPtrStoragePolicy to do the allocation.
++ */
++template <typename T>
++class RefPtrStoragePolicy
++{
++  nsRefPtr<T> mPtr;
++protected:
++  RefPtrStoragePolicy() : mPtr(new T()) {}
++  RefPtrStoragePolicy(T* tp) : mPtr(tp) {}
++  T* GetPointer() { return mPtr; }
++  const T* GetConstPointer() const { return mPtr; }
++};
++
++/**
++ * Unlike RefPtrStoragePolicy, this policy class is completely agnostic about
++ * the type of T and assumes full responsibility for counting references.
++ *
++ * RefCountingStoragePolicy provides only a zero-parameter constructor to force
++ * heap allocation of the underlying T value.
++ */
++template <typename T>
++class RefCountingStoragePolicy
++{
++  struct Holder {
++    T mVal; // must be default-constructible:
++    Holder() : mVal() {}
++    nsAutoRefCnt mRefCnt;
++    nsrefcnt AddRef();
++    nsrefcnt Release();
++  };
++  nsRefPtr<Holder> mHolderPtr;
++protected:
++  RefCountingStoragePolicy() : mHolderPtr(new Holder()) {}
++  T* GetPointer() { return &mHolderPtr->mVal; }
++  const T* GetConstPointer() const { return &mHolderPtr->mVal; }
++};
++template <typename T>
++NS_IMPL_THREADSAFE_ADDREF(RefCountingStoragePolicy<T>::Holder)
++template <typename T>
++NS_IMPL_THREADSAFE_RELEASE(RefCountingStoragePolicy<T>::Holder)
++
++
++/**
++ * Template type inference prefers non-reference types to reference types, so
++ * references passed to bind will be stored by VALUE unless explicitly coerced
++ * using the ref and cref (const reference) functions below.
++ */
++
++template <typename T>
++Location<T, ClientManagedStoragePolicy>
++ref(T& t)
++{
++  return Location<T, ClientManagedStoragePolicy>(&t);
++}
++
++template <typename T>
++const Location<const T, ClientManagedStoragePolicy>
++cref(const T& t)
++{
++  typedef const Location<const T, ClientManagedStoragePolicy> type;
++  return type(&t);
++}
++
++template <typename T>
++struct OutParam
++{
++  typedef Location<T, RefCountingStoragePolicy> type;
++};
++
++#endif
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
-@@ -122,16 +122,19 @@ SDK_HEADERS = \
+@@ -122,16 +122,20 @@ SDK_HEADERS = \
  		$(NULL)
  
  EXPORTS_NAMESPACES = mozilla
@@ -1121,6 +1193,7 @@ diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
  		nsThreadUtils.h \
  		nsProxyRelease.h \
  		nsXPTCUtils.h \
++		Location.h \
 +		TList.h \
 +		Functor.h \
 +		Bind.h \
@@ -1387,11 +1460,22 @@ diff --git a/xpcom/tests/Makefile.in b/xpcom/tests/Makefile.in
  DIRS += static-checker
  endif
  
+diff --git a/xpcom/tests/functors/CrefAssignment.cpp b/xpcom/tests/functors/CrefAssignment.cpp
+new file mode 100644
+--- /dev/null
++++ b/xpcom/tests/functors/CrefAssignment.cpp
+@@ -0,0 +1,6 @@
++#include "Location.h"
++
++int main() {
++  int n;
++  cref(n) = 3;
++}
 diff --git a/xpcom/tests/functors/Makefile.in b/xpcom/tests/functors/Makefile.in
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/Makefile.in
-@@ -0,0 +1,109 @@
+@@ -0,0 +1,110 @@
 +# ***** BEGIN LICENSE BLOCK *****
 +# Version: MPL 1.1/GPL 2.0/LGPL 2.1
 +#
@@ -1447,6 +1531,7 @@ new file mode 100644
 +
 +# Testcases that SHOULD fail to compile.
 +STATIC_FAILURE_TESTCASES = \
++  CrefAssignment.cpp \
 +  $(NULL)
 +
 +# Testcases that SHOULD compile but produce warnings.
@@ -1455,7 +1540,7 @@ new file mode 100644
 +
 +# Testcases that SHOULD compile and produce no warnings.
 +STATIC_PASS_TESTCASES = \
-+  TestFunctor.cpp \
++  $(CPP_UNIT_TESTS) \
 +  $(NULL)
 +
 +REQUIRES = xpcom
@@ -1472,7 +1557,7 @@ new file mode 100644
 +check:: static
 +
 +%.s-fail: %.cpp $(GLOBAL_DEPS)
-+	@printf "Compiling $(<F) to check that the static-analysis script is checking properly..."
++	@printf "Compiling $(<F) to verify that it produces errors (as expected)..."
 +	@if $(CCC) $(OUTOPTION)/dev/null -S $(COMPILE_CXXFLAGS) $(_VPATH_SRCS) >$(*F).errlog 2>&1; then \
 +	  printf "fail:\nerror: compilation of $(<F) succeeded. It shouldn't have!\n"; \
 +	  exit 1; \
@@ -1481,7 +1566,7 @@ new file mode 100644
 +	fi
 +
 +%.s-warn: %.cpp $(GLOBAL_DEPS)
-+	@printf "Compiling $(<F) to check that the static-analysis script is checking properly..."
++	@printf "Compiling $(<F) to verify that it produces proper warnings..."
 +	@if $(CCC) -Werror $(OUTOPTION)/dev/null -S $(COMPILE_CXXFLAGS) $(_VPATH_SRCS) >$(*F).errlog 2>&1; then \
 +	  printf "fail:\nerror: compilation of $(<F) succeeded with -Werror. It shouldn't have!\n"; \
 +	  exit 1; \
@@ -1494,7 +1579,7 @@ new file mode 100644
 +	fi
 +
 +%.s-pass: %.cpp $(GLOBAL_DEPS)
-+	@printf "Compiling $(<F) to check that the static-analysis script is checking properly..."
++	@printf "Compiling $(<F) just to verify that compilation succeeds..."
 +	@if $(CCC) -Werror $(OUTOPTION)/dev/null -S $(COMPILE_CXXFLAGS) $(_VPATH_SRCS) >$(*F).errlog 2>&1; then \
 +	  printf "ok.\n"; \
 +	else \
@@ -1505,7 +1590,7 @@ diff --git a/xpcom/tests/functors/TestFunctor.cpp b/xpcom/tests/functors/TestFun
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestFunctor.cpp
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,112 @@
 +#include "TestUtils.h"
 +
 +#include <sstream>
@@ -1533,8 +1618,8 @@ new file mode 100644
 +  }
 +};
 +
-+void NoReturn(int x, int y) {
-+  printf("%d, %d\n", x, y);
++void Unequal(int x, int y) {
++  ok(x != y);
 +}
 +
 +void example()
@@ -1559,8 +1644,8 @@ new file mode 100644
 +
 +  is(a2(2, 3), 5);
 +
-+  functor(&NoReturn)(1, 2);
-+  return functor(&NoReturn).bind(1)(2);
++  functor(&Unequal)(1, 2);
++  return functor(&Unequal).bind(2)(3);
 +}
 +
 +void test_bind()
@@ -1586,34 +1671,35 @@ new file mode 100644
 +  is(f(y), x - y);
 +}
 +
-+int test_Location()
++int test_ref_cref()
 +{
-+  OutParam<int>::type out;
-+  int n;
-+  out = n = 1;
-+  ref(n) = 2;
-+  // cref(n) = 3;
-+  return cref(n);
++  int n = 3;
++  ok(ref(n) == n);
++  ok(cref(n) == n);
 +}
 +
-+void test_bind_result()
++void test_bind_result(int n)
 +{
-+  int n;
-+  functor(&Succ).bind_result(ref(n))(1);
-+  is(n, 2);
++  Location<int> out;
++  Functor<void, TLIST0()> inc =
++    functor(&Succ).bind_result(out).bind(out);
++  is(int(out), 0); // testing default construction
++  for (int i = out; i < n; ++i)
++    inc();
++  is(int(out), n);
 +}
 +
 +int main() {
 +  ScopedXPCOM xpcom("FunctorTests");
 +  if (xpcom.failed())
-+    return 1;
++    return NS_ERROR_FAILURE;
 +
 +  nsresult rv = NS_OK;
 +
 +  example();
 +  test_bind();
-+  test_Location();
-+  test_bind_result();
++  test_ref_cref();
++  test_bind_result(3);
 +
 +  return rv;
 +}
@@ -1621,7 +1707,7 @@ diff --git a/xpcom/tests/functors/TestUtils.h b/xpcom/tests/functors/TestUtils.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestUtils.h
-@@ -0,0 +1,28 @@
+@@ -0,0 +1,38 @@
 +#ifndef TestUtils_h__
 +#define TestUtils_h__
 +
@@ -1639,7 +1725,7 @@ new file mode 100644
 +{
 +  std::stringstream ss;
 +  if (lhs == rhs) {
-+    ss << lhs_str << " == " << rhs_str << ": (" << lhs << ", " << rhs << ")";
++    ss << lhs_str << " == " << rhs_str << " == " << lhs;
 +    passed(ss.str().c_str());
 +  } else {
 +    ss << lhs_str << " != " << rhs_str << ": (" << lhs << ", " << rhs << ")";
@@ -1648,5 +1734,15 @@ new file mode 100644
 +}
 +
 +#define is(LHS, RHS) is_helper(#LHS, #RHS, LHS, RHS)
++
++void ok_helper(const char* exp_str, bool val)
++{
++  if (val)
++    passed(exp_str);
++  else
++    fail(exp_str);
++}
++
++#define ok(VAL) ok_helper(#VAL, VAL)
 +
 +#endif
