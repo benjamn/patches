@@ -1000,7 +1000,7 @@ diff --git a/xpcom/glue/Location.h b/xpcom/glue/Location.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Location.h
-@@ -0,0 +1,180 @@
+@@ -0,0 +1,197 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -1087,6 +1087,23 @@ new file mode 100644
 +
 +  operator T*() { return this->GetPointer(); }
 +  operator const T*() const { return this->GetConstPointer(); }
++
++  /**
++   * Since Locations are always associated with persistent memory, it's safe to
++   * allow passing temporary Locations by reference; e.g.,
++   *
++   *   template <typename T>
++   *   void foo(T& tref) { tref = 1; }
++   *   ...
++   *   int out;
++   *   foo(Location<int, ClientManagedStoragePolicy>(&out));
++   *   foo(ref(out)); // equivalent to the previous line
++   *
++   * Both calls to foo have the effect of setting out to 1.  Unless Locations
++   * provide a non-const Location& conversion operator, however, g++ complains
++   * that it can't create references to temporary values.
++   */
++  operator Location&() { return *this; }
 +};
 +
 +
@@ -1590,7 +1607,7 @@ diff --git a/xpcom/tests/functors/TestFunctor.cpp b/xpcom/tests/functors/TestFun
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestFunctor.cpp
-@@ -0,0 +1,155 @@
+@@ -0,0 +1,151 @@
 +#include "TestUtils.h"
 +
 +#include <sstream>
@@ -1673,14 +1690,10 @@ new file mode 100644
 +void test_ref_cref()
 +{
 +  int n = 0, &nref = n;
-+  set(nref, n+1);
-+  is(n, 0);
-+  set(ref(n), n+1);
-+  is(n, 1);
-+  set_ref(nref, n+1);
-+  is(n, 2);
-+  set_ref(*ref(n), n+1);
-+  is(n, 3);
++  set(nref, n+1);       is(n, 0);
++  set(ref(n), n+1);     is(n, 1);
++  set_ref(nref, n+1);   is(n, 2);
++  set_ref(ref(n), n+1); is(n, 3);
 +}
 +
 +template <typename T> T generic_identity(T t) { return t; }
