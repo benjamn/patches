@@ -1478,6 +1478,19 @@ diff --git a/xpcom/tests/Makefile.in b/xpcom/tests/Makefile.in
  DIRS += static-checker
  endif
  
+diff --git a/xpcom/tests/functors/ArgConversionError.cpp b/xpcom/tests/functors/ArgConversionError.cpp
+new file mode 100644
+--- /dev/null
++++ b/xpcom/tests/functors/ArgConversionError.cpp
+@@ -0,0 +1,8 @@
++#include "Functor.h"
++
++int main(int argc, char* argv[])
++{
++  // Binding-time argument conversion failure:
++  functor(main).bind("not an integer");
++  return 0;
++}
 diff --git a/xpcom/tests/functors/CrefAssignment.cpp b/xpcom/tests/functors/CrefAssignment.cpp
 new file mode 100644
 --- /dev/null
@@ -1493,7 +1506,7 @@ diff --git a/xpcom/tests/functors/Makefile.in b/xpcom/tests/functors/Makefile.in
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/Makefile.in
-@@ -0,0 +1,110 @@
+@@ -0,0 +1,111 @@
 +# ***** BEGIN LICENSE BLOCK *****
 +# Version: MPL 1.1/GPL 2.0/LGPL 2.1
 +#
@@ -1550,6 +1563,7 @@ new file mode 100644
 +# Testcases that SHOULD fail to compile.
 +STATIC_FAILURE_TESTCASES = \
 +  CrefAssignment.cpp \
++  ArgConversionError.cpp \
 +  $(NULL)
 +
 +# Testcases that SHOULD compile but produce warnings.
@@ -1608,7 +1622,7 @@ diff --git a/xpcom/tests/functors/TestFunctor.cpp b/xpcom/tests/functors/TestFun
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestFunctor.cpp
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,225 @@
 +#include "TestUtils.h"
 +
 +#include <sstream>
@@ -1759,13 +1773,59 @@ new file mode 100644
 +  is(count, 7);
 +}
 +
-+void test_argument_conversion()
++void test_bind_conversion()
 +{
-+  double x = 3.14;
-+  Location<double> out;
++  char j = 'j';
++  Location<char> k;
 +  // N.B. Succ is int(*)(int)
-+  functor(Succ).bind(x).bind_result(out)();
-+  is(int(out), int(x) + 1);
++  functor(Succ).bind(j).bind_result(k)();
++  is(char(k), 'k');
++
++  double pi = 3.14159;
++  Location<short> four;
++  functor(Succ).bind_result(four).bind(pi)();
++  is(int(four), 4);
++}
++
++class MethodGiver {
++  int mVal;
++  int Foo() { return mVal; }
++public:
++  MethodGiver(int val) : mVal(val) {}
++  Functor<int, TLIST0()>
++  GetBoundFooFunctor() {
++    return functor(&MethodGiver::Foo).bind(this);
++  }
++  Functor<int, TLIST1(MethodGiver*)>
++  GetFooFunctor() {
++    return functor(&MethodGiver::Foo);
++  }
++};
++void test_private_method_invocation()
++{
++  MethodGiver mg(1);
++  is(MethodGiver(2).GetBoundFooFunctor()(), 2);
++  is(mg.GetFooFunctor().bind(&mg)(), 1);
++}
++
++class Whammer {
++public:
++  int Wham() { return 5; }
++};
++class WhammerPtr {
++  Whammer mWhammer;
++public:
++  Whammer& operator*() { return mWhammer; }
++};
++void test_asterisk_operator_compatibility()
++{
++  is((*WhammerPtr()).Wham(), 5);
++  is(Whammer().Wham(), 5);
++  // Can't use functor(<method>) because it forces the first argument to
++  // MethodHandler::operator() to be a pointer to an instance of the method's
++  // class.  In order to use WhammerPtr as a Whammer*, we have to give up the
++  // convenience of the global functor adapter.
++  is((Functor<int, TLIST1(WhammerPtr)>::method(&Whammer::Wham).bind(WhammerPtr())()), 5);
 +}
 +
 +int main() {
@@ -1782,7 +1842,9 @@ new file mode 100644
 +  test_bind_result(3);
 +  test_result_copying();
 +  test_Location_assignment();
-+  test_argument_conversion();
++  test_bind_conversion();
++  test_private_method_invocation();
++  test_asterisk_operator_compatibility();
 +
 +  return rv;
 +}
