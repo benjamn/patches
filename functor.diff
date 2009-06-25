@@ -999,7 +999,7 @@ diff --git a/xpcom/glue/Location.h b/xpcom/glue/Location.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Location.h
-@@ -0,0 +1,199 @@
+@@ -0,0 +1,180 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -1086,25 +1086,6 @@ new file mode 100644
 +
 +  operator T*() { return this->GetPointer(); }
 +  operator const T*() const { return this->GetConstPointer(); }
-+
-+  /**
-+   * Since Locations are always associated with persistent memory, it's
-+   * reasonable to allow passing temporary Locations by reference; e.g.,
-+   *
-+   *   template <typename T>
-+   *   void foo(T& tref) { tref = 1; }
-+   *   ...
-+   *   int out;
-+   *   foo(Location<int, ClientManagedStoragePolicy>(&out));
-+   *   foo(ref(out)); // equivalent to the previous line
-+   *
-+   * Here type T will be inferred as Location<int, ClientManagedStoragePolicy>.
-+   * Both calls to foo have the effect of setting out to 1.  Because Locations
-+   * provide a non-const Location& conversion operator, g++ doesn't complain
-+   * about the creation of references to temporary values.
-+   */
-+  operator Location&() { return *this; }
-+  operator const Location&() const { return *this; }
 +};
 +
 +
@@ -1459,7 +1440,7 @@ new file mode 100644
 diff --git a/xpcom/tests/Makefile.in b/xpcom/tests/Makefile.in
 --- a/xpcom/tests/Makefile.in
 +++ b/xpcom/tests/Makefile.in
-@@ -43,17 +43,17 @@ VPATH		= @srcdir@
+@@ -43,17 +43,17 @@ include $(DEPTH)/config/autoconf.mk
  include $(DEPTH)/config/autoconf.mk
  
  MODULE		= xpcom
@@ -1705,13 +1686,13 @@ new file mode 100644
 +void test_ref_cref()
 +{
 +  int n = 0, &nref = n;
-+  set(nref, n+1);       is(n, 0);
-+  set(ref(n), n+1);     is(n, 1);
++  set(nref, n+1);        is(n, 0);
++  set(ref(n), n+1);      is(n, 1);
 +  set(ref(n), ref(n));
 +  set(ref(n), cref(n));
 +  set_ref(nref, cref(n));
-+  set_ref(nref, n+1);   is(n, 2);
-+  set_ref(ref(n), n+1); is(n, 3);
++  set_ref(nref, n+1);    is(n, 2);
++  set_ref(*ref(n), n+1); is(n, 3);
 +}
 +
 +void test_Location_assignment()
