@@ -1603,7 +1603,7 @@ diff --git a/xpcom/tests/functors/TestFunctor.cpp b/xpcom/tests/functors/TestFun
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestFunctor.cpp
-@@ -0,0 +1,225 @@
+@@ -0,0 +1,229 @@
 +#include "TestUtils.h"
 +
 +#include <sstream>
@@ -1797,16 +1797,20 @@ new file mode 100644
 +  Whammer mWhammer;
 +public:
 +  Whammer& operator*() { return mWhammer; }
++  Whammer* operator->() { return &mWhammer; }
 +};
-+void test_asterisk_operator_compatibility()
++void test_deref_operator_compatibility()
 +{
-+  is((*WhammerPtr()).Wham(), 5);
++  WhammerPtr wp;
 +  is(Whammer().Wham(), 5);
++  is((*wp).Wham(), 5);
++  is(wp->Wham(), 5);
 +  // Can't use functor(<method>) because it forces the first argument to
 +  // MethodHandler::operator() to be a pointer to an instance of the method's
 +  // class.  In order to use WhammerPtr as a Whammer*, we have to give up the
 +  // convenience of the global functor adapter.
-+  is((Functor<int, TLIST1(WhammerPtr)>::method(&Whammer::Wham).bind(WhammerPtr())()), 5);
++  typedef Functor<int, TLIST1(WhammerPtr)> ftype;
++  is(ftype::method(&Whammer::Wham).bind(wp)(), 5);
 +}
 +
 +int main() {
@@ -1825,7 +1829,7 @@ new file mode 100644
 +  test_Location_assignment();
 +  test_bind_conversion();
 +  test_private_method_invocation();
-+  test_asterisk_operator_compatibility();
++  test_deref_operator_compatibility();
 +
 +  return rv;
 +}
