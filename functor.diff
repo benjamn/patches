@@ -136,7 +136,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Functor.h
-@@ -0,0 +1,859 @@
+@@ -0,0 +1,858 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -319,7 +319,7 @@ new file mode 100644
 +template <class ParentFunctor, typename Bound>
 +class Binder;
 +
-+template <class ParentFunctor, template <typename> class StoragePolicy>
++template <class ParentFunctor, typename LocationType>
 +class Voider;
 +
 +// [[[cog
@@ -405,10 +405,10 @@ new file mode 100644
 +   *   functor(&Counter::GetCount).bind_result(out)(&c);
 +   *   int count = out;
 +   */
-+  template <template <typename> class StoragePolicy>
-+  typename Voider<Functor, StoragePolicy>::Outgoing
-+  bind_result(Location<ResultType, StoragePolicy> loc) {
-+    typedef Voider<Functor, StoragePolicy> V;
++  template <typename R, template <typename> class StoragePolicy>
++  typename Voider<Functor, Location<R, StoragePolicy> >::Outgoing
++  bind_result(Location<R, StoragePolicy> loc) {
++    typedef Voider<Functor, Location<R, StoragePolicy> > V;
 +    typedef typename V::Outgoing O;
 +    typedef typename O::ImplType I;
 +    I* voider = new V(*this, loc);
@@ -667,12 +667,11 @@ new file mode 100644
 +  Bound mBound;
 +};
 +
-+template <class ParentFunctor, template <typename> class StoragePolicy>
++template
++<class ParentFunctor, typename LocationType>
 +class Voider
 +  : public FunctorImpl<void, typename ParentFunctor::ParamList>
 +{
-+  typedef Location<typename ParentFunctor::ResultType, StoragePolicy>
-+          LocationType;
 +public:
 +  Voider(ParentFunctor fun, LocationType loc)
 +    : mFun(fun)
@@ -1000,7 +999,7 @@ diff --git a/xpcom/glue/Location.h b/xpcom/glue/Location.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Location.h
-@@ -0,0 +1,197 @@
+@@ -0,0 +1,199 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -1089,8 +1088,8 @@ new file mode 100644
 +  operator const T*() const { return this->GetConstPointer(); }
 +
 +  /**
-+   * Since Locations are always associated with persistent memory, it's safe to
-+   * allow passing temporary Locations by reference; e.g.,
++   * Since Locations are always associated with persistent memory, it's
++   * reasonable to allow passing temporary Locations by reference; e.g.,
 +   *
 +   *   template <typename T>
 +   *   void foo(T& tref) { tref = 1; }
@@ -1099,11 +1098,13 @@ new file mode 100644
 +   *   foo(Location<int, ClientManagedStoragePolicy>(&out));
 +   *   foo(ref(out)); // equivalent to the previous line
 +   *
-+   * Both calls to foo have the effect of setting out to 1.  Unless Locations
-+   * provide a non-const Location& conversion operator, however, g++ complains
-+   * that it can't create references to temporary values.
++   * Here type T will be inferred as Location<int, ClientManagedStoragePolicy>.
++   * Both calls to foo have the effect of setting out to 1.  Because Locations
++   * provide a non-const Location& conversion operator, g++ doesn't complain
++   * about the creation of references to temporary values.
 +   */
 +  operator Location&() { return *this; }
++  operator const Location&() const { return *this; }
 +};
 +
 +
@@ -1607,7 +1608,7 @@ diff --git a/xpcom/tests/functors/TestFunctor.cpp b/xpcom/tests/functors/TestFun
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestFunctor.cpp
-@@ -0,0 +1,151 @@
+@@ -0,0 +1,177 @@
 +#include "TestUtils.h"
 +
 +#include <sstream>
@@ -1639,7 +1640,7 @@ new file mode 100644
 +  ok(x != y);
 +}
 +
-+void example()
++void test_basic_usage()
 +{
 +  Functor<int, TLIST1(int)> s = functor(&Succ);
 +
@@ -1692,8 +1693,23 @@ new file mode 100644
 +  int n = 0, &nref = n;
 +  set(nref, n+1);       is(n, 0);
 +  set(ref(n), n+1);     is(n, 1);
++  set(ref(n), ref(n));
++  set(ref(n), cref(n));
++  set_ref(nref, cref(n));
 +  set_ref(nref, n+1);   is(n, 2);
 +  set_ref(ref(n), n+1); is(n, 3);
++}
++
++void test_Location_assignment()
++{
++  Location<int> out1, out2;
++  out1 = 1;
++  out2 = 2;
++  is(int(out1), 1);
++  out1 = out2;
++  is(int(out1), 2);
++  out1 = 3;
++  is(int(out2), 3);
 +}
 +
 +template <typename T> T generic_identity(T t) { return t; }
@@ -1743,6 +1759,15 @@ new file mode 100644
 +  is(count, 7);
 +}
 +
++void test_argument_conversion()
++{
++  double x = 3.14;
++  Location<double> out;
++  // N.B. Succ is int(*)(int)
++  functor(Succ).bind(x).bind_result(out)();
++  is(int(out), int(x) + 1);
++}
++
 +int main() {
 +  ScopedXPCOM xpcom("FunctorTests");
 +  if (xpcom.failed())
@@ -1750,12 +1775,14 @@ new file mode 100644
 +
 +  nsresult rv = NS_OK;
 +
-+  example();
++  test_basic_usage();
 +  test_bind();
 +  test_ref_cref();
 +  test_templatized_functor();
 +  test_bind_result(3);
 +  test_result_copying();
++  test_Location_assignment();
++  test_argument_conversion();
 +
 +  return rv;
 +}
