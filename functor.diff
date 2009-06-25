@@ -1097,7 +1097,7 @@ new file mode 100644
 +template <typename T>
 +class ClientManagedStoragePolicy
 +{
-+  T* const mPtr;
++  T* mPtr;
 +protected:
 +  ClientManagedStoragePolicy(T* tp) : mPtr(tp) {}
 +  T* GetPointer() { return mPtr; }
@@ -1440,7 +1440,7 @@ new file mode 100644
 diff --git a/xpcom/tests/Makefile.in b/xpcom/tests/Makefile.in
 --- a/xpcom/tests/Makefile.in
 +++ b/xpcom/tests/Makefile.in
-@@ -43,17 +43,17 @@ include $(DEPTH)/config/autoconf.mk
+@@ -43,17 +43,17 @@ VPATH		= @srcdir@
  include $(DEPTH)/config/autoconf.mk
  
  MODULE		= xpcom
@@ -1472,10 +1472,25 @@ new file mode 100644
 +  functor(main).bind("not an integer");
 +  return 0;
 +}
-diff --git a/xpcom/tests/functors/CrefAssignment.cpp b/xpcom/tests/functors/CrefAssignment.cpp
+diff --git a/xpcom/tests/functors/BindResultReferenceError.cpp b/xpcom/tests/functors/BindResultReferenceError.cpp
 new file mode 100644
 --- /dev/null
-+++ b/xpcom/tests/functors/CrefAssignment.cpp
++++ b/xpcom/tests/functors/BindResultReferenceError.cpp
+@@ -0,0 +1,10 @@
++#include "Functor.h"
++
++int main()
++{
++  int n;
++  // bind_result requires an explicit Location object
++  functor(main).bind_result(&n)();
++  functor(main).bind_result(n)();
++  return n;
++}
+diff --git a/xpcom/tests/functors/CrefAssignmentError.cpp b/xpcom/tests/functors/CrefAssignmentError.cpp
+new file mode 100644
+--- /dev/null
++++ b/xpcom/tests/functors/CrefAssignmentError.cpp
 @@ -0,0 +1,6 @@
 +#include "Location.h"
 +
@@ -1487,7 +1502,7 @@ diff --git a/xpcom/tests/functors/Makefile.in b/xpcom/tests/functors/Makefile.in
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/Makefile.in
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,115 @@
 +# ***** BEGIN LICENSE BLOCK *****
 +# Version: MPL 1.1/GPL 2.0/LGPL 2.1
 +#
@@ -1539,12 +1554,15 @@ new file mode 100644
 +
 +CPP_UNIT_TESTS = \
 +	TestFunctor.cpp \
++	TestLocation.cpp \
 +	$(NULL)
 +
 +# Testcases that SHOULD fail to compile.
 +STATIC_FAILURE_TESTCASES = \
-+  CrefAssignment.cpp \
++  CrefAssignmentError.cpp \
 +  ArgConversionError.cpp \
++  TooManyParamsError.cpp \
++  BindResultReferenceError.cpp \
 +  $(NULL)
 +
 +# Testcases that SHOULD compile but produce warnings.
@@ -1554,6 +1572,7 @@ new file mode 100644
 +# Testcases that SHOULD compile and produce no warnings.
 +STATIC_PASS_TESTCASES = \
 +  $(CPP_UNIT_TESTS) \
++  VoidReturn.cpp \
 +  $(NULL)
 +
 +REQUIRES = xpcom
@@ -1603,10 +1622,9 @@ diff --git a/xpcom/tests/functors/TestFunctor.cpp b/xpcom/tests/functors/TestFun
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestFunctor.cpp
-@@ -0,0 +1,229 @@
+@@ -0,0 +1,241 @@
 +#include "TestUtils.h"
 +
-+#include <sstream>
 +#include "Functor.h"
 +#include "Bind.h"
 +
@@ -1631,11 +1649,11 @@ new file mode 100644
 +  }
 +};
 +
-+void Unequal(int x, int y) {
-+  ok(x != y);
++nsresult Unequal(int x, int y) {
++  return ok(x != y);
 +}
 +
-+void test_basic_usage()
++nsresult test_basic_usage()
 +{
 +  Functor<int, TLIST1(int)> s = functor(&Succ);
 +
@@ -1647,84 +1665,84 @@ new file mode 100644
 +
 +  Functor<int, TLIST2(int, int)> a2 = functor(&DiffStruct::Add2);
 +
-+  int a = 1, b = 5;
-+  is(s(a), a + 1);
-+  is(p(b), b - 1);
-+  is(ds(new DiffStruct, s(a), p(b)), a - b + 2);
++  nsresult rv = NS_OK;
 +
-+  is(a2(2, 3), 5);
++  int a = 1, b = 5;
++  rv |= is(s(a), a + 1);
++  rv |= is(p(b), b - 1);
++  rv |= is(ds(new DiffStruct, s(a), p(b)), a - b + 2);
++
++  rv |= is(a2(2, 3), 5);
 +
 +  functor(&Unequal)(1, 2);
 +  return functor(&Unequal).bind(2)(3);
 +}
 +
-+void test_bind()
++nsresult test_bind()
 +{
++  nsresult rv = NS_OK;
++
 +  // Interesting (near-)equivalences:
-+  is(Pred()(2), 1);
-+  is((Pred().*(&Pred::operator()))(2), 1);
-+  is(Pred().operator()(2), 1);
-+  is(BIND1(&Pred::operator(), new Pred)(2), 1);
++  rv |= is(Pred()(2), 1);
++  rv |= is((Pred().*(&Pred::operator()))(2), 1);
++  rv |= is(Pred().operator()(2), 1);
++  rv |= is(BIND1(&Pred::operator(), new Pred)(2), 1);
 +
 +  Functor<int, TLIST2(int, int)> a2 = functor(&DiffStruct::Add2);
-+  is(a2.bind(2)(3), 5);
-+  is(a2.bind(2).bind(3)(), 5);
-+  is(BIND2(&DiffStruct::Add2, 2, 3)(), 5);
++  rv |= is(a2.bind(2)(3), 5);
++  rv |= is(a2.bind(2).bind(3)(), 5);
++  rv |= is(BIND2(&DiffStruct::Add2, 2, 3)(), 5);
 +
 +  int x = 5, y = 3;
 +  DiffStruct ds;
 +  Functor<int, TLIST2(int, int)> sub = BIND1(&DiffStruct::Sub, &ds);
 +  Functor<int, TLIST1(int)> f = BIND1(sub, x);
-+  is(sub(x, y), x - y);
-+  is(sub(y, x), y - x);
-+  is(f(x), 0);
-+  is(f(y), x - y);
++  rv |= is(sub(x, y), x - y);
++  rv |= is(sub(y, x), y - x);
++  rv |= is(f(x), 0);
++  rv |= is(f(y), x - y);
++
++  return rv;
 +}
 +
 +template <typename T> void set(T t, int value) { t = value; }
 +template <typename T> void set_ref(T& tref, int value) { tref = value; }
-+void test_ref_cref()
++nsresult test_ref_cref()
 +{
++  nsresult rv = NS_OK;
 +  int n = 0, &nref = n;
-+  set(nref, n+1);        is(n, 0);
-+  set(ref(n), n+1);      is(n, 1);
++  set(nref, n+1);       rv |= is(n, 0);
++  set(ref(n), n+1);     rv |= is(n, 1);
 +  set(ref(n), ref(n));
 +  set(ref(n), cref(n));
 +  set_ref(nref, cref(n));
-+  set_ref(nref, n+1);    is(n, 2);
-+  set_ref(*ref(n), n+1); is(n, 3);
-+}
-+
-+void test_Location_assignment()
-+{
-+  Location<int> out1, out2;
-+  out1 = 1;
-+  out2 = 2;
-+  is(int(out1), 1);
-+  out1 = out2;
-+  is(int(out1), 2);
-+  out1 = 3;
-+  is(int(out2), 3);
++  set_ref(nref, n+1);   rv |= is(n, 2);
++  set_ref(ref(n), n+1); rv |= is(n, 3);
++  return rv;
 +}
 +
 +template <typename T> T generic_identity(T t) { return t; }
-+void test_templatized_functor()
++nsresult test_templatized_functor()
 +{
++  nsresult rv = NS_OK;
 +  Functor<int, TLIST0()> f =
 +    functor((int(*)(int))generic_identity).bind(2);
-+  is(f(), 2);
-+  is(functor(static_cast<int(*)(int)>(generic_identity))(1), 1);
++  rv |= is(f(), 2);
++  rv |= is(functor(static_cast<int(*)(int)>(generic_identity))(1), 1);
++  return rv;
 +}
 +
-+void test_bind_result(int n)
++nsresult test_bind_result(int n)
 +{
++  nsresult rv = NS_OK;
 +  Location<int> out;
 +  Functor<void, TLIST0()> inc =
 +    functor(&Succ).bind_result(out).bind(out);
-+  is(int(out), 0); // testing default construction
++  rv |= is(int(out), 0); // testing default construction
 +  for (int i = out; i < n; ++i)
 +    inc();
-+  is(int(out), n);
++  rv |= is(int(out), n);
++  return rv;
 +}
 +
 +struct CopyCounter {
@@ -1740,32 +1758,38 @@ new file mode 100644
 +  CopyCounter Method(int a, int b, int c) { return *this; }
 +};
 +
-+void test_result_copying()
++nsresult test_result_copying()
 +{
++  nsresult rv = NS_OK;
 +  int count = 0;
 +  CopyCounter cc(&count);
 +  Functor<CopyCounter, TLIST0()> f =
 +    functor(&CopyCounter::Method).bind(&cc).bind(1).bind(2).bind(3);
-+  is(*f().mCountPtr, 1); // make sure the compiler can elide the tail copies
++  rv |= is(*f().mCountPtr, 1); // make sure the compiler can elide the tail copies
 +  f(); f(); f();
-+  is(count, 4);
++  rv |= is(count, 4);
 +  Functor<void, TLIST0()> fvoid = f.bind_result(ref(cc));
 +  fvoid(); fvoid(); fvoid();
-+  is(count, 7);
++  rv |= is(count, 7);
++  return rv;
 +}
 +
-+void test_bind_conversion()
++nsresult test_bind_conversion()
 +{
++  nsresult rv = NS_OK;
++
 +  char j = 'j';
 +  Location<char> k;
 +  // N.B. Succ is int(*)(int)
 +  functor(Succ).bind(j).bind_result(k)();
-+  is(char(k), 'k');
++  rv |= is(char(k), 'k');
 +
 +  double pi = 3.14159;
 +  Location<short> four;
 +  functor(Succ).bind_result(four).bind(pi)();
-+  is(int(four), 4);
++  rv |= is(int(four), 4);
++
++  return rv;
 +}
 +
 +class MethodGiver {
@@ -1782,11 +1806,13 @@ new file mode 100644
 +    return functor(&MethodGiver::Foo);
 +  }
 +};
-+void test_private_method_invocation()
++nsresult test_private_method_invocation()
 +{
++  nsresult rv = NS_OK;
 +  MethodGiver mg(1);
-+  is(MethodGiver(2).GetBoundFooFunctor()(), 2);
-+  is(mg.GetFooFunctor().bind(&mg)(), 1);
++  rv |= is(MethodGiver(2).GetBoundFooFunctor()(), 2);
++  rv |= is(mg.GetFooFunctor().bind(&mg)(), 1);
++  return rv;
 +}
 +
 +class Whammer {
@@ -1799,18 +1825,25 @@ new file mode 100644
 +  Whammer& operator*() { return mWhammer; }
 +  Whammer* operator->() { return &mWhammer; }
 +};
-+void test_deref_operator_compatibility()
++nsresult test_deref_operator_compatibility()
 +{
++  nsresult rv = NS_OK;
 +  WhammerPtr wp;
-+  is(Whammer().Wham(), 5);
-+  is((*wp).Wham(), 5);
-+  is(wp->Wham(), 5);
++  rv |= is(Whammer().Wham() + (*wp).Wham() + wp->Wham(), 15);
 +  // Can't use functor(<method>) because it forces the first argument to
 +  // MethodHandler::operator() to be a pointer to an instance of the method's
 +  // class.  In order to use WhammerPtr as a Whammer*, we have to give up the
 +  // convenience of the global functor adapter.
 +  typedef Functor<int, TLIST1(WhammerPtr)> ftype;
-+  is(ftype::method(&Whammer::Wham).bind(wp)(), 5);
++  rv |= is(ftype::method(&Whammer::Wham).bind(wp)(), 5);
++  return rv;
++}
++
++int deep_thought(int answer = 42) { return answer; }
++nsresult test_default_parameters()
++{
++  typedef Functor<PRBool, TLIST0()> ftype;
++  return is(functor(deep_thought).bind(2 * ftype::callable(deep_thought)())(), 84);
 +}
 +
 +int main() {
@@ -1818,26 +1851,78 @@ new file mode 100644
 +  if (xpcom.failed())
 +    return NS_ERROR_FAILURE;
 +
++  RUN_TEST(test_basic_usage());
++  RUN_TEST(test_bind());
++  RUN_TEST(test_ref_cref());
++  RUN_TEST(test_templatized_functor());
++  RUN_TEST(test_bind_result(3));
++  RUN_TEST(test_result_copying());
++  RUN_TEST(test_bind_conversion());
++  RUN_TEST(test_private_method_invocation());
++  RUN_TEST(test_deref_operator_compatibility());
++  RUN_TEST(test_default_parameters());
++
++  return NS_OK;
++}
+diff --git a/xpcom/tests/functors/TestLocation.cpp b/xpcom/tests/functors/TestLocation.cpp
+new file mode 100644
+--- /dev/null
++++ b/xpcom/tests/functors/TestLocation.cpp
+@@ -0,0 +1,48 @@
++#include "TestUtils.h"
++#include "Location.h"
++
++template <template <typename> class StoragePolicy>
++nsresult test_Location_assignment(Location<int, StoragePolicy> loc1,
++                                  Location<int, StoragePolicy> loc2)
++{
 +  nsresult rv = NS_OK;
-+
-+  test_basic_usage();
-+  test_bind();
-+  test_ref_cref();
-+  test_templatized_functor();
-+  test_bind_result(3);
-+  test_result_copying();
-+  test_Location_assignment();
-+  test_bind_conversion();
-+  test_private_method_invocation();
-+  test_deref_operator_compatibility();
-+
++  loc1 = 1;
++  loc2 = 2;
++  rv |= is(int(loc1), 1);
++  loc1 = loc2;
++  rv |= is(int(loc1), 2);
++  loc1 = 3;
++  rv |= is(int(loc2), 3);
 +  return rv;
 +}
++
++nsresult test_client_managed_storage_policy()
++{
++  int a, b;
++  typedef Location<int, ClientManagedStoragePolicy> LocationType;
++  return test_Location_assignment(LocationType(&a), LocationType(&b));
++}
++
++nsresult test_ref_ptr_storage_policy()
++{
++  return NS_OK;
++}
++
++nsresult test_ref_counting_storage_policy()
++{
++  typedef Location<int, RefCountingStoragePolicy> LocationType;
++  return test_Location_assignment(LocationType(), LocationType());
++}
++
++int main()
++{
++  ScopedXPCOM xpcom("FunctorTests");
++  if (xpcom.failed())
++    return NS_ERROR_FAILURE;
++
++  RUN_TEST(test_client_managed_storage_policy());
++  RUN_TEST(test_ref_ptr_storage_policy());
++  RUN_TEST(test_ref_counting_storage_policy());
++
++  return NS_OK;
++}
+\ No newline at end of file
 diff --git a/xpcom/tests/functors/TestUtils.h b/xpcom/tests/functors/TestUtils.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestUtils.h
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,47 @@
 +#ifndef TestUtils_h__
 +#define TestUtils_h__
 +
@@ -1851,28 +1936,74 @@ new file mode 100644
 +// #undef silence_unused_function_warnings
 +
 +template <typename T>
-+void is_helper(const char* lhs_str, const char* rhs_str, T lhs, T rhs)
++nsresult is_helper(const char* lhs_str, const char* rhs_str, T lhs, T rhs)
 +{
 +  std::stringstream ss;
 +  if (lhs == rhs) {
 +    ss << lhs_str << " == " << rhs_str << " == " << lhs;
 +    passed(ss.str().c_str());
-+  } else {
-+    ss << lhs_str << " != " << rhs_str << ": (" << lhs << ", " << rhs << ")";
-+    fail(ss.str().c_str());
++    return NS_OK;
 +  }
++  ss << lhs_str << " != " << rhs_str << ": (" << lhs << ", " << rhs << ")";
++  fail(ss.str().c_str());
++  return NS_ERROR_FAILURE;
 +}
 +
 +#define is(LHS, RHS) is_helper(#LHS, #RHS, LHS, RHS)
 +
-+void ok_helper(const char* exp_str, bool val)
++nsresult ok_helper(const char* exp_str, bool val)
 +{
-+  if (val)
++  if (val) {
 +    passed(exp_str);
-+  else
-+    fail(exp_str);
++    return NS_OK;
++  }
++  fail(exp_str);
++  return NS_ERROR_FAILURE;
 +}
 +
 +#define ok(VAL) ok_helper(#VAL, VAL)
 +
++#define RUN_TEST(TEST)                                                        \
++  PR_BEGIN_MACRO                                                              \
++    nsresult rv = TEST;                                                       \
++    NS_ENSURE_SUCCESS(rv, rv);                                                \
++  PR_END_MACRO
++
 +#endif
+diff --git a/xpcom/tests/functors/TooManyParamsError.cpp b/xpcom/tests/functors/TooManyParamsError.cpp
+new file mode 100644
+--- /dev/null
++++ b/xpcom/tests/functors/TooManyParamsError.cpp
+@@ -0,0 +1,21 @@
++#include "Functor.h"
++
++int foo(int, int, int, int, int, int, int, int, int, int,
++        int, int, int, int, int, int, int, int, int, int,
++        int, int, int, int, int, int, int, int, int, int,
++        int, int, int, int, int, int, int, int, int, int,
++        int, int, int, int, int, int, int, int, int, int,
++        int, int, int, int, int, int, int, int, int, int,
++        int, int, int, int, int, int, int, int, int, int,
++        int, int, int, int, int, int, int, int, int, int,
++        int, int, int, int, int, int, int, int, int, int,
++        int, int, int, int, int, int, int, int, int, int)
++{
++  return 0;
++}
++
++int main()
++{
++  functor(foo);
++  return 0;
++}
+diff --git a/xpcom/tests/functors/VoidReturn.cpp b/xpcom/tests/functors/VoidReturn.cpp
+new file mode 100644
+--- /dev/null
++++ b/xpcom/tests/functors/VoidReturn.cpp
+@@ -0,0 +1,6 @@
++void foo() { return foo(); }
++int main()
++{
++  foo();
++  return 0;
++}
