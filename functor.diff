@@ -999,7 +999,7 @@ diff --git a/xpcom/glue/Location.h b/xpcom/glue/Location.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Location.h
-@@ -0,0 +1,180 @@
+@@ -0,0 +1,157 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -1045,7 +1045,6 @@ new file mode 100644
 +
 +// Forward declaration of StoragePolicy classes:
 +template <typename T> class ClientManagedStoragePolicy;
-+template <typename T> class RefPtrStoragePolicy;
 +template <typename T> class RefCountingStoragePolicy;
 +
 +/**
@@ -1105,28 +1104,6 @@ new file mode 100644
 +};
 +
 +/**
-+ * nsRefPtr<T> enforces the availability of T::AddRef and T::Release, so it may
-+ * be assumed that any object of type T is both reference counted and not stack
-+ * allocated.  This guarantee makes it safe to provide a T* constructor without
-+ * worry that the client may pass in a stack address.  For convenience, a zero-
-+ * parameter constructor is also provided for situations where T is default-
-+ * constructible and the client wants RefPtrStoragePolicy to do the allocation.
-+ */
-+template <typename T>
-+class RefPtrStoragePolicy
-+{
-+  nsRefPtr<T> mPtr;
-+protected:
-+  RefPtrStoragePolicy() : mPtr(new T()) {}
-+  RefPtrStoragePolicy(T* tp) : mPtr(tp) {}
-+  T* GetPointer() { return mPtr; }
-+  const T* GetConstPointer() const { return mPtr; }
-+};
-+
-+/**
-+ * Unlike RefPtrStoragePolicy, this policy class is completely agnostic about
-+ * the type of T and assumes full responsibility for counting references.
-+ *
 + * RefCountingStoragePolicy provides only a zero-parameter constructor to force
 + * heap allocation of the underlying T value.
 + */
@@ -1711,13 +1688,13 @@ new file mode 100644
 +{
 +  nsresult rv = NS_OK;
 +  int n = 0, &nref = n;
-+  set(nref, n+1);       rv |= is(n, 0);
-+  set(ref(n), n+1);     rv |= is(n, 1);
++  set(nref, n+1);        rv |= is(n, 0);
++  set(ref(n), n+1);      rv |= is(n, 1);
 +  set(ref(n), ref(n));
 +  set(ref(n), cref(n));
 +  set_ref(nref, cref(n));
-+  set_ref(nref, n+1);   rv |= is(n, 2);
-+  set_ref(ref(n), n+1); rv |= is(n, 3);
++  set_ref(nref, n+1);    rv |= is(n, 2);
++  set_ref(*ref(n), n+1); rv |= is(n, 3);
 +  return rv;
 +}
 +
@@ -1868,22 +1845,23 @@ diff --git a/xpcom/tests/functors/TestLocation.cpp b/xpcom/tests/functors/TestLo
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestLocation.cpp
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,43 @@
 +#include "TestUtils.h"
 +#include "Location.h"
++#include "nsISupportsImpl.h"
 +
-+template <template <typename> class StoragePolicy>
-+nsresult test_Location_assignment(Location<int, StoragePolicy> loc1,
-+                                  Location<int, StoragePolicy> loc2)
++template <typename T, template <typename> class StoragePolicy>
++nsresult test_Location_assignment(Location<T, StoragePolicy> loc1,
++                                  Location<T, StoragePolicy> loc2)
 +{
 +  nsresult rv = NS_OK;
 +  loc1 = 1;
 +  loc2 = 2;
-+  rv |= is(int(loc1), 1);
++  rv |= is(T(loc1), 1);
 +  loc1 = loc2;
-+  rv |= is(int(loc1), 2);
++  rv |= is(T(loc1), 2);
 +  loc1 = 3;
-+  rv |= is(int(loc2), 3);
++  rv |= is(T(loc2), 3);
 +  return rv;
 +}
 +
@@ -1892,11 +1870,6 @@ new file mode 100644
 +  int a, b;
 +  typedef Location<int, ClientManagedStoragePolicy> LocationType;
 +  return test_Location_assignment(LocationType(&a), LocationType(&b));
-+}
-+
-+nsresult test_ref_ptr_storage_policy()
-+{
-+  return NS_OK;
 +}
 +
 +nsresult test_ref_counting_storage_policy()
@@ -1912,12 +1885,10 @@ new file mode 100644
 +    return NS_ERROR_FAILURE;
 +
 +  RUN_TEST(test_client_managed_storage_policy());
-+  RUN_TEST(test_ref_ptr_storage_policy());
 +  RUN_TEST(test_ref_counting_storage_policy());
 +
 +  return NS_OK;
 +}
-\ No newline at end of file
 diff --git a/xpcom/tests/functors/TestUtils.h b/xpcom/tests/functors/TestUtils.h
 new file mode 100644
 --- /dev/null
