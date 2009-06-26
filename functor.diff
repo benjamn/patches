@@ -1878,11 +1878,11 @@ new file mode 100644
 +  nsresult rv = NS_OK;
 +  T* tPtr = loc,
 +   & tRef = loc;
-+  *tPtr = 3;
-+  rv |= is(tRef, 3);
-+  rv |= is(*loc, 3);
-+  loc = 4;
-+  rv |= is(*tPtr, 4);
++  *tPtr = 4;
++  rv |= is(tRef, 4);
++  rv |= is(*loc, 4);
++  loc = 5;
++  rv |= is(*tPtr, 5);
 +  return rv;
 +}
 +

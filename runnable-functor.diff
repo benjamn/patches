@@ -259,36 +259,96 @@ diff --git a/xpcom/tests/functors/Makefile.in b/xpcom/tests/functors/Makefile.in
    ArgConversionError.cpp \
    TooManyParamsError.cpp \
    BindResultReferenceError.cpp \
+diff --git a/xpcom/tests/functors/TestLocation.cpp b/xpcom/tests/functors/TestLocation.cpp
+--- a/xpcom/tests/functors/TestLocation.cpp
++++ b/xpcom/tests/functors/TestLocation.cpp
+@@ -73,17 +73,17 @@ nsresult test_ref_counting_storage_polic
+ 
+   rv |= test_Location_conversion(IntLocation());
+ 
+   return rv;
+ }
+ 
+ int main()
+ {
+-  ScopedXPCOM xpcom("FunctorTests");
++  ScopedXPCOM xpcom("LocationTests");
+   if (xpcom.failed())
+     return NS_ERROR_FAILURE;
+ 
+   RUN_TEST(test_client_managed_storage_policy());
+   RUN_TEST(test_ref_counting_storage_policy());
+ 
+   return NS_OK;
+ }
 diff --git a/xpcom/tests/functors/TestRunnableFunctor.cpp b/xpcom/tests/functors/TestRunnableFunctor.cpp
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestRunnableFunctor.cpp
-@@ -0,0 +1,43 @@
-+#include <iostream>
+@@ -0,0 +1,86 @@
++#include "TestUtils.h"
++#include "Functor.h"
 +#include "nsAutoPtr.h"
-+#include "Bind.h"
-+#include "RunnableFunctor.h"
-+#include "nsIRunnable.h"
++#include "nsThreadUtils.h"
 +
 +int one() { return 1; }
 +int plus_two(int x) { return x + 2; }
 +
-+void is(int x, int y) {
-+  std::cout << (x == y ? "OK: " : "FAIL: ")
-+            << x << " = " << y << std::endl;
++typedef Functor<int, TLIST0()> ftype;
++typedef RunnableFunctorImpl<int, ftype> rftype;
++
++class Blocker : public nsRunnable
++{
++  const double mSecs;
++public:
++  Blocker(double secs) : mSecs(secs) {}
++  NS_IMETHOD Run()
++  {
++    PR_Sleep(PR_SecondsToInterval(mSecs));
++    return NS_OK;
++  }
++};
++
++nsresult test_proxy_Wait(nsIThread* const target)
++{
++  nsresult rv = NS_OK;
++  if (target) {
++    target->Dispatch(new Blocker(1), NS_DISPATCH_NORMAL);
++
++    nsRefPtr<RunnableFunctor<int> >
++      rf1 = functor(&one).proxy(target),
++      rf2 = functor(&plus_two).bind(rf1->Wait()).proxy(target);
++
++    rv |= is(rf2->Wait(), 3);
++    rv |= is(rf1->Wait(), 1);
++  }
++  return rv;
 +}
 +
-+void test() {
-+  typedef Functor<int, TLIST0()> ftype;
-+  typedef RunnableFunctorImpl<int, ftype> rftype;
++nsresult test()
++{
++  nsresult rv = NS_OK;
++  nsIThread* thisThread = 0,
++           * mainThread = 0,
++           * someThread = 0;
++  if (NS_SUCCEEDED(rv = NS_GetCurrentThread(&thisThread)) &&
++      NS_SUCCEEDED(rv = NS_GetMainThread(&mainThread)) &&
++      NS_SUCCEEDED(rv = NS_NewThread(&someThread)))
++  {
++    rv |= is(thisThread, mainThread);
++    rv |= ok(thisThread && mainThread && someThread);
 +
-+  ftype f1 = functor(&one);
-+  ftype f5 = BIND1(&plus_two, 3);
++    test_proxy_Wait(someThread);
 +
-+  is((f5.proxy(nsnull)->Wait() -
-+      f1.proxy(nsnull)->Wait()),
-+     4);
++    someThread->Dispatch(new Blocker(1), NS_DISPATCH_NORMAL);
++    // Okay, before we go any further, I just have to say that this next line
++    // is the most awesome test I've ever written.
++    rv |= functor(&test_proxy_Wait).bind(mainThread).proxy(someThread)->Wait();
++  }
++  return rv;
++}
 +
++void static_test() {
 +  nsRefPtr<rftype> rf1(new rftype(f1));
 +  nsRefPtr<rftype> rf5(new rftype(f5));
 +
@@ -304,6 +364,11 @@ new file mode 100644
 +}
 +
 +int main() {
-+  // test();
-+  return 0;
++  ScopedXPCOM xpcom("RunnableFunctorTests");
++  if (xpcom.failed())
++    return NS_ERROR_FAILURE;
++  
++  nsresult rv = NS_OK;
++  RUN_TEST(test());
++  return rv;
 +}
