@@ -32,7 +32,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
  
 +  nsRefPtr<RunnableFunctor<Result> >
 +  proxy(nsIThread* target,
-+        PRUint32 flags = NS_DISPATCH_SYNC);
++        PRUint32 flags = NS_DISPATCH_NORMAL);
 +
    template <typename Callable>
    static Functor callable(Callable c) {
@@ -285,7 +285,7 @@ diff --git a/xpcom/tests/functors/TestRunnableFunctor.cpp b/xpcom/tests/functors
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestRunnableFunctor.cpp
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,72 @@
 +#include "TestUtils.h"
 +#include "Functor.h"
 +#include "nsAutoPtr.h"
@@ -294,9 +294,6 @@ new file mode 100644
 +int one() { return 1; }
 +int plus_two(int x) { return x + 2; }
 +
-+typedef Functor<int, TLIST0()> ftype;
-+typedef RunnableFunctorImpl<int, ftype> rftype;
-+
 +class Blocker : public nsRunnable
 +{
 +  const double mSecs;
@@ -304,7 +301,7 @@ new file mode 100644
 +  Blocker(double secs) : mSecs(secs) {}
 +  NS_IMETHOD Run()
 +  {
-+    PR_Sleep(PR_SecondsToInterval(mSecs));
++    PR_Sleep(PR_MillisecondsToInterval(mSecs));
 +    return NS_OK;
 +  }
 +};
@@ -313,7 +310,7 @@ new file mode 100644
 +{
 +  nsresult rv = NS_OK;
 +  if (target) {
-+    target->Dispatch(new Blocker(1), NS_DISPATCH_NORMAL);
++    target->Dispatch(new Blocker(200), NS_DISPATCH_NORMAL);
 +
 +    nsRefPtr<RunnableFunctor<int> >
 +      rf1 = functor(&one).proxy(target),
@@ -328,39 +325,28 @@ new file mode 100644
 +nsresult test()
 +{
 +  nsresult rv = NS_OK;
-+  nsIThread* thisThread = 0,
-+           * mainThread = 0,
-+           * someThread = 0;
-+  if (NS_SUCCEEDED(rv = NS_GetCurrentThread(&thisThread)) &&
-+      NS_SUCCEEDED(rv = NS_GetMainThread(&mainThread)) &&
-+      NS_SUCCEEDED(rv = NS_NewThread(&someThread)))
++  nsIThread* thread1 = 0,
++           * thread2 = 0;
++  if (NS_SUCCEEDED(rv = NS_NewThread(&thread1)) &&
++      NS_SUCCEEDED(rv = NS_NewThread(&thread2)))
 +  {
-+    rv |= is(thisThread, mainThread);
-+    rv |= ok(thisThread && mainThread && someThread);
-+
-+    test_proxy_Wait(someThread);
-+
-+    someThread->Dispatch(new Blocker(1), NS_DISPATCH_NORMAL);
++    rv |= ok(thread1 && thread2);
++    rv |= test_proxy_Wait(thread1);
 +    // Okay, before we go any further, I just have to say that this next line
 +    // is the most awesome test I've ever written.
-+    rv |= functor(&test_proxy_Wait).bind(mainThread).proxy(someThread)->Wait();
++    functor(&test_proxy_Wait).bind(thread2).proxy(thread1, NS_DISPATCH_SYNC);
++    rv |= functor(&test_proxy_Wait).bind(thread1).proxy(thread2)->Wait();
 +  }
++
++  // TODO test bind_result
++  // TODO test thread forwarding
++  // TODO consider implementing a ConstructorHandler (operator new?)
++
 +  return rv;
 +}
 +
 +void static_test() {
-+  nsRefPtr<rftype> rf1(new rftype(f1));
-+  nsRefPtr<rftype> rf5(new rftype(f5));
-+
-+  rf1->Run();
-+  rf5->Run();
-+
-+  is(rf1->Wait() + rf5->Wait(), 6);
-+
-+  static_cast<nsIRunnable*>(f1.proxy(0))->Run();
-+
-+  nsRefPtr<RunnableFunctor<int> > arf = f1.proxy(0).get();
-+  is(plus_two(arf->Wait()), 3);
++  
 +}
 +
 +int main() {
