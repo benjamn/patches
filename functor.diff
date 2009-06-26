@@ -1425,7 +1425,7 @@ new file mode 100644
 diff --git a/xpcom/tests/Makefile.in b/xpcom/tests/Makefile.in
 --- a/xpcom/tests/Makefile.in
 +++ b/xpcom/tests/Makefile.in
-@@ -43,17 +43,17 @@ VPATH		= @srcdir@
+@@ -43,17 +43,17 @@ include $(DEPTH)/config/autoconf.mk
  include $(DEPTH)/config/autoconf.mk
  
  MODULE		= xpcom
@@ -1487,7 +1487,7 @@ diff --git a/xpcom/tests/functors/Makefile.in b/xpcom/tests/functors/Makefile.in
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/Makefile.in
-@@ -0,0 +1,115 @@
+@@ -0,0 +1,119 @@
 +# ***** BEGIN LICENSE BLOCK *****
 +# Version: MPL 1.1/GPL 2.0/LGPL 2.1
 +#
@@ -1577,6 +1577,7 @@ new file mode 100644
 +	@printf "Compiling $(<F) to verify that it produces errors (as expected)..."
 +	@if $(CCC) $(OUTOPTION)/dev/null -S $(COMPILE_CXXFLAGS) $(_VPATH_SRCS) >$(*F).errlog 2>&1; then \
 +	  printf "fail:\nerror: compilation of $(<F) succeeded. It shouldn't have!\n"; \
++	  cat $(*F).errlog; \
 +	  exit 1; \
 +	else \
 +	  printf "ok.\n"; \
@@ -1586,12 +1587,14 @@ new file mode 100644
 +	@printf "Compiling $(<F) to verify that it produces proper warnings..."
 +	@if $(CCC) -Werror $(OUTOPTION)/dev/null -S $(COMPILE_CXXFLAGS) $(_VPATH_SRCS) >$(*F).errlog 2>&1; then \
 +	  printf "fail:\nerror: compilation of $(<F) succeeded with -Werror. It shouldn't have!\n"; \
++	  cat $(*F).errlog; \
 +	  exit 1; \
 +	fi
 +	@if $(CCC) $(OUTOPTION)/dev/null -S $(COMPILE_CXXFLAGS) $(_VPATH_SRCS) >$(*F).werrlog 2>&1; then \
 +	  printf "ok.\n"; \
 +	else \
 +	  printf "fail:\nerror: compilation of $(<F) without -Werror failed. A warning should have been issued.\n"; \
++	  cat $(*F).werrlog; \
 +	  exit 1; \
 +	fi
 +
@@ -1601,6 +1604,7 @@ new file mode 100644
 +	  printf "ok.\n"; \
 +	else \
 +	  printf "fail:\nerror: compilation of $(<F) failed. It shouldn't have!\n"; \
++	  cat $(*F).errlog; \
 +	  exit 1; \
 +	fi
 diff --git a/xpcom/tests/functors/TestFunctor.cpp b/xpcom/tests/functors/TestFunctor.cpp
