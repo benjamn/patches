@@ -223,8 +223,8 @@ new file mode 100644
 +class FunctorSupports {
 +  nsAutoRefCnt mRefCnt;
 +public:
-+  nsrefcnt AddRef();
-+  nsrefcnt Release();
++  NS_IMETHOD_(nsrefcnt) AddRef();
++  NS_IMETHOD_(nsrefcnt) Release();
 +protected:
 +  virtual ~FunctorSupports() {}
 +};
@@ -1128,8 +1128,8 @@ new file mode 100644
 +    T mVal; // must be default-constructible:
 +    Holder() : mVal() {}
 +    nsAutoRefCnt mRefCnt;
-+    nsrefcnt AddRef();
-+    nsrefcnt Release();
++    NS_IMETHOD_(nsrefcnt) AddRef();
++    NS_IMETHOD_(nsrefcnt) Release();
 +  };
 +  nsRefPtr<Holder> mHolderPtr;
 +protected:
