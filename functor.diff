@@ -1607,8 +1607,9 @@ diff --git a/xpcom/tests/functors/TestFunctor.cpp b/xpcom/tests/functors/TestFun
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestFunctor.cpp
-@@ -0,0 +1,241 @@
+@@ -0,0 +1,244 @@
 +#include "TestUtils.h"
++#include "nsAutoPtr.h"
 +
 +#include "Functor.h"
 +#include "Bind.h"
@@ -1655,7 +1656,8 @@ new file mode 100644
 +  int a = 1, b = 5;
 +  rv |= is(s(a), a + 1);
 +  rv |= is(p(b), b - 1);
-+  rv |= is(ds(new DiffStruct, s(a), p(b)), a - b + 2);
++  nsAutoPtr<DiffStruct> dsp(new DiffStruct());
++  rv |= is(ds(dsp, s(a), p(b)), a - b + 2);
 +
 +  rv |= is(a2(2, 3), 5);
 +
@@ -1671,7 +1673,8 @@ new file mode 100644
 +  rv |= is(Pred()(2), 1);
 +  rv |= is((Pred().*(&Pred::operator()))(2), 1);
 +  rv |= is(Pred().operator()(2), 1);
-+  rv |= is(BIND1(&Pred::operator(), new Pred)(2), 1);
++  nsAutoPtr<Pred> pp(new Pred());
++  rv |= is(BIND1(&Pred::operator(), pp)(2), 1);
 +
 +  Functor<int, TLIST2(int, int)> a2 = functor(&DiffStruct::Add2);
 +  rv |= is(a2.bind(2)(3), 5);

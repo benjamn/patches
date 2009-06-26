@@ -285,7 +285,7 @@ diff --git a/xpcom/tests/functors/TestRunnableFunctor.cpp b/xpcom/tests/functors
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestRunnableFunctor.cpp
-@@ -0,0 +1,72 @@
+@@ -0,0 +1,96 @@
 +#include "TestUtils.h"
 +#include "Functor.h"
 +#include "nsAutoPtr.h"
@@ -302,7 +302,7 @@ new file mode 100644
 +  NS_IMETHOD Run()
 +  {
 +    PR_Sleep(PR_MillisecondsToInterval(mSecs));
-+    return NS_OK;
++    return NS_ERROR_UNEXPECTED; // ignored by Dispatch
 +  }
 +};
 +
@@ -310,7 +310,8 @@ new file mode 100644
 +{
 +  nsresult rv = NS_OK;
 +  if (target) {
-+    target->Dispatch(new Blocker(200), NS_DISPATCH_NORMAL);
++    nsRefPtr<Blocker> blocker = new Blocker(200);
++    target->Dispatch(blocker, NS_DISPATCH_NORMAL);
 +
 +    nsRefPtr<RunnableFunctor<int> >
 +      rf1 = functor(&one).proxy(target),
@@ -320,6 +321,30 @@ new file mode 100644
 +    rv |= is(rf1->Wait(), 1);
 +  }
 +  return rv;
++}
++
++nsresult test_proxy_with_bind_result(nsIThread* const target,
++                                     Location<int> loc)
++{
++  nsresult rv = NS_OK;
++  loc = 0;
++  nsRefPtr<Blocker> blocker = new Blocker(200);
++  rv |= target->Dispatch(blocker, NS_DISPATCH_NORMAL);
++  nsRefPtr<RunnableFunctor<void> > rf =
++    functor(&one).bind_result(loc).proxy(target);
++  rv |= is(int(loc), 0);
++  rf->Wait();
++  rv |= is(int(loc), 1);
++  return rv;
++}
++
++nsresult test_proxy_Run_method(nsIThread* const target)
++{
++  nsRefPtr<RunnableFunctor<void*> > rf = // Just because I can:
++    functor(&operator new).bind(sizeof(Blocker)).proxy(target);
++  nsRefPtr<Blocker> blocker = new(rf->Wait()) Blocker(200); // placement new
++  return is(functor(&Blocker::Run).bind(blocker).proxy(target)->Wait(),
++            (nsresult)NS_ERROR_UNEXPECTED);
 +}
 +
 +nsresult test()
@@ -332,28 +357,27 @@ new file mode 100644
 +  {
 +    rv |= ok(thread1 && thread2);
 +    rv |= test_proxy_Wait(thread1);
-+    // Okay, before we go any further, I just have to say that this next line
-+    // is the most awesome test I've ever written.
-+    functor(&test_proxy_Wait).bind(thread2).proxy(thread1, NS_DISPATCH_SYNC);
++    rv |= functor(&test_proxy_Wait).bind(thread2).proxy(thread1)->Wait();
 +    rv |= functor(&test_proxy_Wait).bind(thread1).proxy(thread2)->Wait();
++
++    Location<int> loc;
++    rv |= functor(&test_proxy_with_bind_result)
++            .bind(thread2)
++            .bind(loc)
++            .proxy(thread1)->Wait();
++    rv |= is(int(loc), 1);
++
++    rv |= test_proxy_Run_method(thread2);
 +  }
 +
-+  // TODO test bind_result
-+  // TODO test thread forwarding
-+  // TODO consider implementing a ConstructorHandler (operator new?)
-+
 +  return rv;
-+}
-+
-+void static_test() {
-+  
 +}
 +
 +int main() {
 +  ScopedXPCOM xpcom("RunnableFunctorTests");
 +  if (xpcom.failed())
 +    return NS_ERROR_FAILURE;
-+  
++
 +  nsresult rv = NS_OK;
 +  RUN_TEST(test());
 +  return rv;
