@@ -999,7 +999,7 @@ diff --git a/xpcom/glue/Location.h b/xpcom/glue/Location.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Location.h
-@@ -0,0 +1,157 @@
+@@ -0,0 +1,165 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -1085,6 +1085,9 @@ new file mode 100644
 +
 +  operator T*() { return this->GetPointer(); }
 +  operator const T*() const { return this->GetConstPointer(); }
++
++  T* operator->() { return this->GetPointer(); }
++  const T* operator->() const { return this->GetConstPointer(); }
 +};
 +
 +
@@ -1106,6 +1109,17 @@ new file mode 100644
 +/**
 + * RefCountingStoragePolicy provides only a zero-parameter constructor to force
 + * heap allocation of the underlying T value.
++ *
++ * If T itself supports AddRef and Release methods, these methods will NOT be
++ * called.  Furthermore, deleting the pointer returned by GetPointer is UNSAFE,
++ * since that address points INSIDE a heap-allocated Holder object.  For these
++ * reasons, you probably should avoid using RefCountingStoragePolicy with
++ * intrinsically reference counted objects.
++ *
++ * It's fine to use a Location<nsISupports*, RefCountingStoragePolicy> to
++ * represent a safe out-parameter, but just realize that all you're ensuring is
++ * the safety of the sizeof(void*) bytes representing the address, not the
++ * validity of the address or the object it points to!
 + */
 +template <typename T>
 +class RefCountingStoragePolicy
@@ -1149,12 +1163,6 @@ new file mode 100644
 +  typedef const Location<const T, ClientManagedStoragePolicy> type;
 +  return type(&t);
 +}
-+
-+template <typename T>
-+struct OutParam
-+{
-+  typedef Location<T, RefCountingStoragePolicy> type;
-+};
 +
 +#endif
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
@@ -1845,10 +1853,9 @@ diff --git a/xpcom/tests/functors/TestLocation.cpp b/xpcom/tests/functors/TestLo
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestLocation.cpp
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,89 @@
 +#include "TestUtils.h"
 +#include "Location.h"
-+#include "nsISupportsImpl.h"
 +
 +template <typename T, template <typename> class StoragePolicy>
 +nsresult test_Location_assignment(Location<T, StoragePolicy> loc1,
@@ -1865,17 +1872,64 @@ new file mode 100644
 +  return rv;
 +}
 +
++template <typename T, template <typename> class StoragePolicy>
++nsresult test_Location_conversion(Location<T, StoragePolicy> loc)
++{
++  nsresult rv = NS_OK;
++  T* tPtr = loc,
++   & tRef = loc;
++  *tPtr = 3;
++  rv |= is(tRef, 3);
++  rv |= is(*loc, 3);
++  loc = 4;
++  rv |= is(*tPtr, 4);
++  return rv;
++}
++
 +nsresult test_client_managed_storage_policy()
 +{
 +  int a, b;
 +  typedef Location<int, ClientManagedStoragePolicy> LocationType;
-+  return test_Location_assignment(LocationType(&a), LocationType(&b));
++  return test_Location_assignment(LocationType(&a), LocationType(&b))
++       | test_Location_conversion(LocationType(&a));
 +}
 +
++struct DestructionNotifier {
++  PRBool* mFlag;
++  DestructionNotifier() : mFlag(0) {}
++ ~DestructionNotifier() { if (mFlag) *mFlag = PR_TRUE; }
++  void SetFlag(PRBool* flag) { *(mFlag = flag) = PR_FALSE; }
++};
 +nsresult test_ref_counting_storage_policy()
 +{
-+  typedef Location<int, RefCountingStoragePolicy> LocationType;
-+  return test_Location_assignment(LocationType(), LocationType());
++  nsresult rv = NS_OK;
++
++  typedef Location<int, RefCountingStoragePolicy>
++          IntLocation;
++  rv |= test_Location_assignment(IntLocation(),
++                                 IntLocation());
++
++  typedef Location<DestructionNotifier,
++                   RefCountingStoragePolicy>
++          DNLocation;
++  PRBool destroyed1, destroyed2;
++  {
++    DNLocation dnl1;
++    dnl1->SetFlag(&destroyed1);
++    {
++      DNLocation dnl2;
++      dnl2->SetFlag(&destroyed2);
++      rv |= ok(!destroyed1 && !destroyed2);
++      dnl2 = dnl1;
++      rv |= ok(!destroyed1 && destroyed2);
++    }
++    rv |= ok(!destroyed1 && destroyed2);
++  }
++  rv |= ok(destroyed1 && destroyed2);
++
++  rv |= test_Location_conversion(IntLocation());
++
++  return rv;
 +}
 +
 +int main()
