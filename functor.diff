@@ -1,9 +1,33 @@
 Avoid warnings about double->int conversion in Functor tests (bug 486440).
 
-diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
+diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
+--- a/xpcom/glue/Makefile.in
++++ b/xpcom/glue/Makefile.in
+@@ -122,16 +122,20 @@ SDK_HEADERS = \
+ 		$(NULL)
+ 
+ EXPORTS_NAMESPACES = mozilla
+ 
+ EXPORTS = \
+ 		nsThreadUtils.h \
+ 		nsProxyRelease.h \
+ 		nsXPTCUtils.h \
++		functors/Location.h \
++		functors/TList.h \
++		functors/Functor.h \
++		functors/Bind.h \
+ 		$(NULL)
+ 
+ EXPORTS_mozilla = \
+   BlockingResourceBase.h \
+   CondVar.h \
+   DeadlockDetector.h \
+   Monitor.h \
+   Mutex.h \
+diff --git a/xpcom/glue/functors/Bind.h b/xpcom/glue/functors/Bind.h
 new file mode 100644
 --- /dev/null
-+++ b/xpcom/glue/Bind.h
++++ b/xpcom/glue/functors/Bind.h
 @@ -0,0 +1,127 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
@@ -132,10 +156,10 @@ new file mode 100644
 +// [[[end]]]
 +
 +#endif
-diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
+diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
 new file mode 100644
 --- /dev/null
-+++ b/xpcom/glue/Functor.h
++++ b/xpcom/glue/functors/Functor.h
 @@ -0,0 +1,603 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
@@ -740,10 +764,10 @@ new file mode 100644
 +#include "FunctorAdapters.h"
 +
 +#endif
-diff --git a/xpcom/glue/FunctorAdapters.h b/xpcom/glue/FunctorAdapters.h
+diff --git a/xpcom/glue/functors/FunctorAdapters.h b/xpcom/glue/functors/FunctorAdapters.h
 new file mode 100644
 --- /dev/null
-+++ b/xpcom/glue/FunctorAdapters.h
++++ b/xpcom/glue/functors/FunctorAdapters.h
 @@ -0,0 +1,270 @@
 +#ifndef CALLING_CONVENTION
 +#define CALLING_CONVENTION
@@ -1015,10 +1039,10 @@ new file mode 100644
 +#ifdef FunctorAdapters_h__must_undef_CC
 +#undef CALLING_CONVENTION
 +#endif
-diff --git a/xpcom/glue/Location.h b/xpcom/glue/Location.h
+diff --git a/xpcom/glue/functors/Location.h b/xpcom/glue/functors/Location.h
 new file mode 100644
 --- /dev/null
-+++ b/xpcom/glue/Location.h
++++ b/xpcom/glue/functors/Location.h
 @@ -0,0 +1,165 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
@@ -1185,35 +1209,10 @@ new file mode 100644
 +}
 +
 +#endif
-diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
---- a/xpcom/glue/Makefile.in
-+++ b/xpcom/glue/Makefile.in
-@@ -122,16 +122,21 @@ SDK_HEADERS = \
- 		$(NULL)
- 
- EXPORTS_NAMESPACES = mozilla
- 
- EXPORTS = \
- 		nsThreadUtils.h \
- 		nsProxyRelease.h \
- 		nsXPTCUtils.h \
-+		Location.h \
-+		TList.h \
-+		Functor.h \
-+		FunctorAdapters.h \
-+		Bind.h \
- 		$(NULL)
- 
- EXPORTS_mozilla = \
-   BlockingResourceBase.h \
-   CondVar.h \
-   DeadlockDetector.h \
-   Monitor.h \
-   Mutex.h \
-diff --git a/xpcom/glue/TList.h b/xpcom/glue/TList.h
+diff --git a/xpcom/glue/functors/TList.h b/xpcom/glue/functors/TList.h
 new file mode 100644
 --- /dev/null
-+++ b/xpcom/glue/TList.h
++++ b/xpcom/glue/functors/TList.h
 @@ -0,0 +1,169 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
@@ -1384,10 +1383,10 @@ new file mode 100644
 +}
 +
 +#endif
-diff --git a/xpcom/glue/functor_cog_utils.py b/xpcom/glue/functor_cog_utils.py
+diff --git a/xpcom/glue/functors/functor_cog_utils.py b/xpcom/glue/functors/functor_cog_utils.py
 new file mode 100644
 --- /dev/null
-+++ b/xpcom/glue/functor_cog_utils.py
++++ b/xpcom/glue/functors/functor_cog_utils.py
 @@ -0,0 +1,54 @@
 +#!/usr/bin/env python
 +"""
