@@ -221,27 +221,6 @@ new file mode 100644
 +};
 +
 +#endif
-diff --git a/xpcom/glue/functors/functor_cog_utils.py b/xpcom/glue/functors/functor_cog_utils.py
---- a/xpcom/glue/functors/functor_cog_utils.py
-+++ b/xpcom/glue/functors/functor_cog_utils.py
-@@ -48,16 +48,17 @@ MAX_FUNCTOR_ARITY = 10
- tpat = re.compile(r"\b[a-z]\b", re.I)
- npat = re.compile(r"\b0\b")
- def tlist(tmpl, rend, rbegin=0, sep=", "):
-   return sep.join(tpat.sub("\g<0>%u" % i,
-                            npat.sub("%u" % i, tmpl))
-                   for i in range(rbegin, rend))
- 
- _cog_files = [
-+  "RunnableFunctor.h",
-   "Functor.h",
-   "FunctorAdapters.h",
-   "TList.h",
- ]
- 
- if __name__ == "__main__":
-   from cogapp import Cog
-   for file in _cog_files:
 diff --git a/xpcom/tests/functors/Makefile.in b/xpcom/tests/functors/Makefile.in
 --- a/xpcom/tests/functors/Makefile.in
 +++ b/xpcom/tests/functors/Makefile.in

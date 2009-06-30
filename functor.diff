@@ -27,7 +27,7 @@ diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/functors/Functor.h
-@@ -0,0 +1,603 @@
+@@ -0,0 +1,607 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -90,6 +90,10 @@ new file mode 100644
 + * Once you have installed cog.py, run
 + *
 + *   cog.py -r Functor.h
++ *
++ * or (to regenerate all coggable files)
++ *
++ *   python functor_cog_utils.py
 + *
 + * to regenerate the portions of this file delimited by the triple square
 + * bracket markers.  The file changes in place, but the python generating code
@@ -635,13 +639,18 @@ diff --git a/xpcom/glue/functors/FunctorAdapters.h b/xpcom/glue/functors/Functor
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/functors/FunctorAdapters.h
-@@ -0,0 +1,270 @@
+@@ -0,0 +1,275 @@
 +#ifndef CALLING_CONVENTION
 +#define CALLING_CONVENTION
 +#define FunctorAdapters_h__must_undef_CC
 +#endif
 +
 +/**
++ * This file is meant to be #included by Functor.h, possibly more than once,
++ * for each required calling convention { __stdcall, __cdecl, __fastcall }, &c.
++ *
++ * For auto-generation instructions, see the comment at the top of Functor.h.
++ *
 + * Herebelow lies a jungle of functor adapter functions.  I did not write them;
 + * I generated them.  Even the comments are auto-generated.  If you need to
 + * modify them, you really, really should change and re-run the generator code
@@ -1080,7 +1089,7 @@ diff --git a/xpcom/glue/functors/TList.h b/xpcom/glue/functors/TList.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/functors/TList.h
-@@ -0,0 +1,169 @@
+@@ -0,0 +1,173 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -1140,6 +1149,10 @@ new file mode 100644
 + * Once you have installed cog.py, run
 + *
 + *   cog.py -r TList.h
++ *
++ * or (to regenerate all coggable files)
++ *
++ *   python functor_cog_utils.py
 + *
 + * to regenerate the portions of this file delimited by the triple square
 + * bracket markers.  The file changes in place, but the python generating code
