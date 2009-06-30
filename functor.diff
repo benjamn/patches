@@ -3,7 +3,7 @@ Avoid warnings about double->int conversion in Functor tests (bug 486440).
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
-@@ -122,16 +122,20 @@ SDK_HEADERS = \
+@@ -122,16 +122,19 @@ SDK_HEADERS = \
  		$(NULL)
  
  EXPORTS_NAMESPACES = mozilla
@@ -15,7 +15,6 @@ diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 +		functors/Location.h \
 +		functors/TList.h \
 +		functors/Functor.h \
-+		functors/Bind.h \
  		$(NULL)
  
  EXPORTS_mozilla = \
@@ -24,138 +23,6 @@ diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
    DeadlockDetector.h \
    Monitor.h \
    Mutex.h \
-diff --git a/xpcom/glue/functors/Bind.h b/xpcom/glue/functors/Bind.h
-new file mode 100644
---- /dev/null
-+++ b/xpcom/glue/functors/Bind.h
-@@ -0,0 +1,127 @@
-+/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-+/* ***** BEGIN LICENSE BLOCK *****
-+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
-+ *
-+ * The contents of this file are subject to the Mozilla Public License Version
-+ * 1.1 (the "License"); you may not use this file except in compliance with
-+ * the License. You may obtain a copy of the License at
-+ * http://www.mozilla.org/MPL/
-+ *
-+ * Software distributed under the License is distributed on an "AS IS" basis,
-+ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
-+ * for the specific language governing rights and limitations under the
-+ * License.
-+ *
-+ * The Original Code is BIND/bind.
-+ *
-+ * The Initial Developer of the Original Code is
-+ *   Mozilla Corporation.
-+ * Portions created by the Initial Developer are Copyright (C) 2009
-+ * the Initial Developer. All Rights Reserved.
-+ *
-+ * Contributor(s):
-+ *   Ben Newman <b{enjam,newma}n@mozilla.com> (Original Author)
-+ *
-+ * Alternatively, the contents of this file may be used under the terms of
-+ * either the GNU General Public License Version 2 or later (the "GPL"), or
-+ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
-+ * in which case the provisions of the GPL or the LGPL are applicable instead
-+ * of those above. If you wish to allow use of your version of this file only
-+ * under the terms of either the GPL or the LGPL, and not to allow others to
-+ * use your version of this file under the terms of the MPL, indicate your
-+ * decision by deleting the provisions above and replace them with the notice
-+ * and other provisions required by the GPL or the LGPL. If you do not delete
-+ * the provisions above, a recipient may use your version of this file under
-+ * the terms of any one of the MPL, the GPL or the LGPL.
-+ *
-+ * ***** END LICENSE BLOCK ***** */
-+
-+#ifndef Bind_h__
-+#define Bind_h__
-+
-+#include "Functor.h"
-+#include "nsAutoPtr.h"
-+
-+/**
-+ * For an overview of BIND usage, see bug 486440.
-+ *
-+ * This implementation was inspired by Andrei Alexandrescu's book
-+ *
-+ *   Modern C++ Design: Generic Programming and Design Patterns Applied,
-+ *
-+ * which has a great deal more to say on the topic.
-+ *
-+ * Instructions pertaining to the cog.py code generation tool are available
-+ * here: http://nedbatchelder.com/code/cog/
-+ *
-+ * Once you have installed cog.py, run
-+ *
-+ *   cog.py -r Bind.h
-+ *
-+ * to regenerate the portions of this file delimited by the triple square
-+ * bracket markers.  The file changes in place, but the python generating code
-+ * remains, so repeatedly regenerating the file is really very easy.
-+ */
-+
-+// [[[cog
-+// from functor_cog_utils import tlist, MAX_FUNCTOR_ARITY
-+// rng = range(MAX_FUNCTOR_ARITY+1)
-+// ijs = zip(rng, rng[1:])
-+// ]]]
-+// [[[end]]]
-+
-+
-+
-+/**
-+ * The BIND{1,2,...} macros save some typing by linearizing the syntax for
-+ * binding multiple arguments.  Additionally, the BIND0 macro ensures that the
-+ * first argument is converted to a Functor.  There is no reason to use BIND0
-+ * directly instead of the global functor function(s), but you know what? do
-+ * whatever you want. Life is short.
-+ */
-+#define BIND0(F) functor(F)
-+
-+// [[[cog
-+// slash = "\\"
-+// for (i, j) in ijs:
-+//   alist = tlist("A", j)
-+//   ainit = tlist(", A", i, sep="")
-+//   alast = "A%d" % i;
-+//   cog.out(r"""
-+// #define BIND%(j)d(F, %(alist)s) %(slash)s
-+//   BIND%(i)d(F%(ainit)s).bind(%(alast)s)
-+// """ % locals())
-+// ]]]
-+
-+#define BIND1(F, A0) \
-+  BIND0(F).bind(A0)
-+
-+#define BIND2(F, A0, A1) \
-+  BIND1(F, A0).bind(A1)
-+
-+#define BIND3(F, A0, A1, A2) \
-+  BIND2(F, A0, A1).bind(A2)
-+
-+#define BIND4(F, A0, A1, A2, A3) \
-+  BIND3(F, A0, A1, A2).bind(A3)
-+
-+#define BIND5(F, A0, A1, A2, A3, A4) \
-+  BIND4(F, A0, A1, A2, A3).bind(A4)
-+
-+#define BIND6(F, A0, A1, A2, A3, A4, A5) \
-+  BIND5(F, A0, A1, A2, A3, A4).bind(A5)
-+
-+#define BIND7(F, A0, A1, A2, A3, A4, A5, A6) \
-+  BIND6(F, A0, A1, A2, A3, A4, A5).bind(A6)
-+
-+#define BIND8(F, A0, A1, A2, A3, A4, A5, A6, A7) \
-+  BIND7(F, A0, A1, A2, A3, A4, A5, A6).bind(A7)
-+
-+#define BIND9(F, A0, A1, A2, A3, A4, A5, A6, A7, A8) \
-+  BIND8(F, A0, A1, A2, A3, A4, A5, A6, A7).bind(A8)
-+
-+#define BIND10(F, A0, A1, A2, A3, A4, A5, A6, A7, A8, A9) \
-+  BIND9(F, A0, A1, A2, A3, A4, A5, A6, A7, A8).bind(A9)
-+// [[[end]]]
-+
-+#endif
 diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
 new file mode 100644
 --- /dev/null
@@ -1631,12 +1498,11 @@ diff --git a/xpcom/tests/functors/TestFunctor.cpp b/xpcom/tests/functors/TestFun
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestFunctor.cpp
-@@ -0,0 +1,256 @@
+@@ -0,0 +1,255 @@
 +#include "TestUtils.h"
 +#include "nsAutoPtr.h"
 +
 +#include "Functor.h"
-+#include "Bind.h"
 +
 +int Succ(int n) {
 +  return n + 1;
@@ -1668,7 +1534,7 @@ new file mode 100644
 +  Functor<int, TLIST1(int)> s = functor(&Succ);
 +
 +  Pred pred;
-+  Functor<int, TLIST1(int)> p = BIND1(&Pred::operator(), &pred);
++  Functor<int, TLIST1(int)> p = functor(&Pred::operator()).bind(&pred);
 +
 +  Functor<int, TLIST3(DiffStruct*, int, int)> ds =
 +    functor(&DiffStruct::Sub);
@@ -1698,17 +1564,17 @@ new file mode 100644
 +  rv |= is((Pred().*(&Pred::operator()))(2), 1);
 +  rv |= is(Pred().operator()(2), 1);
 +  nsAutoPtr<Pred> pp(new Pred());
-+  rv |= is(BIND1(&Pred::operator(), pp)(2), 1);
++  rv |= is(functor(&Pred::operator()).bind(pp)(2), 1);
 +
 +  Functor<int, TLIST2(int, int)> a2 = functor(&DiffStruct::Add2);
 +  rv |= is(a2.bind(2)(3), 5);
 +  rv |= is(a2.bind(2).bind(3)(), 5);
-+  rv |= is(BIND2(&DiffStruct::Add2, 2, 3)(), 5);
++  rv |= is(functor(&DiffStruct::Add2).bind(2).bind(3)(), 5);
 +
 +  int x = 5, y = 3;
 +  DiffStruct ds;
-+  Functor<int, TLIST2(int, int)> sub = BIND1(&DiffStruct::Sub, &ds);
-+  Functor<int, TLIST1(int)> f = BIND1(sub, x);
++  Functor<int, TLIST2(int, int)> sub = functor(&DiffStruct::Sub).bind(&ds);
++  Functor<int, TLIST1(int)> f = functor(sub).bind(x); // sub already a functor (perfectly ok)
 +  rv |= is(sub(x, y), x - y);
 +  rv |= is(sub(y, x), y - x);
 +  rv |= is(f(x), 0);
