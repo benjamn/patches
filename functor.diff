@@ -1254,7 +1254,7 @@ diff --git a/xpcom/glue/functors/functor_cog_utils.py b/xpcom/glue/functors/func
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/functors/functor_cog_utils.py
-@@ -0,0 +1,54 @@
+@@ -0,0 +1,64 @@
 +#!/usr/bin/env python
 +"""
 +-*- Mode: python; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*-
@@ -1295,7 +1295,6 @@ new file mode 100644
 +
 +***** END LICENSE BLOCK *****
 +"""
-+import cog
 +import re
 +
 +# Generate code for functors of up to this many parameters:
@@ -1309,6 +1308,17 @@ new file mode 100644
 +  return sep.join(tpat.sub("\g<0>%u" % i,
 +                           npat.sub("%u" % i, tmpl))
 +                  for i in range(rbegin, rend))
++
++_cog_files = [
++  "Functor.h",
++  "FunctorAdapters.h",
++  "TList.h",
++]
++
++if __name__ == "__main__":
++  from cogapp import Cog
++  for file in _cog_files:
++    Cog().main([None, "-r", file])
 diff --git a/xpcom/tests/Makefile.in b/xpcom/tests/Makefile.in
 --- a/xpcom/tests/Makefile.in
 +++ b/xpcom/tests/Makefile.in
