@@ -1,4 +1,4 @@
-Milliseconds as a PRUint32 instead of a double in RunnableFunctor tests (bug 486440).
+Only MSVC thought &operator new was overloaded (bug 486440).
 
 diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 --- a/xpcom/glue/Functor.h
@@ -288,7 +288,7 @@ diff --git a/xpcom/tests/functors/TestRunnableFunctor.cpp b/xpcom/tests/functors
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestRunnableFunctor.cpp
-@@ -0,0 +1,96 @@
+@@ -0,0 +1,98 @@
 +#include "TestUtils.h"
 +#include "Functor.h"
 +#include "nsAutoPtr.h"
@@ -343,8 +343,10 @@ new file mode 100644
 +
 +nsresult test_proxy_Run_method(nsIThread* const target)
 +{
-+  nsRefPtr<RunnableFunctor<void*> > rf = // Just because I can:
-+    functor(&operator new).bind(sizeof(Blocker)).proxy(target);
++  typedef void* (*newPtr_t)(size_t);
++  newPtr_t newPtr = static_cast<newPtr_t>(&operator new);
++  nsRefPtr<RunnableFunctor<void*> > rf =
++    functor(newPtr).bind(sizeof(Blocker)).proxy(target);
 +  nsRefPtr<Blocker> blocker = new(rf->Wait()) Blocker(200); // placement new
 +  return is(functor(&Blocker::Run).bind(blocker).proxy(target)->Wait(),
 +            (nsresult)NS_ERROR_UNEXPECTED);
