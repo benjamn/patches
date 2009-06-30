@@ -1,4 +1,4 @@
-Improved FunctorSupports and Functor::bind implementations (bug 486440).
+Avoid warnings about double->int conversion in Functor tests (bug 486440).
 
 diff --git a/xpcom/glue/Bind.h b/xpcom/glue/Bind.h
 new file mode 100644
@@ -1611,7 +1611,7 @@ diff --git a/xpcom/tests/functors/TestFunctor.cpp b/xpcom/tests/functors/TestFun
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestFunctor.cpp
-@@ -0,0 +1,244 @@
+@@ -0,0 +1,256 @@
 +#include "TestUtils.h"
 +#include "nsAutoPtr.h"
 +
@@ -1772,14 +1772,16 @@ new file mode 100644
 +
 +  char j = 'j';
 +  Location<char> k;
++
 +  // N.B. Succ is int(*)(int)
 +  functor(Succ).bind(j).bind_result(k)();
++  rv |= is(char(k), 'k'); k = '\0';
++  functor(Succ).bind_result(k).bind(j)();
++  rv |= is(char(k), 'k'); k = '\0';
++  k = functor(Succ).bind(j)();
++  rv |= is(char(k), 'k'); k = '\0';
++  functor(Succ).bind_result(k)(j);
 +  rv |= is(char(k), 'k');
-+
-+  double pi = 3.14159;
-+  Location<short> four;
-+  functor(Succ).bind_result(four).bind(pi)();
-+  rv |= is(int(four), 4);
 +
 +  return rv;
 +}
@@ -1808,20 +1810,23 @@ new file mode 100644
 +}
 +
 +class Whammer {
++  int mVal;
 +public:
-+  int Wham() { return 5; }
++  Whammer(int val) : mVal(val) {}
++  int Wham() { return mVal; }
 +};
 +class WhammerPtr {
 +  Whammer mWhammer;
 +public:
++  WhammerPtr(int val) : mWhammer(val) {}
 +  Whammer& operator*() { return mWhammer; }
 +  Whammer* operator->() { return &mWhammer; }
 +};
 +nsresult test_deref_operator_compatibility()
 +{
 +  nsresult rv = NS_OK;
-+  WhammerPtr wp;
-+  rv |= is(Whammer().Wham() + (*wp).Wham() + wp->Wham(), 15);
++  WhammerPtr wp(5);
++  rv |= is(Whammer(3).Wham() + (*wp).Wham() + wp->Wham(), 3 + 5 + 5);
 +  // Can't use functor(<method>) because it forces the first argument to
 +  // MethodHandler::operator() to be a pointer to an instance of the method's
 +  // class.  In order to use WhammerPtr as a Whammer*, we have to give up the
@@ -1834,8 +1839,15 @@ new file mode 100644
 +int deep_thought(int answer = 42) { return answer; }
 +nsresult test_default_parameters()
 +{
-+  typedef Functor<int, TLIST0()> ftype;
-+  return is(functor(deep_thought).bind(2 * ftype::callable(deep_thought)())(), 84);
++  // This is actually illegal since default arguments are not considered part
++  // of a function's type by all compilers.  I can't think of a way to promote
++  // this inconsistency to an error on all compilers, but at least such usage
++  // is implicitly discouraged since it requires using ::callable or ::method
++  // directly instead of simply calling the 'functor' adapter.
++  // typedef Functor<int, TLIST0()> ftype;
++  // return is(functor(deep_thought).bind(2 * ftype::callable(deep_thought)())(), 84);
++
++  return is(functor(deep_thought).bind(84)(), 84); // trivial placeholder
 +}
 +
 +int main() {

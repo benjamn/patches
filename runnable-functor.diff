@@ -1,4 +1,4 @@
-Runnable interface for Functors (bug 486440).
+Milliseconds as a PRUint32 instead of a double in RunnableFunctor tests (bug 486440).
 
 diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 --- a/xpcom/glue/Functor.h
@@ -299,12 +299,12 @@ new file mode 100644
 +
 +class Blocker : public nsRunnable
 +{
-+  const double mSecs;
++  const PRUint32 mMs;
 +public:
-+  Blocker(double secs) : mSecs(secs) {}
++  Blocker(PRUint32 ms) : mMs(ms) {}
 +  NS_IMETHOD Run()
 +  {
-+    PR_Sleep(PR_MillisecondsToInterval(mSecs));
++    PR_Sleep(PR_MillisecondsToInterval(mMs));
 +    return NS_ERROR_UNEXPECTED; // ignored by Dispatch
 +  }
 +};
