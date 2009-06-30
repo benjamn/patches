@@ -98,17 +98,16 @@ diff --git a/xpcom/glue/functors/RunnableFunctor.h b/xpcom/glue/functors/Runnabl
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/functors/RunnableFunctor.h
-@@ -0,0 +1,142 @@
+@@ -0,0 +1,137 @@
 +#ifndef RunnableFunctor_h__
 +#define RunnableFunctor_h__
 +
 +#include "nsISupports.h"
 +#include "nsAutoPtr.h"
-+#include "nsAutoLock.h"
 +#include "nsIEventTarget.h"
 +#include "nsThreadUtils.h"
-+#include "nsProxyRelease.h"
 +#include "nsIRunnable.h"
++#include "mozilla/Monitor.h"
 +
 +class RunnableSupports : public nsIRunnable {
 +  NS_DECL_ISUPPORTS
@@ -127,13 +126,13 @@ new file mode 100644
 +class RunnableFunctor
 +  : public RunnableSupports
 +{
-+  PRMonitor* const mMon;
++  mozilla::Monitor mMon;
 +  PRBool mRun;
 +
 +public:
 +
 +  RunnableFunctor()
-+    : mMon(nsAutoMonitor::NewMonitor("RunnableFunctor"))
++    : mMon("RunnableFunctor")
 +    , mRun(PR_FALSE)
 +  {}
 +
@@ -145,14 +144,10 @@ new file mode 100644
 +  virtual Result Wait() = 0;
 +
 +protected:
-+
-+  ~RunnableFunctor()
-+  {
-+    nsAutoMonitor::DestroyMonitor(mMon);
-+  }
++  ~RunnableFunctor() {}
 +
 +  void VoidWait() {
-+    nsAutoMonitor mon(mMon);
++    mozilla::MonitorAutoEnter mon(mMon);
 +    if (!mRun)
 +      mon.Wait();
 +  }
@@ -162,7 +157,7 @@ new file mode 100644
 +   */
 +  nsresult AfterRun()
 +  {
-+    nsAutoMonitor mon(mMon);
++    mozilla::MonitorAutoEnter mon(mMon);
 +    mRun = PR_TRUE;
 +    mon.NotifyAll();
 +    return NS_OK;
