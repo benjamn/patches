@@ -1,5 +1,26 @@
-Only MSVC thought &operator new was overloaded (bug 486440).
+Addressing the __stdcall distinction for function/method pointer types (bug 486440).
 
+diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
+--- a/xpcom/glue/Makefile.in
++++ b/xpcom/glue/Makefile.in
+@@ -124,16 +124,17 @@ SDK_HEADERS = \
+ EXPORTS_NAMESPACES = mozilla
+ 
+ EXPORTS = \
+ 		nsThreadUtils.h \
+ 		nsProxyRelease.h \
+ 		nsXPTCUtils.h \
+ 		functors/Location.h \
+ 		functors/TList.h \
++		functors/RunnableFunctor.h \
+ 		functors/Functor.h \
+ 		functors/FunctorAdapters.h \
+ 		$(NULL)
+ 
+ EXPORTS_mozilla = \
+   BlockingResourceBase.h \
+   CondVar.h \
+   DeadlockDetector.h \
 diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
 --- a/xpcom/glue/functors/Functor.h
 +++ b/xpcom/glue/functors/Functor.h
