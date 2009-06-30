@@ -42,14 +42,14 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
    template <typename Method>
    static Functor method(Method m) {
      return Functor(new MethodHandler<Functor, Method>(m));
-@@ -850,9 +855,30 @@ template <typename R, typename P0, typen
- Functor<R, TLIST10(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9)>
- functor(R (*f)(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9)) {
-   return Functor<R, TLIST10(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9)>::callable(f);
- }
+@@ -593,11 +598,31 @@ public:
+ private:
+   ParentFunctor mFun;
+   LocationType mLoc;
+ };
  
- // [[[end]]]
- 
+ // Sayonara, macro scum!
+ #undef EXTRACT_TYPEDEFS
  
 +template <typename Result, class Params>
 +nsRefPtr<RunnableFunctor<Result> >
@@ -64,15 +64,16 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 +
 +#ifdef DEBUG
 +  PRBool dispatched =
- #endif
++#endif
 +    target && NS_SUCCEEDED(target->Dispatch(event, flags));
 +  NS_ASSERTION(dispatched, "Failed to dispatch event to thread.");
 +
 +  return event; // event->Wait() will block forever if Dispatch failed
 +}
 +
-+
-+#endif
+ #include "FunctorAdapters.h"
+ 
+ #endif
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
@@ -87,13 +88,13 @@ diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
  		TList.h \
 +		RunnableFunctor.h \
  		Functor.h \
+ 		FunctorAdapters.h \
  		Bind.h \
  		$(NULL)
  
  EXPORTS_mozilla = \
    BlockingResourceBase.h \
    CondVar.h \
-   DeadlockDetector.h \
 diff --git a/xpcom/glue/RunnableFunctor.h b/xpcom/glue/RunnableFunctor.h
 new file mode 100644
 --- /dev/null
