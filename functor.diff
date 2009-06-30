@@ -136,7 +136,7 @@ diff --git a/xpcom/glue/Functor.h b/xpcom/glue/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/Functor.h
-@@ -0,0 +1,858 @@
+@@ -0,0 +1,603 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -737,12 +737,31 @@ new file mode 100644
 +// Sayonara, macro scum!
 +#undef EXTRACT_TYPEDEFS
 +
++#include "FunctorAdapters.h"
++
++#endif
+diff --git a/xpcom/glue/FunctorAdapters.h b/xpcom/glue/FunctorAdapters.h
+new file mode 100644
+--- /dev/null
++++ b/xpcom/glue/FunctorAdapters.h
+@@ -0,0 +1,270 @@
++#ifndef CALLING_CONVENTION
++#define CALLING_CONVENTION
++#define FunctorAdapters_h__must_undef_CC
++#endif
++
 +/**
 + * Herebelow lies a jungle of functor adapter functions.  I did not write them;
 + * I generated them.  Even the comments are auto-generated.  If you need to
 + * modify them, you really, really should change and re-run the generator code
 + * rather than editing the functions themselves.
 + */
++
++// [[[cog
++// from functor_cog_utils import tlist, MAX_FUNCTOR_ARITY
++// rng = range(MAX_FUNCTOR_ARITY+1)
++// ]]]
++// [[[end]]]
 +
 +// Pass already-Functors through unmodified:
 +template <typename Result, class Params>
@@ -763,7 +782,7 @@ new file mode 100644
 +//   tmpl = """
 +// template <typename R, class C%(ctnPs)s>
 +// Functor<R, TLIST%(j)d(C*%(cPs)s)>
-+// functor(R (C::*m)(%(Ps)s)%(const)s) {
++// functor(R (CALLING_CONVENTION C::*m)(%(Ps)s)%(const)s) {
 +//   return Functor<R, TLIST%(j)d(C*%(cPs)s)>::method(m);
 +// }"""
 +//
@@ -784,7 +803,7 @@ new file mode 100644
 +//   cog.out("""
 +// template <typename R%(ctnPs)s>
 +// Functor<R, TLIST%(i)d(%(Ps)s)>
-+// functor(R (*f)(%(Ps)s)) {
++// functor(R (CALLING_CONVENTION *f)(%(Ps)s)) {
 +//   return Functor<R, TLIST%(i)d(%(Ps)s)>::callable(f);
 +// }
 +//
@@ -797,18 +816,18 @@ new file mode 100644
 +// Adapters for methods with 0 parameters:
 +template <typename R, class C>
 +Functor<R, TLIST1(C*)>
-+functor(R (C::*m)()) {
++functor(R (CALLING_CONVENTION C::*m)()) {
 +  return Functor<R, TLIST1(C*)>::method(m);
 +}
 +template <typename R, class C>
 +Functor<R, TLIST1(C*)>
-+functor(R (C::*m)() const) {
++functor(R (CALLING_CONVENTION C::*m)() const) {
 +  return Functor<R, TLIST1(C*)>::method(m);
 +}
 +// Adapter for global functions with 0 parameters:
 +template <typename R>
 +Functor<R, TLIST0()>
-+functor(R (*f)()) {
++functor(R (CALLING_CONVENTION *f)()) {
 +  return Functor<R, TLIST0()>::callable(f);
 +}
 +
@@ -816,18 +835,18 @@ new file mode 100644
 +// Adapters for methods with 1 parameter:
 +template <typename R, class C, typename P0>
 +Functor<R, TLIST2(C*, P0)>
-+functor(R (C::*m)(P0)) {
++functor(R (CALLING_CONVENTION C::*m)(P0)) {
 +  return Functor<R, TLIST2(C*, P0)>::method(m);
 +}
 +template <typename R, class C, typename P0>
 +Functor<R, TLIST2(C*, P0)>
-+functor(R (C::*m)(P0) const) {
++functor(R (CALLING_CONVENTION C::*m)(P0) const) {
 +  return Functor<R, TLIST2(C*, P0)>::method(m);
 +}
 +// Adapter for global functions with 1 parameter:
 +template <typename R, typename P0>
 +Functor<R, TLIST1(P0)>
-+functor(R (*f)(P0)) {
++functor(R (CALLING_CONVENTION *f)(P0)) {
 +  return Functor<R, TLIST1(P0)>::callable(f);
 +}
 +
@@ -835,18 +854,18 @@ new file mode 100644
 +// Adapters for methods with 2 parameters:
 +template <typename R, class C, typename P0, typename P1>
 +Functor<R, TLIST3(C*, P0, P1)>
-+functor(R (C::*m)(P0, P1)) {
++functor(R (CALLING_CONVENTION C::*m)(P0, P1)) {
 +  return Functor<R, TLIST3(C*, P0, P1)>::method(m);
 +}
 +template <typename R, class C, typename P0, typename P1>
 +Functor<R, TLIST3(C*, P0, P1)>
-+functor(R (C::*m)(P0, P1) const) {
++functor(R (CALLING_CONVENTION C::*m)(P0, P1) const) {
 +  return Functor<R, TLIST3(C*, P0, P1)>::method(m);
 +}
 +// Adapter for global functions with 2 parameters:
 +template <typename R, typename P0, typename P1>
 +Functor<R, TLIST2(P0, P1)>
-+functor(R (*f)(P0, P1)) {
++functor(R (CALLING_CONVENTION *f)(P0, P1)) {
 +  return Functor<R, TLIST2(P0, P1)>::callable(f);
 +}
 +
@@ -854,18 +873,18 @@ new file mode 100644
 +// Adapters for methods with 3 parameters:
 +template <typename R, class C, typename P0, typename P1, typename P2>
 +Functor<R, TLIST4(C*, P0, P1, P2)>
-+functor(R (C::*m)(P0, P1, P2)) {
++functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2)) {
 +  return Functor<R, TLIST4(C*, P0, P1, P2)>::method(m);
 +}
 +template <typename R, class C, typename P0, typename P1, typename P2>
 +Functor<R, TLIST4(C*, P0, P1, P2)>
-+functor(R (C::*m)(P0, P1, P2) const) {
++functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2) const) {
 +  return Functor<R, TLIST4(C*, P0, P1, P2)>::method(m);
 +}
 +// Adapter for global functions with 3 parameters:
 +template <typename R, typename P0, typename P1, typename P2>
 +Functor<R, TLIST3(P0, P1, P2)>
-+functor(R (*f)(P0, P1, P2)) {
++functor(R (CALLING_CONVENTION *f)(P0, P1, P2)) {
 +  return Functor<R, TLIST3(P0, P1, P2)>::callable(f);
 +}
 +
@@ -873,18 +892,18 @@ new file mode 100644
 +// Adapters for methods with 4 parameters:
 +template <typename R, class C, typename P0, typename P1, typename P2, typename P3>
 +Functor<R, TLIST5(C*, P0, P1, P2, P3)>
-+functor(R (C::*m)(P0, P1, P2, P3)) {
++functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2, P3)) {
 +  return Functor<R, TLIST5(C*, P0, P1, P2, P3)>::method(m);
 +}
 +template <typename R, class C, typename P0, typename P1, typename P2, typename P3>
 +Functor<R, TLIST5(C*, P0, P1, P2, P3)>
-+functor(R (C::*m)(P0, P1, P2, P3) const) {
++functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2, P3) const) {
 +  return Functor<R, TLIST5(C*, P0, P1, P2, P3)>::method(m);
 +}
 +// Adapter for global functions with 4 parameters:
 +template <typename R, typename P0, typename P1, typename P2, typename P3>
 +Functor<R, TLIST4(P0, P1, P2, P3)>
-+functor(R (*f)(P0, P1, P2, P3)) {
++functor(R (CALLING_CONVENTION *f)(P0, P1, P2, P3)) {
 +  return Functor<R, TLIST4(P0, P1, P2, P3)>::callable(f);
 +}
 +
@@ -892,18 +911,18 @@ new file mode 100644
 +// Adapters for methods with 5 parameters:
 +template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4>
 +Functor<R, TLIST6(C*, P0, P1, P2, P3, P4)>
-+functor(R (C::*m)(P0, P1, P2, P3, P4)) {
++functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2, P3, P4)) {
 +  return Functor<R, TLIST6(C*, P0, P1, P2, P3, P4)>::method(m);
 +}
 +template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4>
 +Functor<R, TLIST6(C*, P0, P1, P2, P3, P4)>
-+functor(R (C::*m)(P0, P1, P2, P3, P4) const) {
++functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2, P3, P4) const) {
 +  return Functor<R, TLIST6(C*, P0, P1, P2, P3, P4)>::method(m);
 +}
 +// Adapter for global functions with 5 parameters:
 +template <typename R, typename P0, typename P1, typename P2, typename P3, typename P4>
 +Functor<R, TLIST5(P0, P1, P2, P3, P4)>
-+functor(R (*f)(P0, P1, P2, P3, P4)) {
++functor(R (CALLING_CONVENTION *f)(P0, P1, P2, P3, P4)) {
 +  return Functor<R, TLIST5(P0, P1, P2, P3, P4)>::callable(f);
 +}
 +
@@ -911,18 +930,18 @@ new file mode 100644
 +// Adapters for methods with 6 parameters:
 +template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5>
 +Functor<R, TLIST7(C*, P0, P1, P2, P3, P4, P5)>
-+functor(R (C::*m)(P0, P1, P2, P3, P4, P5)) {
++functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2, P3, P4, P5)) {
 +  return Functor<R, TLIST7(C*, P0, P1, P2, P3, P4, P5)>::method(m);
 +}
 +template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5>
 +Functor<R, TLIST7(C*, P0, P1, P2, P3, P4, P5)>
-+functor(R (C::*m)(P0, P1, P2, P3, P4, P5) const) {
++functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2, P3, P4, P5) const) {
 +  return Functor<R, TLIST7(C*, P0, P1, P2, P3, P4, P5)>::method(m);
 +}
 +// Adapter for global functions with 6 parameters:
 +template <typename R, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5>
 +Functor<R, TLIST6(P0, P1, P2, P3, P4, P5)>
-+functor(R (*f)(P0, P1, P2, P3, P4, P5)) {
++functor(R (CALLING_CONVENTION *f)(P0, P1, P2, P3, P4, P5)) {
 +  return Functor<R, TLIST6(P0, P1, P2, P3, P4, P5)>::callable(f);
 +}
 +
@@ -930,18 +949,18 @@ new file mode 100644
 +// Adapters for methods with 7 parameters:
 +template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6>
 +Functor<R, TLIST8(C*, P0, P1, P2, P3, P4, P5, P6)>
-+functor(R (C::*m)(P0, P1, P2, P3, P4, P5, P6)) {
++functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2, P3, P4, P5, P6)) {
 +  return Functor<R, TLIST8(C*, P0, P1, P2, P3, P4, P5, P6)>::method(m);
 +}
 +template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6>
 +Functor<R, TLIST8(C*, P0, P1, P2, P3, P4, P5, P6)>
-+functor(R (C::*m)(P0, P1, P2, P3, P4, P5, P6) const) {
++functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2, P3, P4, P5, P6) const) {
 +  return Functor<R, TLIST8(C*, P0, P1, P2, P3, P4, P5, P6)>::method(m);
 +}
 +// Adapter for global functions with 7 parameters:
 +template <typename R, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6>
 +Functor<R, TLIST7(P0, P1, P2, P3, P4, P5, P6)>
-+functor(R (*f)(P0, P1, P2, P3, P4, P5, P6)) {
++functor(R (CALLING_CONVENTION *f)(P0, P1, P2, P3, P4, P5, P6)) {
 +  return Functor<R, TLIST7(P0, P1, P2, P3, P4, P5, P6)>::callable(f);
 +}
 +
@@ -949,18 +968,18 @@ new file mode 100644
 +// Adapters for methods with 8 parameters:
 +template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7>
 +Functor<R, TLIST9(C*, P0, P1, P2, P3, P4, P5, P6, P7)>
-+functor(R (C::*m)(P0, P1, P2, P3, P4, P5, P6, P7)) {
++functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2, P3, P4, P5, P6, P7)) {
 +  return Functor<R, TLIST9(C*, P0, P1, P2, P3, P4, P5, P6, P7)>::method(m);
 +}
 +template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7>
 +Functor<R, TLIST9(C*, P0, P1, P2, P3, P4, P5, P6, P7)>
-+functor(R (C::*m)(P0, P1, P2, P3, P4, P5, P6, P7) const) {
++functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2, P3, P4, P5, P6, P7) const) {
 +  return Functor<R, TLIST9(C*, P0, P1, P2, P3, P4, P5, P6, P7)>::method(m);
 +}
 +// Adapter for global functions with 8 parameters:
 +template <typename R, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7>
 +Functor<R, TLIST8(P0, P1, P2, P3, P4, P5, P6, P7)>
-+functor(R (*f)(P0, P1, P2, P3, P4, P5, P6, P7)) {
++functor(R (CALLING_CONVENTION *f)(P0, P1, P2, P3, P4, P5, P6, P7)) {
 +  return Functor<R, TLIST8(P0, P1, P2, P3, P4, P5, P6, P7)>::callable(f);
 +}
 +
@@ -968,18 +987,18 @@ new file mode 100644
 +// Adapters for methods with 9 parameters:
 +template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7, typename P8>
 +Functor<R, TLIST10(C*, P0, P1, P2, P3, P4, P5, P6, P7, P8)>
-+functor(R (C::*m)(P0, P1, P2, P3, P4, P5, P6, P7, P8)) {
++functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2, P3, P4, P5, P6, P7, P8)) {
 +  return Functor<R, TLIST10(C*, P0, P1, P2, P3, P4, P5, P6, P7, P8)>::method(m);
 +}
 +template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7, typename P8>
 +Functor<R, TLIST10(C*, P0, P1, P2, P3, P4, P5, P6, P7, P8)>
-+functor(R (C::*m)(P0, P1, P2, P3, P4, P5, P6, P7, P8) const) {
++functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2, P3, P4, P5, P6, P7, P8) const) {
 +  return Functor<R, TLIST10(C*, P0, P1, P2, P3, P4, P5, P6, P7, P8)>::method(m);
 +}
 +// Adapter for global functions with 9 parameters:
 +template <typename R, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7, typename P8>
 +Functor<R, TLIST9(P0, P1, P2, P3, P4, P5, P6, P7, P8)>
-+functor(R (*f)(P0, P1, P2, P3, P4, P5, P6, P7, P8)) {
++functor(R (CALLING_CONVENTION *f)(P0, P1, P2, P3, P4, P5, P6, P7, P8)) {
 +  return Functor<R, TLIST9(P0, P1, P2, P3, P4, P5, P6, P7, P8)>::callable(f);
 +}
 +
@@ -987,13 +1006,14 @@ new file mode 100644
 +// Adapter for global functions with 10 parameters:
 +template <typename R, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7, typename P8, typename P9>
 +Functor<R, TLIST10(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9)>
-+functor(R (*f)(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9)) {
++functor(R (CALLING_CONVENTION *f)(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9)) {
 +  return Functor<R, TLIST10(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9)>::callable(f);
 +}
 +
 +// [[[end]]]
 +
-+
++#ifdef FunctorAdapters_h__must_undef_CC
++#undef CALLING_CONVENTION
 +#endif
 diff --git a/xpcom/glue/Location.h b/xpcom/glue/Location.h
 new file mode 100644
@@ -1168,7 +1188,7 @@ new file mode 100644
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
-@@ -122,16 +122,20 @@ SDK_HEADERS = \
+@@ -122,16 +122,21 @@ SDK_HEADERS = \
  		$(NULL)
  
  EXPORTS_NAMESPACES = mozilla
@@ -1180,6 +1200,7 @@ diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 +		Location.h \
 +		TList.h \
 +		Functor.h \
++		FunctorAdapters.h \
 +		Bind.h \
  		$(NULL)
  
