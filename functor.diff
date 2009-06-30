@@ -27,7 +27,7 @@ diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/functors/Functor.h
-@@ -0,0 +1,607 @@
+@@ -0,0 +1,615 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -632,7 +632,15 @@ new file mode 100644
 +// Sayonara, macro scum!
 +#undef EXTRACT_TYPEDEFS
 +
++
 +#include "FunctorAdapters.h"
++// See xpcom/base/nscore.h
++#ifdef NS_WIN32
++#  define CALLING_CONVENTION __stdcall
++#  include "FunctorAdapters.h"
++#  undef CALLING_CONVENTION
++#endif
++
 +
 +#endif
 diff --git a/xpcom/glue/functors/FunctorAdapters.h b/xpcom/glue/functors/FunctorAdapters.h

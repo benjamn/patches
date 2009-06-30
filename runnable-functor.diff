@@ -21,7 +21,7 @@ diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
   *
   *   Modern C++ Design: Generic Programming and Design Patterns Applied,
   *
-@@ -218,16 +219,20 @@ public:
+@@ -222,16 +223,20 @@ public:
    typedef FunctorImpl<Result, Params> ImplType;
    typedef Result ResultType;
    typedef Params ParamList;
@@ -42,14 +42,14 @@ diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
    template <typename Method>
    static Functor method(Method m) {
      return Functor(new MethodHandler<Functor, Method>(m));
-@@ -593,11 +598,31 @@ public:
- private:
-   ParentFunctor mFun;
-   LocationType mLoc;
- };
+@@ -607,9 +612,30 @@ private:
+ // See xpcom/base/nscore.h
+ #ifdef NS_WIN32
+ #  define CALLING_CONVENTION __stdcall
+ #  include "FunctorAdapters.h"
+ #  undef CALLING_CONVENTION
+ #endif
  
- // Sayonara, macro scum!
- #undef EXTRACT_TYPEDEFS
  
 +template <typename Result, class Params>
 +nsRefPtr<RunnableFunctor<Result> >
@@ -64,16 +64,15 @@ diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
 +
 +#ifdef DEBUG
 +  PRBool dispatched =
-+#endif
+ #endif
 +    target && NS_SUCCEEDED(target->Dispatch(event, flags));
 +  NS_ASSERTION(dispatched, "Failed to dispatch event to thread.");
 +
 +  return event; // event->Wait() will block forever if Dispatch failed
 +}
 +
- #include "FunctorAdapters.h"
- 
- #endif
++
++#endif
 diff --git a/xpcom/glue/functors/RunnableFunctor.h b/xpcom/glue/functors/RunnableFunctor.h
 new file mode 100644
 --- /dev/null
