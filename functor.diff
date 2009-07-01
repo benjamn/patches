@@ -28,7 +28,7 @@ diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/functors/Functor.h
-@@ -0,0 +1,622 @@
+@@ -0,0 +1,620 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -634,16 +634,14 @@ new file mode 100644
 +#undef EXTRACT_TYPEDEFS
 +
 +
-+// Pass already-Functors through unmodified:
-+template <typename Result, class Params>
-+Functor<Result, Params>
-+functor(Functor<Result, Params> f) {
-+  return f;
-+}
-+
++// Define global functor adapter functions with the default calling convention:
++#define CALLING_CONVENTION
 +#include "FunctorAdapters.h"
-+// See xpcom/base/nscore.h
-+#ifdef NS_WIN32
++#undef CALLING_CONVENTION
++
++// Define global functor adapter functions with calling convention __stdcall on
++// the platform that supports it:
++#ifdef NS_WIN32 // see xpcom/base/nscore.h
 +#  define CALLING_CONVENTION __stdcall
 +#  include "FunctorAdapters.h"
 +#  undef CALLING_CONVENTION
@@ -655,17 +653,44 @@ diff --git a/xpcom/glue/functors/FunctorAdapters.h b/xpcom/glue/functors/Functor
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/functors/FunctorAdapters.h
-@@ -0,0 +1,268 @@
-+#ifndef CALLING_CONVENTION
-+#define CALLING_CONVENTION
-+#define FunctorAdapters_h__must_undef_CC
-+#endif
-+
-+// [[[cog
-+// from functor_cog_utils import tlist, MAX_FUNCTOR_ARITY
-+// rng = range(MAX_FUNCTOR_ARITY+1)
-+// ]]]
-+// [[[end]]]
+@@ -0,0 +1,317 @@
++/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is functor.
++ *
++ * The Initial Developer of the Original Code is
++ *   Mozilla Corporation.
++ * Portions created by the Initial Developer are Copyright (C) 2009
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *   Ben Newman <b{enjam,newma}n@mozilla.com> (Original Author)
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
 +
 +/**
 + * This file is meant to be #included by Functor.h, possibly more than once,
@@ -678,6 +703,27 @@ new file mode 100644
 + * modify them, you really, really should change and re-run the generator code
 + * rather than editing the functions themselves.
 + */
++
++#ifndef FunctorAdapters_h__only_once
++#define FunctorAdapters_h__only_once
++
++// Pass already-Functors through unmodified:
++template <typename Result, class Params>
++Functor<Result, Params>
++functor(Functor<Result, Params> f) { return f; }
++
++#endif // FunctorAdapters_h__only_once
++
++// [[[cog
++// from functor_cog_utils import tlist, MAX_FUNCTOR_ARITY
++// rng = range(MAX_FUNCTOR_ARITY+1)
++// ]]]
++// [[[end]]]
++
++#ifndef CALLING_CONVENTION
++#define CALLING_CONVENTION
++#define FunctorAdapters_h__must_undef_CC
++#endif
 +
 +// [[[cog
 +// # The i parameter specifies the number of parameters the adapted
@@ -923,6 +969,7 @@ new file mode 100644
 +
 +#ifdef FunctorAdapters_h__must_undef_CC
 +#undef CALLING_CONVENTION
++#undef FunctorAdapters_h__must_undef_CC
 +#endif
 diff --git a/xpcom/glue/functors/Location.h b/xpcom/glue/functors/Location.h
 new file mode 100644
