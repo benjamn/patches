@@ -63,7 +63,7 @@ diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
    template <typename Method>
    static Functor method(Method m) {
      return Functor(new MethodHandler<Functor, Method>(m));
-@@ -607,9 +612,30 @@ private:
+@@ -614,9 +619,30 @@ functor(Functor<Result, Params> f) {
  // See xpcom/base/nscore.h
  #ifdef NS_WIN32
  #  define CALLING_CONVENTION __stdcall
