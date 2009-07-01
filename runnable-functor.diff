@@ -319,8 +319,8 @@ new file mode 100644
 +NS_IMPL_THREADSAFE_ISUPPORTS1(Blocker, nsIRunnable)
 +
 +#define DISPATCH_BUSY_WORK(TARGET)                                            \
-+  Functor<nsresult, TLIST1(Blocker*)>::method(&Blocker::Run)                  \
-+    .bind(Blocker::Create(200, (TARGET)))                                     \
++  functor(&Blocker::Run)                                                      \
++    .bind(nsRefPtr<Blocker>(Blocker::Create(200, (TARGET))))                  \
 +    .proxy(TARGET)
 +
 +nsresult test_proxy_Wait(nsIThread* const target)
