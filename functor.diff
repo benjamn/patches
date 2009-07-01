@@ -1,4 +1,4 @@
-Addressing the __stdcall distinction for function/method pointer types (bug 486440).
+Removing problematic -Werror flags from the static Functor tests (bug 486440).
 
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
@@ -1453,7 +1453,7 @@ diff --git a/xpcom/tests/functors/Makefile.in b/xpcom/tests/functors/Makefile.in
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/Makefile.in
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,99 @@
 +# ***** BEGIN LICENSE BLOCK *****
 +# Version: MPL 1.1/GPL 2.0/LGPL 2.1
 +#
@@ -1508,7 +1508,7 @@ new file mode 100644
 +	TestLocation.cpp \
 +	$(NULL)
 +
-+# Testcases that SHOULD fail to compile.
++# Testcases that should fail to compile:
 +STATIC_FAILURE_TESTCASES = \
 +  CrefAssignmentError.cpp \
 +  ArgConversionError.cpp \
@@ -1516,11 +1516,7 @@ new file mode 100644
 +  BindResultReferenceError.cpp \
 +  $(NULL)
 +
-+# Testcases that SHOULD compile but produce warnings.
-+STATIC_WARNING_TESTCASES = \
-+  $(NULL)
-+
-+# Testcases that SHOULD compile and produce no warnings.
++# Testcases that should compile:
 +STATIC_PASS_TESTCASES = \
 +  $(CPP_UNIT_TESTS) \
 +  VoidReturn.cpp \
@@ -1534,7 +1530,6 @@ new file mode 100644
 +# compilation failed.
 +static:: \
 +  $(STATIC_FAILURE_TESTCASES:.cpp=.s-fail) \
-+  $(STATIC_WARNING_TESTCASES:.cpp=.s-warn) \
 +  $(STATIC_PASS_TESTCASES:.cpp=.s-pass)
 +
 +check:: static
@@ -1549,24 +1544,9 @@ new file mode 100644
 +	  printf "ok.\n"; \
 +	fi
 +
-+%.s-warn: %.cpp $(GLOBAL_DEPS)
-+	@printf "Compiling $(<F) to verify that it produces proper warnings..."
-+	@if $(CCC) -Werror $(OUTOPTION)/dev/null -S $(COMPILE_CXXFLAGS) $(_VPATH_SRCS) >$(*F).errlog 2>&1; then \
-+	  printf "fail:\nerror: compilation of $(<F) succeeded with -Werror. It shouldn't have!\n"; \
-+	  cat $(*F).errlog; \
-+	  exit 1; \
-+	fi
-+	@if $(CCC) $(OUTOPTION)/dev/null -S $(COMPILE_CXXFLAGS) $(_VPATH_SRCS) >$(*F).werrlog 2>&1; then \
-+	  printf "ok.\n"; \
-+	else \
-+	  printf "fail:\nerror: compilation of $(<F) without -Werror failed. A warning should have been issued.\n"; \
-+	  cat $(*F).werrlog; \
-+	  exit 1; \
-+	fi
-+
 +%.s-pass: %.cpp $(GLOBAL_DEPS)
 +	@printf "Compiling $(<F) just to verify that compilation succeeds..."
-+	@if $(CCC) -Werror $(OUTOPTION)/dev/null -S $(COMPILE_CXXFLAGS) $(_VPATH_SRCS) >$(*F).errlog 2>&1; then \
++	@if $(CCC) $(OUTOPTION)/dev/null -S $(COMPILE_CXXFLAGS) $(_VPATH_SRCS) >$(*F).errlog 2>&1; then \
 +	  printf "ok.\n"; \
 +	else \
 +	  printf "fail:\nerror: compilation of $(<F) failed. It shouldn't have!\n"; \
@@ -1577,7 +1557,7 @@ diff --git a/xpcom/tests/functors/TestFunctor.cpp b/xpcom/tests/functors/TestFun
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestFunctor.cpp
-@@ -0,0 +1,255 @@
+@@ -0,0 +1,225 @@
 +#include "TestUtils.h"
 +#include "nsAutoPtr.h"
 +
@@ -1702,35 +1682,6 @@ new file mode 100644
 +  return rv;
 +}
 +
-+struct CopyCounter {
-+  int* const mCountPtr;
-+  explicit CopyCounter(int* countPtr) : mCountPtr(countPtr) {}
-+  CopyCounter(const CopyCounter& other)
-+    : mCountPtr(other.mCountPtr)
-+  { ++*mCountPtr; }
-+  CopyCounter& operator=(const CopyCounter& cc) {
-+    is(mCountPtr, cc.mCountPtr);
-+    return *this;
-+  }
-+  CopyCounter Method(int a, int b, int c) { return *this; }
-+};
-+
-+nsresult test_result_copying()
-+{
-+  nsresult rv = NS_OK;
-+  int count = 0;
-+  CopyCounter cc(&count);
-+  Functor<CopyCounter, TLIST0()> f =
-+    functor(&CopyCounter::Method).bind(&cc).bind(1).bind(2).bind(3);
-+  rv |= is(*f().mCountPtr, 1); // make sure the compiler can elide the tail copies
-+  f(); f(); f();
-+  rv |= is(count, 4);
-+  Functor<void, TLIST0()> fvoid = f.bind_result(ref(cc));
-+  fvoid(); fvoid(); fvoid();
-+  rv |= is(count, 7);
-+  return rv;
-+}
-+
 +nsresult test_bind_conversion()
 +{
 +  nsresult rv = NS_OK;
@@ -1825,7 +1776,6 @@ new file mode 100644
 +  RUN_TEST(test_ref_cref());
 +  RUN_TEST(test_templatized_functor());
 +  RUN_TEST(test_bind_result(3));
-+  RUN_TEST(test_result_copying());
 +  RUN_TEST(test_bind_conversion());
 +  RUN_TEST(test_private_method_invocation());
 +  RUN_TEST(test_deref_operator_compatibility());

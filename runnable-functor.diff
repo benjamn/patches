@@ -251,7 +251,7 @@ diff --git a/xpcom/tests/functors/Makefile.in b/xpcom/tests/functors/Makefile.in
 +	TestRunnableFunctor.cpp \
  	$(NULL)
  
- # Testcases that SHOULD fail to compile.
+ # Testcases that should fail to compile:
  STATIC_FAILURE_TESTCASES = \
    CrefAssignmentError.cpp \
    ArgConversionError.cpp \
