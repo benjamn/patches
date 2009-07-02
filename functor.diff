@@ -1557,7 +1557,7 @@ diff --git a/xpcom/tests/functors/TestFunctor.cpp b/xpcom/tests/functors/TestFun
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestFunctor.cpp
-@@ -0,0 +1,225 @@
+@@ -0,0 +1,259 @@
 +#include "TestUtils.h"
 +#include "nsAutoPtr.h"
 +
@@ -1766,6 +1766,39 @@ new file mode 100644
 +  return is(functor(deep_thought).bind(84)(), 84); // trivial placeholder
 +}
 +
++class Bound : public nsISupports {
++  NS_DECL_ISUPPORTS
++public:
++  Bound(int *ptr) : mPtr(ptr) {}
++ ~Bound() { ++*mPtr; }
++  static int GetVal(Bound* b) { return *b->mPtr; }
++private:
++  int* const mPtr;
++};
++NS_IMPL_ISUPPORTS0(Bound)
++nsresult test_bound_nsRefPtr()
++{
++  nsresult rv = NS_OK;
++  int fval = 0, gval = 0;
++  {
++    Functor<int, TLIST0()>
++      f = functor(&Succ).bind(2),
++      g = f;
++    {
++      nsRefPtr<Bound>
++        fb = new Bound(&fval),
++        gb = new Bound(&gval);
++      rv |= is(f(), 3) | is(g(), 3);
++      f = functor(&Bound::GetVal).bind(fb);
++      g = functor(&Bound::GetVal).bind(gb.get());
++      rv |= is(f(), 0) | is(g(), 0);
++    }
++    rv |= is(fval, 0) | is(gval, 1);
++  }
++  rv |= is(fval, 1) | is(gval, 1);
++  return rv;
++}
++
 +int main() {
 +  ScopedXPCOM xpcom("FunctorTests");
 +  if (xpcom.failed())
@@ -1780,6 +1813,7 @@ new file mode 100644
 +  RUN_TEST(test_private_method_invocation());
 +  RUN_TEST(test_deref_operator_compatibility());
 +  RUN_TEST(test_default_parameters());
++  RUN_TEST(test_bound_nsRefPtr());
 +
 +  return NS_OK;
 +}
