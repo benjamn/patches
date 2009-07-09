@@ -60,21 +60,21 @@ new file mode 100644
 +#
 +# ***** END LICENSE BLOCK *****
 +
-+libs:: clean \
-+; cd javaparser && make libs && mv javaparser.jar ../ && cd .. && \
++libs:: clean                                                                  \
++; cd javaparser && make libs && mv javaparser.jar ../ && cd .. &&             \
 +  cd translator && make libs && mv translator.jar ../ && cd ..
 +
-+sync:: clean \
-+; cd javaparser ; make sync ; cd .. ; \
-+  cd translator ; make sync ; cd .. ; \
++sync:: clean                                                                  \
++; cd javaparser ; make sync ; cd .. ;                                         \
++  cd translator ; make sync ; cd .. ;                                         \
 +  cd htmlparser ; make sync ; cd ..
 +
-+translate:: \
++translate::                                                                   \
 +; java -jar translator.jar htmlparser/src .. ../nsHtml5AtomList.h
 +
-+clean:: \
-+; cd javaparser ; make clean ; cd .. ; \
-+  cd translator ; make clean ; cd .. ; \
++clean::                                                                       \
++; cd javaparser ; make clean ; cd .. ;                                        \
++  cd translator ; make clean ; cd .. ;                                        \
 +  rm -rf *.jar
 diff --git a/parser/html/java/README.txt b/parser/html/java/README.txt
 new file mode 100644
@@ -138,9 +138,9 @@ new file mode 100644
 +
 +SVN_BASE=http://svn.versiondude.net/whattf/htmlparser/trunk
 +
-+sync:: \
-+; rm -rf src && \
-+  svn co $(SVN_BASE)/src/nu/validator/htmlparser/impl src && \
++sync::                                                                        \
++; rm -rf src &&                                                               \
++  svn co $(SVN_BASE)/src/nu/validator/htmlparser/impl src &&                  \
 +  find src -name .svn | xargs rm -rf
 diff --git a/parser/html/java/javaparser/Makefile b/parser/html/java/javaparser/Makefile
 new file mode 100644
@@ -186,24 +186,24 @@ new file mode 100644
 +
 +SVN_BASE=http://javaparser.googlecode.com/svn/trunk/JavaParser
 +
-+libs:: \
-+; mkdir -p bin && \
-+  find src -name "*.java" | \
-+    xargs javac -g -d bin && \
++libs::                                                                        \
++; mkdir -p bin &&                                                             \
++  find src -name "*.java" |                                                   \
++    xargs javac -g -d bin &&                                                  \
 +  jar cf javaparser.jar -C bin .
 +
-+sync:: \
-+; rm -rf src && \
-+  svn co $(SVN_BASE)/src && \
-+  find src -name .svn | xargs rm -rf ; \
-+  \
-+  for file in COPYING COPYING.LESSER readme.txt ; \
-+  do \
-+    rm -f $$file ; \
-+    svn cat $(SVN_BASE)/$$file > $$file ; \
++sync::                                                                        \
++; rm -rf src &&                                                               \
++  svn co $(SVN_BASE)/src &&                                                   \
++  find src -name .svn | xargs rm -rf ;                                        \
++                                                                              \
++  for file in COPYING COPYING.LESSER readme.txt ;                             \
++  do                                                                          \
++    rm -f $$file ;                                                            \
++    svn cat $(SVN_BASE)/$$file > $$file ;                                     \
 +  done
 +
-+clean:: \
++clean::                                                                       \
 +; rm -rf bin javaparser.jar
 diff --git a/parser/html/java/translator/Makefile b/parser/html/java/translator/Makefile
 new file mode 100644
@@ -249,24 +249,24 @@ new file mode 100644
 +
 +SVN_BASE=http://svn.versiondude.net/whattf/htmlparser/trunk
 +
-+libs:: \
-+; mkdir -p bin && \
-+  find src -name "*.java" | \
-+    xargs javac -cp ../javaparser.jar -g -d bin && \
++libs::                                                                        \
++; mkdir -p bin &&                                                             \
++  find src -name "*.java" |                                                   \
++    xargs javac -cp ../javaparser.jar -g -d bin &&                            \
 +  jar cfm translator.jar manifest.txt -C bin .
 +
-+sync:: \
-+; rm -rf src && \
-+  svn co $(SVN_BASE)/translator-src src && \
-+  find src -name .svn | xargs rm -rf ; \
-+  \
-+  for file in LICENSE.txt README.txt ; \
-+  do \
-+    rm -f $$file ; \
-+    svn cat $(SVN_BASE)/$$file > $$file ; \
++sync::                                                                        \
++; rm -rf src &&                                                               \
++  svn co $(SVN_BASE)/translator-src src &&                                    \
++  find src -name .svn | xargs rm -rf ;                                        \
++                                                                              \
++  for file in LICENSE.txt README.txt ;                                        \
++  do                                                                          \
++    rm -f $$file ;                                                            \
++    svn cat $(SVN_BASE)/$$file > $$file ;                                     \
 +  done
 +
-+clean:: \
++clean::                                                                       \
 +; rm -rf bin translator.jar
 diff --git a/parser/html/java/translator/manifest.txt b/parser/html/java/translator/manifest.txt
 new file mode 100644
