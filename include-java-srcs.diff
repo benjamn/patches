@@ -22,7 +22,7 @@ diff --git a/parser/html/java/Makefile b/parser/html/java/Makefile
 new file mode 100644
 --- /dev/null
 +++ b/parser/html/java/Makefile
-@@ -0,0 +1,56 @@
+@@ -0,0 +1,53 @@
 +# ***** BEGIN LICENSE BLOCK *****
 +# Version: MPL 1.1/GPL 2.0/LGPL 2.1
 +#
@@ -61,11 +61,8 @@ new file mode 100644
 +# ***** END LICENSE BLOCK *****
 +
 +libs:: clean \
-+; cd javaparser && \
-+    make libs && mv javaparser.jar ../ && \
-+  cd ../translator && \
-+    make libs && mv translator.jar ../ && \
-+  cd ..
++; cd javaparser && make libs && mv javaparser.jar ../ && cd .. && \
++  cd translator && make libs && mv translator.jar ../ && cd ..
 +
 +sync:: clean \
 +; cd javaparser ; make sync ; cd .. ; \
