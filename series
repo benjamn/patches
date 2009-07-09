@@ -1,3 +1,4 @@
+include-java-srcs.diff
 measure-event-queue-latency.diff
 measure-data-available-copy-overhead.diff
 htmltokenizer-getflags.diff
