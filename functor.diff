@@ -1,4 +1,4 @@
-Using a normal file instead of /dev/null for -S output, which should be more reliable on WIN32 (bug 486440).
+Passing -c to gcc to avoid linking for static compilation tests (bug 486440).
 
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
@@ -1453,7 +1453,7 @@ diff --git a/xpcom/tests/functors/Makefile.in b/xpcom/tests/functors/Makefile.in
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/Makefile.in
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,99 @@
 +# ***** BEGIN LICENSE BLOCK *****
 +# Version: MPL 1.1/GPL 2.0/LGPL 2.1
 +#
@@ -1536,25 +1536,23 @@ new file mode 100644
 +
 +%.s-fail: %.cpp $(GLOBAL_DEPS)
 +	@printf "Compiling $(<F) to verify that it produces errors (as expected)..."
-+	@if $(CCC) $(OUTOPTION)$(*F).deleteme.s -S $(COMPILE_CXXFLAGS) $(_VPATH_SRCS) >$(*F).errlog 2>&1; then \
++	@if $(CCC) -c $(COMPILE_CXXFLAGS) $(_VPATH_SRCS) >$(*F).errlog 2>&1; then \
 +	  printf "fail:\nerror: compilation of $(<F) succeeded. It shouldn't have!\n"; \
 +	  cat $(*F).errlog; \
 +	  exit 1; \
 +	else \
 +	  printf "ok.\n"; \
-+	fi; \
-+	rm -f $(*F).deleteme.s
++	fi
 +
 +%.s-pass: %.cpp $(GLOBAL_DEPS)
 +	@printf "Compiling $(<F) just to verify that compilation succeeds..."
-+	@if $(CCC) $(OUTOPTION)$(*F).deleteme.s -S $(COMPILE_CXXFLAGS) $(_VPATH_SRCS) >$(*F).errlog 2>&1; then \
++	@if $(CCC) -c $(COMPILE_CXXFLAGS) -lxpcom $(_VPATH_SRCS) >$(*F).errlog 2>&1; then \
 +	  printf "ok.\n"; \
 +	else \
 +	  printf "fail:\nerror: compilation of $(<F) failed. It shouldn't have!\n"; \
 +	  cat $(*F).errlog; \
 +	  exit 1; \
-+	fi; \
-+	rm -f $(*F).deleteme.s
++	fi
 diff --git a/xpcom/tests/functors/TestFunctor.cpp b/xpcom/tests/functors/TestFunctor.cpp
 new file mode 100644
 --- /dev/null
