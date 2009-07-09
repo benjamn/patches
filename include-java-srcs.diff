@@ -1,3 +1,23 @@
+diff --git a/.hgignore b/.hgignore
+--- a/.hgignore
++++ b/.hgignore
+@@ -1,15 +1,16 @@
+ # .hgignore - List of filenames hg should ignore
+ 
+ # Filenames that should be ignored wherever they appear
+ ~$
+ \.pyc$
+ (^|/)TAGS$
+ (^|/)\.DS_Store$
++\.class$
+ 
+ # User files that may appear at the root
+ ^\.mozconfig
+ ^mozconfig
+ ^configure$
+ ^config\.cache$
+ ^config\.log$
+ ^ID$
 diff --git a/parser/html/java/Makefile b/parser/html/java/Makefile
 new file mode 100644
 --- /dev/null
