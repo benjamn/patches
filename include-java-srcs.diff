@@ -2,7 +2,7 @@ diff --git a/parser/html/java/Makefile b/parser/html/java/Makefile
 new file mode 100644
 --- /dev/null
 +++ b/parser/html/java/Makefile
-@@ -0,0 +1,51 @@
+@@ -0,0 +1,56 @@
 +# ***** BEGIN LICENSE BLOCK *****
 +# Version: MPL 1.1/GPL 2.0/LGPL 2.1
 +#
@@ -47,13 +47,36 @@ new file mode 100644
 +    make libs && mv translator.jar ../ && \
 +  cd ..
 +
-+export:: \
++sync:: clean \
++; cd javaparser ; make sync ; cd .. ; \
++  cd translator ; make sync ; cd .. ; \
++  cd htmlparser ; make sync ; cd ..
++
++translate:: \
 +; java -jar translator.jar htmlparser/src .. ../nsHtml5AtomList.h
 +
 +clean:: \
 +; cd javaparser ; make clean ; cd .. ; \
 +  cd translator ; make clean ; cd .. ; \
 +  rm -rf *.jar
+diff --git a/parser/html/java/README.txt b/parser/html/java/README.txt
+new file mode 100644
+--- /dev/null
++++ b/parser/html/java/README.txt
+@@ -0,0 +1,13 @@
++If this is your first time building the HTML5 parser, you need to execute the
++following commands (from this directory) to bootstrap the translation:
++
++  make sync      # fetch remote source files and licenses
++  make           # build javaparser.jar and translator.jar
++  make translate # perform the Java-to-C++ translation
++
++If you make changes to the translator or the javaparser, you can rebuild by
++retyping 'make' in this directory.  If you make changes to the HTML5 java
++implementation, you can retranslate the java sources by retyping 'make
++translate' in this directory.
++
++Ben Newman (8 July 2009)
 diff --git a/parser/html/java/htmlparser/Makefile b/parser/html/java/htmlparser/Makefile
 new file mode 100644
 --- /dev/null
@@ -96,7 +119,7 @@ new file mode 100644
 +#
 +# ***** END LICENSE BLOCK *****
 +
-+update:: \
++sync:: \
 +; rm -rf src && \
 +  svn co http://svn.versiondude.net/whattf/htmlparser/trunk/src/nu/validator/htmlparser/impl src && \
 +  find src -name .svn | xargs rm -rf
@@ -21128,7 +21151,7 @@ new file mode 100644
 +    xargs javac -g -d bin ; \
 +  jar cf javaparser.jar -C bin .
 +
-+update:: \
++sync:: \
 +; rm -rf src && \
 +  svn co $(SVN_BASE)/src && \
 +  find src -name .svn | xargs rm -rf ; \
@@ -48558,7 +48581,7 @@ new file mode 100644
 +    xargs javac -cp ../javaparser.jar -g -d bin && \
 +  jar cfm translator.jar manifest.txt -C bin .
 +
-+update:: \
++sync:: \
 +; rm -rf src && \
 +  svn co $(SVN_BASE)/translator-src src && \
 +  find src -name .svn | xargs rm -rf ; \
