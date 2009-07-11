@@ -64,7 +64,7 @@ diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
    static Functor method(Method m) {
      return Functor(new MethodHandler<Functor, Method>(m));
 @@ -612,9 +617,30 @@ private:
- // the platform that supports it:
+ // the one platform that supports it:
  #ifdef NS_WIN32 // see xpcom/base/nscore.h
  #  define CALLING_CONVENTION __stdcall
  #  include "FunctorAdapters.h"
@@ -207,7 +207,7 @@ new file mode 100644
 +/**
 + * This specialization of the RunnableFunctorImpl class allocates no space for
 + * the return value of the underlying Functor, since the Functor is void.  In
-+ * this case, it suffices to inherit the Wait method of RunnableFunctor.
++ * this case, we simply delegate to the VoidWait method of RunnableFunctor.
 + */
 +template <typename Thunk>
 +class RunnableFunctorImpl<void, Thunk>
@@ -257,28 +257,6 @@ diff --git a/xpcom/tests/functors/Makefile.in b/xpcom/tests/functors/Makefile.in
    ArgConversionError.cpp \
    TooManyParamsError.cpp \
    BindResultReferenceError.cpp \
-diff --git a/xpcom/tests/functors/TestLocation.cpp b/xpcom/tests/functors/TestLocation.cpp
---- a/xpcom/tests/functors/TestLocation.cpp
-+++ b/xpcom/tests/functors/TestLocation.cpp
-@@ -73,17 +73,17 @@ nsresult test_ref_counting_storage_polic
- 
-   rv |= test_Location_conversion(IntLocation());
- 
-   return rv;
- }
- 
- int main()
- {
--  ScopedXPCOM xpcom("FunctorTests");
-+  ScopedXPCOM xpcom("LocationTests");
-   if (xpcom.failed())
-     return NS_ERROR_FAILURE;
- 
-   RUN_TEST(test_client_managed_storage_policy());
-   RUN_TEST(test_ref_counting_storage_policy());
- 
-   return NS_OK;
- }
 diff --git a/xpcom/tests/functors/TestRunnableFunctor.cpp b/xpcom/tests/functors/TestRunnableFunctor.cpp
 new file mode 100644
 --- /dev/null

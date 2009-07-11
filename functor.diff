@@ -292,8 +292,8 @@ new file mode 100644
 +  /**
 +   * The bind_result method may be called against non-void Functors and returns
 +   * a void Functor that puts the return value of the original Functor into the
-+   * provided Location<ResultType, StoragePolicy> argument.  See Location.h for
-+   * an explanation of Location objects (N.B. the ref/cref functions).
++   * provided Location<R, StoragePolicy> argument.  See Location.h for an
++   * explanation of Location objects (N.B. the ref/cref functions).
 +   *
 +   * Example:
 +   *   Counter c;
@@ -640,7 +640,7 @@ new file mode 100644
 +#undef CALLING_CONVENTION
 +
 +// Define global functor adapter functions with calling convention __stdcall on
-+// the platform that supports it:
++// the one platform that supports it:
 +#ifdef NS_WIN32 // see xpcom/base/nscore.h
 +#  define CALLING_CONVENTION __stdcall
 +#  include "FunctorAdapters.h"
@@ -722,7 +722,7 @@ new file mode 100644
 +
 +#ifndef CALLING_CONVENTION
 +#define CALLING_CONVENTION
-+#define FunctorAdapters_h__must_undef_CC
++#define FunctorAdapters_h__must_undef
 +#endif
 +
 +// [[[cog
@@ -967,9 +967,9 @@ new file mode 100644
 +
 +// [[[end]]]
 +
-+#ifdef FunctorAdapters_h__must_undef_CC
++#ifdef FunctorAdapters_h__must_undef
 +#undef CALLING_CONVENTION
-+#undef FunctorAdapters_h__must_undef_CC
++#undef FunctorAdapters_h__must_undef
 +#endif
 diff --git a/xpcom/glue/functors/Location.h b/xpcom/glue/functors/Location.h
 new file mode 100644
@@ -1089,7 +1089,7 @@ new file mode 100644
 + * If T itself supports AddRef and Release methods, these methods will NOT be
 + * called.  Furthermore, deleting the pointer returned by GetPointer is UNSAFE,
 + * since that address points INSIDE a heap-allocated Holder object.  For these
-+ * reasons, you probably should avoid using RefCountingStoragePolicy with
++ * reasons, you probably should AVOID using RefCountingStoragePolicy with
 + * intrinsically reference counted objects.
 + *
 + * It's fine to use a Location<nsISupports*, RefCountingStoragePolicy> to
@@ -1902,7 +1902,7 @@ new file mode 100644
 +
 +int main()
 +{
-+  ScopedXPCOM xpcom("FunctorTests");
++  ScopedXPCOM xpcom("LocationTests");
 +  if (xpcom.failed())
 +    return NS_ERROR_FAILURE;
 +
