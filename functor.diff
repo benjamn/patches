@@ -1,4 +1,4 @@
-Passing -c to gcc to avoid linking for static compilation tests (bug 486440).
+Added a test to ensure pointer-to-callable-data-member compatibility (bug 486440).
 
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
@@ -1557,7 +1557,7 @@ diff --git a/xpcom/tests/functors/TestFunctor.cpp b/xpcom/tests/functors/TestFun
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/tests/functors/TestFunctor.cpp
-@@ -0,0 +1,259 @@
+@@ -0,0 +1,298 @@
 +#include "TestUtils.h"
 +#include "nsAutoPtr.h"
 +
@@ -1799,6 +1799,44 @@ new file mode 100644
 +  return rv;
 +}
 +
++struct HasCallableMember {
++  struct Callable {
++    int mVal;
++    Callable(int val) : mVal(val) {}
++    int operator()(int val) { return mVal + val; }
++  } mCallable;
++  HasCallableMember(int val) : mCallable(val) {}
++};
++nsresult test_pointer_to_callable_member()
++{
++  nsresult rv = NS_OK;
++  HasCallableMember hcm1(1234), hcm2(2345);
++
++  // Simple sanity check:
++  rv |= is(hcm2.mCallable(1),
++           hcm2.mCallable.mVal + 1);
++
++  // Treating a pointer-to-callable-member as a pointer-to-method:
++  typedef Functor<int, TLIST2(HasCallableMember*, int)> method_type;
++  method_type f = method_type::method(&HasCallableMember::mCallable);
++  rv |= is(f(&hcm1, 1), hcm1.mCallable.mVal + 1);
++  rv |= is(f(&hcm2, 1), hcm2.mCallable.mVal + 1);
++
++  // Treating a callable member as such:
++  typedef Functor<int, TLIST1(int)> callable_type;
++  rv |= is(callable_type::callable(hcm1.mCallable)(2),
++           hcm1.mCallable.mVal + 2);
++
++  // Testing nested method pointers:
++  Functor<int, TLIST1(int)> nested_method_pointer =
++    functor(&HasCallableMember::Callable::operator())
++      .bind(&hcm2.mCallable);
++  rv |= is(nested_method_pointer(3),
++           hcm2.mCallable.mVal + 3);
++
++  return rv;
++}
++
 +int main() {
 +  ScopedXPCOM xpcom("FunctorTests");
 +  if (xpcom.failed())
@@ -1814,6 +1852,7 @@ new file mode 100644
 +  RUN_TEST(test_deref_operator_compatibility());
 +  RUN_TEST(test_default_parameters());
 +  RUN_TEST(test_bound_nsRefPtr());
++  RUN_TEST(test_pointer_to_callable_member());
 +
 +  return NS_OK;
 +}
