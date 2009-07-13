@@ -1,4 +1,4 @@
-#ifndef-guarding the definition of functor(Functor<R, P>) so that FunctorAdapters.h can actually be #included more than once (bug 486440).
+A more optimistic RunnableFunctor::VoidWait (bug 486440).
 
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
@@ -98,7 +98,7 @@ diff --git a/xpcom/glue/functors/RunnableFunctor.h b/xpcom/glue/functors/Runnabl
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/functors/RunnableFunctor.h
-@@ -0,0 +1,137 @@
+@@ -0,0 +1,139 @@
 +#ifndef RunnableFunctor_h__
 +#define RunnableFunctor_h__
 +
@@ -147,8 +147,10 @@ new file mode 100644
 +  ~RunnableFunctor() {}
 +
 +  void VoidWait() {
++    if (mRun)
++      return;
 +    mozilla::MonitorAutoEnter mon(mMon);
-+    if (!mRun)
++    while (!mRun)
 +      mon.Wait();
 +  }
 +
