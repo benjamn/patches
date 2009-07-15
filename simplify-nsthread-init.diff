@@ -1,0 +1,160 @@
+Eliminating nsThreadStartupEvent in favor of RunnableFunctor (one of the benefits of bug 486440).
+
+diff --git a/xpcom/threads/nsThread.cpp b/xpcom/threads/nsThread.cpp
+--- a/xpcom/threads/nsThread.cpp
++++ b/xpcom/threads/nsThread.cpp
+@@ -40,16 +40,17 @@
+ #include "nsThreadManager.h"
+ #include "nsIClassInfoImpl.h"
+ #include "nsIProgrammingLanguage.h"
+ #include "nsAutoLock.h"
+ #include "nsAutoPtr.h"
+ #include "nsCOMPtr.h"
+ #include "prlog.h"
+ #include "nsThreadUtilsInternal.h"
++#include "Functor.h"
+ 
+ #ifdef PR_LOGGING
+ static PRLogModuleInfo *sLog = PR_NewLogModule("nsThread");
+ #endif
+ #define LOG(args) PR_LOG(sLog, PR_LOG_DEBUG, args)
+ 
+ NS_DECL_CI_INTERFACE_GETTER(nsThread)
+ 
+@@ -141,64 +142,16 @@ NS_INTERFACE_MAP_BEGIN(nsThread)
+     foundInterface = static_cast<nsIClassInfo*>(&sThreadClassInfo);
+   } else
+ NS_INTERFACE_MAP_END
+ NS_IMPL_CI_INTERFACE_GETTER4(nsThread, nsIThread, nsIThreadInternal,
+                              nsIEventTarget, nsISupportsPriority)
+ 
+ //-----------------------------------------------------------------------------
+ 
+-class nsThreadStartupEvent : public nsRunnable {
+-public:
+-  // Create a new thread startup object.
+-  static nsThreadStartupEvent *Create() {
+-    nsThreadStartupEvent *startup = new nsThreadStartupEvent();
+-    if (startup && startup->mMon)
+-      return startup;
+-    // Allocation failure
+-    delete startup;
+-    return nsnull;
+-  }
+-
+-  // This method does not return until the thread startup object is in the
+-  // completion state.
+-  void Wait() {
+-    if (mInitialized)  // Maybe avoid locking...
+-      return;
+-    nsAutoMonitor mon(mMon);
+-    while (!mInitialized)
+-      mon.Wait();
+-  }
+-
+-  // This method needs to be public to support older compilers (xlC_r on AIX).
+-  // It should be called directly as this class type is reference counted.
+-  virtual ~nsThreadStartupEvent() {
+-    if (mMon)
+-      nsAutoMonitor::DestroyMonitor(mMon);
+-  }
+-
+-private:
+-  NS_IMETHOD Run() {
+-    nsAutoMonitor mon(mMon);
+-    mInitialized = PR_TRUE;
+-    mon.Notify();
+-    return NS_OK;
+-  }
+-
+-  nsThreadStartupEvent()
+-    : mMon(nsAutoMonitor::NewMonitor("xpcom.threadstartup"))
+-    , mInitialized(PR_FALSE) {
+-  }
+-
+-  PRMonitor *mMon;
+-  PRBool     mInitialized;
+-};
+-
+-//-----------------------------------------------------------------------------
+-
+ struct nsThreadShutdownContext {
+   nsThread *joiningThread;
+   PRBool    shutdownAck;
+ };
+ 
+ // This event is responsible for notifying nsThread::Shutdown that it is time
+ // to call PR_JoinThread.
+ class nsThreadShutdownAckEvent : public nsRunnable {
+@@ -230,20 +183,16 @@ private:
+ };
+ 
+ //-----------------------------------------------------------------------------
+ 
+ /*static*/ void
+ nsThread::ThreadFunc(void *arg)
+ {
+   nsThread *self = static_cast<nsThread *>(arg);  // strong reference
+-  self->mThread = PR_GetCurrentThread();
+-
+-  // Inform the ThreadManager
+-  nsThreadManager::get()->RegisterCurrentThread(self);
+ 
+   // Wait for and process startup event
+   nsCOMPtr<nsIRunnable> event;
+   if (!self->GetEvent(PR_TRUE, getter_AddRefs(event))) {
+     NS_WARNING("failed waiting for thread startup event");
+     return;
+   }
+   event->Run();  // unblocks nsThread::Init
+@@ -306,45 +255,43 @@ nsThread::~nsThread()
+     PR_DestroyLock(mLock);
+ }
+ 
+ nsresult
+ nsThread::Init()
+ {
+   NS_ENSURE_TRUE(mLock, NS_ERROR_OUT_OF_MEMORY);
+ 
+-  // spawn thread and wait until it is fully setup
+-  nsRefPtr<nsThreadStartupEvent> startup = nsThreadStartupEvent::Create();
+-  NS_ENSURE_TRUE(startup, NS_ERROR_OUT_OF_MEMORY);
+- 
+   NS_ADDREF_THIS();
+  
+   mShutdownRequired = PR_TRUE;
+ 
+-  // ThreadFunc is responsible for setting mThread
+   PRThread *thr = PR_CreateThread(PR_USER_THREAD, ThreadFunc, this,
+                                   PR_PRIORITY_NORMAL, PR_GLOBAL_THREAD,
+                                   PR_JOINABLE_THREAD, 0);
+   if (!thr) {
+     NS_RELEASE_THIS();
+     return NS_ERROR_OUT_OF_MEMORY;
+   }
+ 
+   // ThreadFunc will wait for this event to be run before it tries to access
+   // mThread.  By delaying insertion of this event into the queue, we ensure
+   // that mThread is set properly.
++  nsRefPtr<RunnableFunctor<nsresult> > startup;
+   {
+     nsAutoLock lock(mLock);
++    // InitCurrentThread is responsible for setting mThread
++    startup = functor(&nsThread::InitCurrentThread)
++                .bind(this).runnable();
+     mEvents->PutEvent(startup);
+   }
+ 
+   // Wait for thread to call ThreadManager::SetupCurrentThread, which completes
+   // initialization of ThreadFunc.
+-  startup->Wait();
+-  return NS_OK;
++  return startup->Wait();
+ }
+ 
+ nsresult
+ nsThread::InitCurrentThread()
+ {
+   NS_ENSURE_TRUE(mLock, NS_ERROR_OUT_OF_MEMORY);
+ 
+   mThread = PR_GetCurrentThread();
