@@ -1,3 +1,10 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1247618370 25200
+# Node ID 3c25f816681850664b9032464608923a2740d6dd
+# Parent  b11fc38bb6ae7ce32e4daee213b0817c8a02ed7b
+Bug 499141 - [HTML5] Check in the Java to C++ translator. r+sr=jst
+
 diff --git a/.hgignore b/.hgignore
 --- a/.hgignore
 +++ b/.hgignore
@@ -22,7 +29,7 @@ diff --git a/parser/html/java/Makefile b/parser/html/java/Makefile
 new file mode 100644
 --- /dev/null
 +++ b/parser/html/java/Makefile
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,54 @@
 +# ***** BEGIN LICENSE BLOCK *****
 +# Version: MPL 1.1/GPL 2.0/LGPL 2.1
 +#
@@ -39,12 +46,13 @@ new file mode 100644
 +# The Original Code is Makefile.
 +#
 +# The Initial Developer of the Original Code is
-+#   Ben Newman <b{enjam,newma}n@mozilla.com>
++#   Mozilla Corporation.
 +#
 +# Portions created by the Initial Developer are Copyright (C) 2009
 +# the Initial Developer. All Rights Reserved.
 +#
 +# Contributor(s):
++#   Ben Newman <b{enjam,newma}n@mozilla.com>
 +#
 +# Alternatively, the contents of this file may be used under the terms of
 +# either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -60,21 +68,21 @@ new file mode 100644
 +#
 +# ***** END LICENSE BLOCK *****
 +
-+libs:: clean                                                                  \
-+; cd javaparser && make libs && mv javaparser.jar ../ && cd .. &&             \
++libs:: clean \
++; cd javaparser && make libs && mv javaparser.jar ../ && cd .. && \
 +  cd translator && make libs && mv translator.jar ../ && cd ..
 +
-+sync:: clean                                                                  \
-+; cd javaparser ; make sync ; cd .. ;                                         \
-+  cd translator ; make sync ; cd .. ;                                         \
++sync:: clean \
++; cd javaparser ; make sync ; cd .. ; \
++  cd translator ; make sync ; cd .. ; \
 +  cd htmlparser ; make sync ; cd ..
 +
-+translate::                                                                   \
++translate:: \
 +; java -jar translator.jar htmlparser/src .. ../nsHtml5AtomList.h
 +
-+clean::                                                                       \
-+; cd javaparser ; make clean ; cd .. ;                                        \
-+  cd translator ; make clean ; cd .. ;                                        \
++clean:: \
++; cd javaparser ; make clean ; cd .. ; \
++  cd translator ; make clean ; cd .. ; \
 +  rm -rf *.jar
 diff --git a/parser/html/java/README.txt b/parser/html/java/README.txt
 new file mode 100644
@@ -98,7 +106,7 @@ diff --git a/parser/html/java/htmlparser/Makefile b/parser/html/java/htmlparser/
 new file mode 100644
 --- /dev/null
 +++ b/parser/html/java/htmlparser/Makefile
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,44 @@
 +# ***** BEGIN LICENSE BLOCK *****
 +# Version: MPL 1.1/GPL 2.0/LGPL 2.1
 +#
@@ -115,12 +123,13 @@ new file mode 100644
 +# The Original Code is Makefile.
 +#
 +# The Initial Developer of the Original Code is
-+#   Ben Newman <b{enjam,newma}n@mozilla.com>
++#   Mozilla Corporation.
 +#
 +# Portions created by the Initial Developer are Copyright (C) 2009
 +# the Initial Developer. All Rights Reserved.
 +#
 +# Contributor(s):
++#   Ben Newman <b{enjam,newma}n@mozilla.com>
 +#
 +# Alternatively, the contents of this file may be used under the terms of
 +# either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -138,15 +147,15 @@ new file mode 100644
 +
 +SVN_BASE=http://svn.versiondude.net/whattf/htmlparser/trunk
 +
-+sync::                                                                        \
-+; rm -rf src &&                                                               \
-+  svn co $(SVN_BASE)/src/nu/validator/htmlparser/impl src &&                  \
++sync:: \
++; rm -rf src && \
++  svn co $(SVN_BASE)/src/nu/validator/htmlparser/impl src && \
 +  find src -name .svn | xargs rm -rf
 diff --git a/parser/html/java/javaparser/Makefile b/parser/html/java/javaparser/Makefile
 new file mode 100644
 --- /dev/null
 +++ b/parser/html/java/javaparser/Makefile
-@@ -0,0 +1,58 @@
+@@ -0,0 +1,59 @@
 +# ***** BEGIN LICENSE BLOCK *****
 +# Version: MPL 1.1/GPL 2.0/LGPL 2.1
 +#
@@ -163,12 +172,13 @@ new file mode 100644
 +# The Original Code is Makefile.
 +#
 +# The Initial Developer of the Original Code is
-+#   Ben Newman <b{enjam,newma}n@mozilla.com>
++#   Mozilla Corporation.
 +#
 +# Portions created by the Initial Developer are Copyright (C) 2009
 +# the Initial Developer. All Rights Reserved.
 +#
 +# Contributor(s):
++#   Ben Newman <b{enjam,newma}n@mozilla.com>
 +#
 +# Alternatively, the contents of this file may be used under the terms of
 +# either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -186,30 +196,30 @@ new file mode 100644
 +
 +SVN_BASE=http://javaparser.googlecode.com/svn/trunk/JavaParser
 +
-+libs::                                                                        \
-+; mkdir -p bin &&                                                             \
-+  find src -name "*.java" |                                                   \
-+    xargs javac -g -d bin &&                                                  \
++libs:: \
++; mkdir -p bin && \
++  find src -name "*.java" | \
++    xargs javac -g -d bin && \
 +  jar cf javaparser.jar -C bin .
 +
-+sync::                                                                        \
-+; rm -rf src &&                                                               \
-+  svn co $(SVN_BASE)/src &&                                                   \
-+  find src -name .svn | xargs rm -rf ;                                        \
-+                                                                              \
-+  for file in COPYING COPYING.LESSER readme.txt ;                             \
-+  do                                                                          \
-+    rm -f $$file ;                                                            \
-+    svn cat $(SVN_BASE)/$$file > $$file ;                                     \
++sync:: \
++; rm -rf src && \
++  svn co $(SVN_BASE)/src && \
++  find src -name .svn | xargs rm -rf ; \
++  \
++  for file in COPYING COPYING.LESSER readme.txt ; \
++  do \
++    rm -f $$file ; \
++    svn cat $(SVN_BASE)/$$file > $$file ; \
 +  done
 +
-+clean::                                                                       \
++clean:: \
 +; rm -rf bin javaparser.jar
 diff --git a/parser/html/java/translator/Makefile b/parser/html/java/translator/Makefile
 new file mode 100644
 --- /dev/null
 +++ b/parser/html/java/translator/Makefile
-@@ -0,0 +1,58 @@
+@@ -0,0 +1,59 @@
 +# ***** BEGIN LICENSE BLOCK *****
 +# Version: MPL 1.1/GPL 2.0/LGPL 2.1
 +#
@@ -226,12 +236,13 @@ new file mode 100644
 +# The Original Code is Makefile.
 +#
 +# The Initial Developer of the Original Code is
-+#   Ben Newman <b{enjam,newma}n@mozilla.com>
++#   Mozilla Corporation.
 +#
 +# Portions created by the Initial Developer are Copyright (C) 2009
 +# the Initial Developer. All Rights Reserved.
 +#
 +# Contributor(s):
++#   Ben Newman <b{enjam,newma}n@mozilla.com>
 +#
 +# Alternatively, the contents of this file may be used under the terms of
 +# either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -249,24 +260,24 @@ new file mode 100644
 +
 +SVN_BASE=http://svn.versiondude.net/whattf/htmlparser/trunk
 +
-+libs::                                                                        \
-+; mkdir -p bin &&                                                             \
-+  find src -name "*.java" |                                                   \
-+    xargs javac -cp ../javaparser.jar -g -d bin &&                            \
++libs:: \
++; mkdir -p bin && \
++  find src -name "*.java" | \
++    xargs javac -cp ../javaparser.jar -g -d bin && \
 +  jar cfm translator.jar manifest.txt -C bin .
 +
-+sync::                                                                        \
-+; rm -rf src &&                                                               \
-+  svn co $(SVN_BASE)/translator-src src &&                                    \
-+  find src -name .svn | xargs rm -rf ;                                        \
-+                                                                              \
-+  for file in LICENSE.txt README.txt ;                                        \
-+  do                                                                          \
-+    rm -f $$file ;                                                            \
-+    svn cat $(SVN_BASE)/$$file > $$file ;                                     \
++sync:: \
++; rm -rf src && \
++  svn co $(SVN_BASE)/translator-src src && \
++  find src -name .svn | xargs rm -rf ; \
++  \
++  for file in LICENSE.txt README.txt ; \
++  do \
++    rm -f $$file ; \
++    svn cat $(SVN_BASE)/$$file > $$file ; \
 +  done
 +
-+clean::                                                                       \
++clean:: \
 +; rm -rf bin translator.jar
 diff --git a/parser/html/java/translator/manifest.txt b/parser/html/java/translator/manifest.txt
 new file mode 100644
