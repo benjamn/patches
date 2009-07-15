@@ -1,4 +1,4 @@
-A more optimistic RunnableFunctor::VoidWait (bug 486440).
+Added Functor::runnable to get the runnable event itself (as opposed to Functor::proxy which goes ahead and dispatches it) (bug 486440).
 
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
@@ -42,7 +42,7 @@ diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
   *
   *   Modern C++ Design: Generic Programming and Design Patterns Applied,
   *
-@@ -222,16 +223,20 @@ public:
+@@ -222,16 +223,25 @@ public:
    typedef FunctorImpl<Result, Params> ImplType;
    typedef Result ResultType;
    typedef Params ParamList;
@@ -55,6 +55,11 @@ diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
 +  proxy(nsIThread* target,
 +        PRUint32 flags = NS_DISPATCH_NORMAL);
 +
++  RunnableFunctor<Result>* // <: nsIRunnable*
++  runnable() {
++    return new RunnableFunctorImpl<Result, Functor>(*this);
++  }
++
    template <typename Callable>
    static Functor callable(Callable c) {
      return Functor(new CallableHandler<Functor, Callable>(c));
@@ -63,7 +68,7 @@ diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
    template <typename Method>
    static Functor method(Method m) {
      return Functor(new MethodHandler<Functor, Method>(m));
-@@ -612,9 +617,30 @@ private:
+@@ -612,9 +622,29 @@ private:
  // the one platform that supports it:
  #ifdef NS_WIN32 // see xpcom/base/nscore.h
  #  define CALLING_CONVENTION __stdcall
@@ -80,8 +85,7 @@ diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
 +  if (!target && (mainThread || NS_SUCCEEDED(NS_GetMainThread(&mainThread))))
 +      target = mainThread;
 +
-+  nsRefPtr<RunnableFunctor<Result> > event =
-+    new RunnableFunctorImpl<Result, Functor>(*this);
++  nsRefPtr<RunnableFunctor<Result> > event = runnable();
 +
 +#ifdef DEBUG
 +  PRBool dispatched =
