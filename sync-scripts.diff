@@ -1,0 +1,125 @@
+Refactor repetitive makefile shell commands into external scripts (bug 504444).
+
+diff --git a/parser/html/java/htmlparser/Makefile b/parser/html/java/htmlparser/Makefile
+--- a/parser/html/java/htmlparser/Makefile
++++ b/parser/html/java/htmlparser/Makefile
+@@ -34,11 +34,9 @@
+ # the provisions above, a recipient may use your version of this file under
+ # the terms of any one of the MPL, the GPL or the LGPL.
+ #
+ # ***** END LICENSE BLOCK *****
+ 
+ SVN_BASE=http://svn.versiondude.net/whattf/htmlparser/trunk
+ 
+ sync:: \
+-; rm -rf src && \
+-  svn co $(SVN_BASE)/src/nu/validator/htmlparser/impl src && \
+-  find src -name .svn | xargs rm -rf
++; ../sync-src.sh $(SVN_BASE)/src/nu/validator/htmlparser/impl
+diff --git a/parser/html/java/javaparser/Makefile b/parser/html/java/javaparser/Makefile
+--- a/parser/html/java/javaparser/Makefile
++++ b/parser/html/java/javaparser/Makefile
+@@ -40,20 +40,13 @@ SVN_BASE=http://javaparser.googlecode.co
+ 
+ libs:: \
+ ; mkdir -p bin && \
+   find src -name "*.java" | \
+     xargs javac -g -d bin && \
+   jar cf javaparser.jar -C bin .
+ 
+ sync:: \
+-; rm -rf src && \
+-  svn co $(SVN_BASE)/src && \
+-  find src -name .svn | xargs rm -rf ; \
+-  \
+-  for file in COPYING COPYING.LESSER readme.txt ; \
+-  do \
+-    rm -f $$file ; \
+-    svn cat $(SVN_BASE)/$$file > $$file ; \
+-  done
++; ../sync-src.sh $(SVN_BASE)/src && \
++  ../sync-files.sh $(SVN_BASE) COPYING COPYING.LESSER readme.txt
+ 
+ clean:: \
+ ; rm -rf bin javaparser.jar
+diff --git a/parser/html/java/sync-files.sh b/parser/html/java/sync-files.sh
+new file mode 100755
+--- /dev/null
++++ b/parser/html/java/sync-files.sh
+@@ -0,0 +1,18 @@
++#!/usr/bin/env sh
++
++if [ $# -gt 1 ]
++then
++  REPO_BASE_URI=$1
++  shift
++else
++  echo
++  echo "Usage: sh $0 http://path/to/source [file ...]"
++  echo
++  exit 1
++fi
++
++for file in $@
++do
++  rm -f $file
++  svn cat $REPO_BASE_URI/$file > `basename $file`
++done
+diff --git a/parser/html/java/sync-src.sh b/parser/html/java/sync-src.sh
+new file mode 100755
+--- /dev/null
++++ b/parser/html/java/sync-src.sh
+@@ -0,0 +1,27 @@
++#!/usr/bin/env sh
++
++if [ $# -eq 1 ]
++then
++    REPO_URI=$1
++else
++    echo
++    echo "Usage: sh $0 http://path/to/source"
++    echo
++    exit 1
++fi
++
++check_out() {
++  svn co $REPO_URI src-svn && \
++    find src-svn -name .svn | xargs rm -rf
++}
++
++copy_over() {
++  mkdir -p src && \
++    cp -r src-svn/* src/
++}
++
++clean_up() {
++  rm -rf src-svn
++}
++
++check_out && copy_over && clean_up
+diff --git a/parser/html/java/translator/Makefile b/parser/html/java/translator/Makefile
+--- a/parser/html/java/translator/Makefile
++++ b/parser/html/java/translator/Makefile
+@@ -40,20 +40,13 @@ SVN_BASE=http://svn.versiondude.net/what
+ 
+ libs:: \
+ ; mkdir -p bin && \
+   find src -name "*.java" | \
+     xargs javac -cp ../javaparser.jar -g -d bin && \
+   jar cfm translator.jar manifest.txt -C bin .
+ 
+ sync:: \
+-; rm -rf src && \
+-  svn co $(SVN_BASE)/translator-src src && \
+-  find src -name .svn | xargs rm -rf ; \
+-  \
+-  for file in LICENSE.txt README.txt ; \
+-  do \
+-    rm -f $$file ; \
+-    svn cat $(SVN_BASE)/$$file > $$file ; \
+-  done
++; ../sync-src.sh $(SVN_BASE)/translator-src && \
++  ../sync-files.sh $(SVN_BASE) LICENSE.txt README.txt
+ 
+ clean:: \
+ ; rm -rf bin translator.jar

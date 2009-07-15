@@ -1,3 +1,6 @@
+sync-scripts.diff
+exclude-only-parser-java-class-files.diff
+relocate-java-sources.diff
 own-thread-pool-monitor.diff
 functor.diff
 runnable-functor.diff
