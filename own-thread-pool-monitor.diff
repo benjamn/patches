@@ -1,0 +1,260 @@
+Removing nsEventQueue::Monitor and client dependencies.
+
+diff --git a/xpcom/threads/nsEventQueue.h b/xpcom/threads/nsEventQueue.h
+--- a/xpcom/threads/nsEventQueue.h
++++ b/xpcom/threads/nsEventQueue.h
+@@ -77,21 +77,16 @@ public:
+     return GetEvent(PR_FALSE, runnable);
+   }
+ 
+   // This method waits for and returns the next pending event.
+   PRBool WaitPendingEvent(nsIRunnable **runnable) {
+     return GetEvent(PR_TRUE, runnable);
+   }
+ 
+-  // Expose the event queue's monitor for "power users"
+-  PRMonitor *Monitor() {
+-    return mMonitor;
+-  }
+-
+ private:
+ 
+   PRBool IsEmpty() {
+     return !mHead || (mHead == mTail && mOffsetHead == mOffsetTail);
+   }
+ 
+   enum { EVENTS_PER_PAGE = 250 };
+ 
+diff --git a/xpcom/threads/nsThreadPool.cpp b/xpcom/threads/nsThreadPool.cpp
+--- a/xpcom/threads/nsThreadPool.cpp
++++ b/xpcom/threads/nsThreadPool.cpp
+@@ -64,17 +64,18 @@ static PRLogModuleInfo *sLog = PR_NewLog
+ 
+ NS_IMPL_THREADSAFE_ADDREF(nsThreadPool)
+ NS_IMPL_THREADSAFE_RELEASE(nsThreadPool)
+ NS_IMPL_QUERY_INTERFACE3_CI(nsThreadPool, nsIThreadPool, nsIEventTarget,
+                             nsIRunnable)
+ NS_IMPL_CI_INTERFACE_GETTER2(nsThreadPool, nsIThreadPool, nsIEventTarget)
+ 
+ nsThreadPool::nsThreadPool()
+-  : mThreadLimit(DEFAULT_THREAD_LIMIT)
++  : mThreadsMonitor("nsThreadPool::mThreadsMonitor")
++  , mThreadLimit(DEFAULT_THREAD_LIMIT)
+   , mIdleThreadLimit(DEFAULT_IDLE_THREAD_LIMIT)
+   , mIdleThreadTimeout(DEFAULT_IDLE_THREAD_TIMEOUT)
+   , mIdleCount(0)
+   , mShutdown(PR_FALSE)
+ {
+ }
+ 
+ nsThreadPool::~nsThreadPool()
+@@ -84,40 +85,41 @@ nsThreadPool::~nsThreadPool()
+ 
+ nsresult
+ nsThreadPool::PutEvent(nsIRunnable *event)
+ {
+   // Avoid spawning a new thread while holding the event queue lock...
+  
+   PRBool spawnThread = PR_FALSE;
+   {
+-    nsAutoMonitor mon(mEvents.Monitor());
++    mozilla::MonitorAutoEnter mon(mThreadsMonitor);
+ 
+     LOG(("THRD-P(%p) put [%d %d %d]\n", this, mIdleCount, mThreads.Count(),
+          mThreadLimit));
+     NS_ASSERTION(mIdleCount <= (PRUint32) mThreads.Count(), "oops");
+ 
+     // Make sure we have a thread to service this event.
+     if (mIdleCount == 0 && mThreads.Count() < (PRInt32) mThreadLimit)
+       spawnThread = PR_TRUE;
+ 
+-    mEvents.PutEvent(event);
++    if (NS_SUCCEEDED(mEvents.PutEvent(event)))
++      mon.NotifyAll();
+   }
+ 
+   LOG(("THRD-P(%p) put [spawn=%d]\n", this, spawnThread));
+   if (!spawnThread)
+     return NS_OK;
+ 
+   nsCOMPtr<nsIThread> thread;
+   nsThreadManager::get()->NewThread(0, getter_AddRefs(thread));
+   NS_ENSURE_STATE(thread);
+ 
+   PRBool killThread = PR_FALSE;
+   {
+-    nsAutoMonitor mon(mEvents.Monitor());
++    mozilla::MonitorAutoEnter mon(mThreadsMonitor);
+     if (mThreads.Count() < (PRInt32) mThreadLimit) {
+       mThreads.AppendObject(thread);
+     } else {
+       killThread = PR_TRUE;  // okay, we don't need this thread anymore
+     }
+   }
+   LOG(("THRD-P(%p) put [%p kill=%d]\n", this, thread.get(), killThread));
+   if (killThread) {
+@@ -159,28 +161,28 @@ nsThreadPool::Run()
+ 
+   PRBool shutdownThreadOnExit = PR_FALSE;
+   PRBool exitThread = PR_FALSE;
+   PRBool wasIdle = PR_FALSE;
+   PRIntervalTime idleSince;
+ 
+   nsCOMPtr<nsIThreadPoolListener> listener;
+   {
+-    nsAutoMonitor mon(mEvents.Monitor());
++    mozilla::MonitorAutoEnter mon(mThreadsMonitor);
+     listener = mListener;
+   }
+ 
+   if (listener) {
+     listener->OnThreadCreated();
+   }
+ 
+   do {
+     nsCOMPtr<nsIRunnable> event;
+     {
+-      nsAutoMonitor mon(mEvents.Monitor());
++      mozilla::MonitorAutoEnter mon(mThreadsMonitor);
+       if (!mEvents.GetPendingEvent(getter_AddRefs(event))) {
+         PRIntervalTime now     = PR_IntervalNow();
+         PRIntervalTime timeout = PR_MillisecondsToInterval(mIdleThreadTimeout);
+ 
+         // If we are shutting down, then don't keep any idle threads
+         if (mShutdown) {
+           exitThread = PR_TRUE;
+         } else {
+@@ -269,17 +271,17 @@ nsThreadPool::IsOnCurrentThread(PRBool *
+ }
+ 
+ NS_IMETHODIMP
+ nsThreadPool::Shutdown()
+ {
+   nsCOMArray<nsIThread> threads;
+   nsCOMPtr<nsIThreadPoolListener> listener;
+   {
+-    nsAutoMonitor mon(mEvents.Monitor());
++    mozilla::MonitorAutoEnter mon(mThreadsMonitor);
+     mShutdown = PR_TRUE;
+     mon.NotifyAll();
+ 
+     threads.AppendObjects(mThreads);
+     mThreads.Clear();
+ 
+     // Swap in a null listener so that we release the listener at the end of
+     // this method. The listener will be kept alive as long as the other threads
+@@ -301,17 +303,17 @@ nsThreadPool::GetThreadLimit(PRUint32 *v
+ {
+   *value = mThreadLimit;
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ nsThreadPool::SetThreadLimit(PRUint32 value)
+ {
+-  nsAutoMonitor mon(mEvents.Monitor());
++  mozilla::MonitorAutoEnter mon(mThreadsMonitor);
+   mThreadLimit = value;
+   if (mIdleThreadLimit > mThreadLimit)
+     mIdleThreadLimit = mThreadLimit;
+   mon.NotifyAll();  // wake up threads so they observe this change
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+@@ -319,17 +321,17 @@ nsThreadPool::GetIdleThreadLimit(PRUint3
+ {
+   *value = mIdleThreadLimit;
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ nsThreadPool::SetIdleThreadLimit(PRUint32 value)
+ {
+-  nsAutoMonitor mon(mEvents.Monitor());
++  mozilla::MonitorAutoEnter mon(mThreadsMonitor);
+   mIdleThreadLimit = value;
+   if (mIdleThreadLimit > mThreadLimit)
+     mIdleThreadLimit = mThreadLimit;
+   mon.NotifyAll();  // wake up threads so they observe this change
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+@@ -337,32 +339,32 @@ nsThreadPool::GetIdleThreadTimeout(PRUin
+ {
+   *value = mIdleThreadTimeout;
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ nsThreadPool::SetIdleThreadTimeout(PRUint32 value)
+ {
+-  nsAutoMonitor mon(mEvents.Monitor());
++  mozilla::MonitorAutoEnter mon(mThreadsMonitor);
+   mIdleThreadTimeout = value;
+   mon.NotifyAll();  // wake up threads so they observe this change
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ nsThreadPool::GetListener(nsIThreadPoolListener** aListener)
+ {
+-  nsAutoMonitor mon(mEvents.Monitor());
++  mozilla::MonitorAutoEnter mon(mThreadsMonitor);
+   NS_IF_ADDREF(*aListener = mListener);
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ nsThreadPool::SetListener(nsIThreadPoolListener* aListener)
+ {
+   nsCOMPtr<nsIThreadPoolListener> swappedListener(aListener);
+   {
+-    nsAutoMonitor mon(mEvents.Monitor());
++    mozilla::MonitorAutoEnter mon(mThreadsMonitor);
+     mListener.swap(swappedListener);
+   }
+   return NS_OK;
+ }
+diff --git a/xpcom/threads/nsThreadPool.h b/xpcom/threads/nsThreadPool.h
+--- a/xpcom/threads/nsThreadPool.h
++++ b/xpcom/threads/nsThreadPool.h
+@@ -40,16 +40,17 @@
+ #define nsThreadPool_h__
+ 
+ #include "nsIThreadPool.h"
+ #include "nsIThread.h"
+ #include "nsIRunnable.h"
+ #include "nsEventQueue.h"
+ #include "nsCOMArray.h"
+ #include "nsCOMPtr.h"
++#include "mozilla/Monitor.h"
+ 
+ class nsThreadPool : public nsIThreadPool, public nsIRunnable
+ {
+ public:
+   NS_DECL_ISUPPORTS
+   NS_DECL_NSIEVENTTARGET
+   NS_DECL_NSITHREADPOOL
+   NS_DECL_NSIRUNNABLE
+@@ -57,17 +58,19 @@ public:
+   nsThreadPool();
+ 
+ private:
+   ~nsThreadPool();
+ 
+   void ShutdownThread(nsIThread *thread);
+   nsresult PutEvent(nsIRunnable *event);
+ 
++  mozilla::Monitor      mThreadsMonitor;
+   nsCOMArray<nsIThread> mThreads;
++
+   nsEventQueue          mEvents;
+   PRUint32              mThreadLimit;
+   PRUint32              mIdleThreadLimit;
+   PRUint32              mIdleThreadTimeout;
+   PRUint32              mIdleCount;
+   nsCOMPtr<nsIThreadPoolListener> mListener;
+   PRBool                mShutdown;
+ };
