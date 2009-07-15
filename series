@@ -1,4 +1,7 @@
-include-java-srcs.diff
+own-thread-pool-monitor.diff
+functor.diff
+runnable-functor.diff
+simplify-nsthread-init.diff
 measure-event-queue-latency.diff
 measure-data-available-copy-overhead.diff
 htmltokenizer-getflags.diff
@@ -8,8 +11,6 @@ parser-calls-sink-wbm-dbm.diff
 simplify-nsIDTD.diff
 divorce-parser-from-dtd.diff
 bug-474695.diff
-functor.diff
-runnable-functor.diff
 safe-suspect-forget.diff
 hdst-index-bound.diff
 suppress-title-change-events.diff
