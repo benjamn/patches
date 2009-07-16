@@ -1,4 +1,4 @@
-Bug 504442 - Remove content/html/parser and land parser/html/java/htmlparser/src/*.java. r+sr=jst
+Bug 504442 - Remove content/html/parser and land parser/html/javasrc/*.java.
 
 diff --git a/content/html/parser/Makefile.in b/content/html/parser/Makefile.in
 deleted file mode 100644
@@ -127,33 +127,44 @@ deleted file mode 100644
 -		$(NULL)
 -
 -include $(topsrcdir)/config/rules.mk
-diff --git a/content/html/parser/javasrc/AttributeName.java b/parser/html/java/htmlparser/src/AttributeName.java
+diff --git a/content/html/parser/javasrc/AttributeName.java b/parser/html/javasrc/AttributeName.java
 rename from content/html/parser/javasrc/AttributeName.java
-rename to parser/html/java/htmlparser/src/AttributeName.java
-diff --git a/content/html/parser/javasrc/ElementName.java b/parser/html/java/htmlparser/src/ElementName.java
+rename to parser/html/javasrc/AttributeName.java
+diff --git a/content/html/parser/javasrc/ElementName.java b/parser/html/javasrc/ElementName.java
 rename from content/html/parser/javasrc/ElementName.java
-rename to parser/html/java/htmlparser/src/ElementName.java
-diff --git a/content/html/parser/javasrc/HtmlAttributes.java b/parser/html/java/htmlparser/src/HtmlAttributes.java
+rename to parser/html/javasrc/ElementName.java
+diff --git a/content/html/parser/javasrc/HtmlAttributes.java b/parser/html/javasrc/HtmlAttributes.java
 rename from content/html/parser/javasrc/HtmlAttributes.java
-rename to parser/html/java/htmlparser/src/HtmlAttributes.java
-diff --git a/content/html/parser/javasrc/MetaScanner.java b/parser/html/java/htmlparser/src/MetaScanner.java
+rename to parser/html/javasrc/HtmlAttributes.java
+diff --git a/content/html/parser/javasrc/MetaScanner.java b/parser/html/javasrc/MetaScanner.java
 rename from content/html/parser/javasrc/MetaScanner.java
-rename to parser/html/java/htmlparser/src/MetaScanner.java
-diff --git a/content/html/parser/javasrc/Portability.java b/parser/html/java/htmlparser/src/Portability.java
+rename to parser/html/javasrc/MetaScanner.java
+diff --git a/content/html/parser/javasrc/Portability.java b/parser/html/javasrc/Portability.java
 rename from content/html/parser/javasrc/Portability.java
-rename to parser/html/java/htmlparser/src/Portability.java
-diff --git a/content/html/parser/javasrc/StackNode.java b/parser/html/java/htmlparser/src/StackNode.java
+rename to parser/html/javasrc/Portability.java
+diff --git a/parser/html/javasrc/README.txt b/parser/html/javasrc/README.txt
+new file mode 100644
+--- /dev/null
++++ b/parser/html/javasrc/README.txt
+@@ -0,0 +1,6 @@
++The .java files in this directory were placed here by the Java-to-C++
++translator that lives in parser/html/java/translator.  Together they represent
++a snapshot of the Java code that was translated to produce the corresponding
++.h and .cpp files in the parent directory.  Changing these .java files is not
++worthwhile, as they will just be overwritten by the next translation.  See
++parser/html/java/README.txt for information about performing the translation.
+diff --git a/content/html/parser/javasrc/StackNode.java b/parser/html/javasrc/StackNode.java
 rename from content/html/parser/javasrc/StackNode.java
-rename to parser/html/java/htmlparser/src/StackNode.java
-diff --git a/content/html/parser/javasrc/StateSnapshot.java b/parser/html/java/htmlparser/src/StateSnapshot.java
+rename to parser/html/javasrc/StackNode.java
+diff --git a/content/html/parser/javasrc/StateSnapshot.java b/parser/html/javasrc/StateSnapshot.java
 rename from content/html/parser/javasrc/StateSnapshot.java
-rename to parser/html/java/htmlparser/src/StateSnapshot.java
-diff --git a/content/html/parser/javasrc/Tokenizer.java b/parser/html/java/htmlparser/src/Tokenizer.java
+rename to parser/html/javasrc/StateSnapshot.java
+diff --git a/content/html/parser/javasrc/Tokenizer.java b/parser/html/javasrc/Tokenizer.java
 rename from content/html/parser/javasrc/Tokenizer.java
-rename to parser/html/java/htmlparser/src/Tokenizer.java
-diff --git a/content/html/parser/javasrc/TreeBuilder.java b/parser/html/java/htmlparser/src/TreeBuilder.java
+rename to parser/html/javasrc/Tokenizer.java
+diff --git a/content/html/parser/javasrc/TreeBuilder.java b/parser/html/javasrc/TreeBuilder.java
 rename from content/html/parser/javasrc/TreeBuilder.java
-rename to parser/html/java/htmlparser/src/TreeBuilder.java
-diff --git a/content/html/parser/javasrc/UTF16Buffer.java b/parser/html/java/htmlparser/src/UTF16Buffer.java
+rename to parser/html/javasrc/TreeBuilder.java
+diff --git a/content/html/parser/javasrc/UTF16Buffer.java b/parser/html/javasrc/UTF16Buffer.java
 rename from content/html/parser/javasrc/UTF16Buffer.java
-rename to parser/html/java/htmlparser/src/UTF16Buffer.java
+rename to parser/html/javasrc/UTF16Buffer.java

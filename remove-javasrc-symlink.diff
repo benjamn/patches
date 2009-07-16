@@ -1,0 +1,29 @@
+Bug 504646 - Get rid of the parser/html/javasrc symlink.
+
+diff --git a/parser/html/java/Makefile b/parser/html/java/Makefile
+--- a/parser/html/java/Makefile
++++ b/parser/html/java/Makefile
+@@ -41,14 +41,15 @@ libs:: clean \
+   cd translator && make libs && mv translator.jar ../ && cd ..
+ 
+ sync:: clean \
+ ; cd javaparser ; make sync ; cd .. ; \
+   cd translator ; make sync ; cd .. ; \
+   cd htmlparser ; make sync ; cd ..
+ 
+ translate:: \
+-; java -jar translator.jar htmlparser/src .. ../nsHtml5AtomList.h
++; mkdir -p ../javasrc ; \
++  java -jar translator.jar htmlparser/src .. ../nsHtml5AtomList.h
+ 
+ clean:: \
+ ; cd javaparser ; make clean ; cd .. ; \
+   cd translator ; make clean ; cd .. ; \
+   rm -rf *.jar
+diff --git a/parser/html/javasrc b/parser/html/javasrc
+deleted file mode 120000
+--- a/parser/html/javasrc
++++ /dev/null
+@@ -1,1 +0,0 @@
+-java/htmlparser/src
+\ No newline at end of file
