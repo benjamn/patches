@@ -1,4 +1,4 @@
-Bug 504447 - Make overzealous \.class$ pattern in .hgignore more precise. r=dbaron
+Bug 504447 - Make overzealous \.class$ pattern in .hgignore more precise. r=dbaron sr=jst
 
 diff --git a/.hgignore b/.hgignore
 --- a/.hgignore

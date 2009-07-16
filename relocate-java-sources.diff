@@ -1,4 +1,4 @@
-Bug 504442 - Remove content/html/parser and land parser/html/java/htmlparser/src/*.java.
+Bug 504442 - Remove content/html/parser and land parser/html/java/htmlparser/src/*.java. r+sr=jst
 
 diff --git a/content/html/parser/Makefile.in b/content/html/parser/Makefile.in
 deleted file mode 100644

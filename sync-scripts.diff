@@ -1,4 +1,4 @@
-Refactor repetitive makefile shell commands into external scripts (bug 504444).
+Refactor repetitive makefile shell commands into external scripts (bug 504444). r+sr=jst
 
 diff --git a/parser/html/java/htmlparser/Makefile b/parser/html/java/htmlparser/Makefile
 --- a/parser/html/java/htmlparser/Makefile
