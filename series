@@ -1,7 +1,3 @@
-sync-scripts.diff
-exclude-only-parser-java-class-files.diff
-remove-javasrc-symlink.diff
-relocate-java-sources.diff
 own-thread-pool-monitor.diff
 functor.diff
 runnable-functor.diff

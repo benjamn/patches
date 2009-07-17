@@ -1,4 +1,4 @@
-Bug 504646 - Get rid of the parser/html/javasrc symlink.
+Bug 504646 - Get rid of the parser/html/javasrc symlink. r=hsivonen
 
 diff --git a/parser/html/java/Makefile b/parser/html/java/Makefile
 --- a/parser/html/java/Makefile
