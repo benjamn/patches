@@ -1,0 +1,25 @@
+diff --git a/parser/html/nsHtml5Parser.cpp b/parser/html/nsHtml5Parser.cpp
+--- a/parser/html/nsHtml5Parser.cpp
++++ b/parser/html/nsHtml5Parser.cpp
+@@ -83,19 +83,20 @@ public:
+     return NS_OK;
+   }
+ };
+ //-------------- End ParseContinue Event Definition ------------------------
+ 
+ NS_IMPL_CYCLE_COLLECTION_CLASS(nsHtml5Parser)
+ 
+ NS_INTERFACE_TABLE_HEAD_CYCLE_COLLECTION_INHERITED(nsHtml5Parser) \
+-  NS_INTERFACE_TABLE_INHERITED3(nsHtml5Parser, 
++  NS_INTERFACE_TABLE_INHERITED4(nsHtml5Parser, 
+                                 nsIParser, 
+                                 nsIStreamListener, 
++                                nsICharsetDetectionObserver, 
+                                 nsIContentSink)
+ NS_INTERFACE_TABLE_TAIL_INHERITING(nsContentSink)
+ 
+ NS_IMPL_ADDREF_INHERITED(nsHtml5Parser, nsContentSink)
+ 
+ NS_IMPL_RELEASE_INHERITED(nsHtml5Parser, nsContentSink)
+ 
+ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(nsHtml5Parser, nsContentSink)
