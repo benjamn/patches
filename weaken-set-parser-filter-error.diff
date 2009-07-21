@@ -1,0 +1,22 @@
+diff --git a/parser/html/nsHtml5Parser.cpp b/parser/html/nsHtml5Parser.cpp
+--- a/parser/html/nsHtml5Parser.cpp
++++ b/parser/html/nsHtml5Parser.cpp
+@@ -199,17 +199,17 @@ nsHtml5Parser::SetDocumentCharset(const 
+ {
+   mCharset = aCharset;
+   mCharsetSource = aCharsetSource;
+ }
+ 
+ NS_IMETHODIMP_(void)
+ nsHtml5Parser::SetParserFilter(nsIParserFilter* aFilter)
+ {
+-  NS_ERROR("Attempt to set a parser filter on HTML5 parser.");
++  NS_WARNING("Parser filter set on HTML5 parser will be ignored");
+ }
+ 
+ NS_IMETHODIMP
+ nsHtml5Parser::GetChannel(nsIChannel** aChannel)
+ {
+   return mRequest ? CallQueryInterface(mRequest, aChannel) :
+                     NS_ERROR_NOT_AVAILABLE;
+ }

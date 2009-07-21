@@ -1,0 +1,24 @@
+diff --git a/parser/html/nsHtml5Parser.cpp b/parser/html/nsHtml5Parser.cpp
+--- a/parser/html/nsHtml5Parser.cpp
++++ b/parser/html/nsHtml5Parser.cpp
+@@ -137,17 +137,19 @@ nsHtml5Parser::~nsHtml5Parser()
+   delete mSnapshot;
+ #endif
+ }
+ 
+ // copied from HTML content sink
+ static PRBool
+ IsScriptEnabled(nsIDocument *aDoc, nsIDocShell *aContainer)
+ {
+-  NS_ENSURE_TRUE(aDoc && aContainer, PR_TRUE);
++  NS_ENSURE_TRUE(aDoc, PR_TRUE);
++  // aContainer may be null if called from nsHtml5Parser::ParseFragment
++  // NS_ASSERTION(aContainer, PR_TRUE);
+   nsCOMPtr<nsIScriptGlobalObject> globalObject = aDoc->GetScriptGlobalObject();
+   // Getting context is tricky if the document hasn't had its
+   // GlobalObject set yet
+   if (!globalObject) {
+     nsCOMPtr<nsIScriptGlobalObjectOwner> owner = do_GetInterface(aContainer);
+     NS_ENSURE_TRUE(owner, PR_TRUE);
+     globalObject = owner->GetScriptGlobalObject();
+     NS_ENSURE_TRUE(globalObject, PR_TRUE);
