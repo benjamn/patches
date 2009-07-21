@@ -4061,7 +4061,7 @@ new file mode 100644
 +
 +    private static final int LEAD_OFFSET = 0xD800 - (0x10000 >> 10);
 +
-+    private static final Pattern LINE_PATTERN = Pattern.compile("<code title=\"\">([^<]*)</code> </td> <td> U\\+(\\S*) </td>");
++    private static final Pattern LINE_PATTERN = Pattern.compile("<td> <code title=\"\">([^<]*)</code> </td> <td> U\\+(\\S*) </td>");
 +
 +    private static String toHexString(int c) {
 +        String hexString = Integer.toHexString(c);

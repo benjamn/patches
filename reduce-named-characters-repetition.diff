@@ -195,6 +195,187 @@ new file mode 100644
 +   See also: http://www.w3.org/2003/entities/
 +  --></div></body></html>
 \ No newline at end of file
+diff --git a/parser/html/java/translator/src/nu/validator/htmlparser/generator/GenerateNamedCharactersCpp.java b/parser/html/java/translator/src/nu/validator/htmlparser/generator/GenerateNamedCharactersCpp.java
+--- a/parser/html/java/translator/src/nu/validator/htmlparser/generator/GenerateNamedCharactersCpp.java
++++ b/parser/html/java/translator/src/nu/validator/htmlparser/generator/GenerateNamedCharactersCpp.java
+@@ -89,18 +89,18 @@ public class GenerateNamedCharactersCpp 
+                 entities.put(m.group(1), m.group(2));
+             }
+         }
+ 
+         CppTypes cppTypes = new CppTypes(null);
+         File targetDirectory = new File(args[1]);
+ 
+         generateH(targetDirectory, cppTypes, entities);
++        generateInclude(targetDirectory, cppTypes, entities);
+         generateCpp(targetDirectory, cppTypes, entities);
+-        generateInclude(targetDirectory, cppTypes, entities);
+     }
+ 
+     private static void generateH(File targetDirectory, CppTypes cppTypes,
+             Map<String, String> entities) throws IOException {
+         File hFile = new File(targetDirectory, cppTypes.classPrefix()
+                 + "NamedCharacters.h");
+         Writer out = new OutputStreamWriter(new FileOutputStream(hFile),
+                 "utf-8");
+@@ -132,17 +132,19 @@ public class GenerateNamedCharactersCpp 
+ 
+         out.write("\n#endif // " + cppTypes.classPrefix()
+                 + "NamedCharacters_h__\n");
+         out.flush();
+         out.close();
+     }
+     
+     private static void generateInclude(File targetDirectory, CppTypes cppTypes,
+-            Map<String, String> entities) throws IOException {
++            Map<String, String> entities)
++        throws IOException
++    {
+         File includeFile = new File(targetDirectory, cppTypes.classPrefix()
+                 + "NamedCharactersInclude.h");
+         Writer out = new OutputStreamWriter(new FileOutputStream(includeFile),
+                 "utf-8");
+ 
+         out.write("/* Data generated from the table of named character references found at\n");
+         out.write(" *\n");
+         out.write(" *   http://www.w3.org/TR/html5/named-character-references.html\n");
+@@ -150,72 +152,77 @@ public class GenerateNamedCharactersCpp 
+         out.write(" * Files that #include this file must #define NAMED_CHARACTER_REFERENCE as a\n");
+         out.write(" * macro of five parameters:\n");
+         out.write(" *\n");
+         out.write(" *   1.  a unique integer N identifying the Nth [0,1,..] macro expansion in this file,\n");
+         out.write(" *   2.  a comma-separated sequence of characters comprising the character name,\n");
+         out.write(" *   3.  the length of this sequence of characters,\n");
+         out.write(" *   4.  a comma-separated sequence of PRUnichar literals (high to low) corresponding\n");
+         out.write(" *       to the code-point of the named character, and\n");
+-        out.write(" *   5.  the length of this sequence of literals.\n");
++        out.write(" *   5.  the length of this sequence of literals (either 1 or 2).\n");
+         out.write(" *\n");
+         out.write(" * The macro expansion doesn't have to refer to all or any of these parameters,\n");
+         out.write(" * but common sense dictates that it should involve at least one of them.\n");
+         out.write(" */\n");
+         out.write("\n");
+         out.write("// This #define allows the NAMED_CHARACTER_REFERENCE macro to accept comma-\n");
+         out.write("// separated sequences as single macro arguments.  Using commas directly would\n");
+         out.write("// split the sequence into multiple macro arguments.\n");
+         out.write("#define _ ,\n");
+         out.write("\n");
+ 
+         int i = 0;
+         for (Map.Entry<String, String> entity : entities.entrySet()) {
+             out.write("NAMED_CHARACTER_REFERENCE(" + i++ + ", ");
+-            writeNameInitializer(out, entity);
++            writeNameInitializer(out, entity, " _ ");
+             out.write(", " + entity.getKey().length() + ", ");
+-            writeValueInitializer(out, entity);
++            writeValueInitializer(out, entity, " _ ");
+             int numBytes = (Integer.parseInt(entity.getValue(), 16) <= 0xFFFF) ? 1 : 2;
+             out.write(", " + numBytes + ")\n");
+         }
+ 
+         out.write("\n");
+         out.write("#undef _\n");
+ 
+         out.flush();
+         out.close();
+     }
+ 
+-    private static void writeNameInitializer(Writer out, Map.Entry<String, String> entity)
++    private static void writeNameInitializer(Writer out,
++            Map.Entry<String, String> entity,
++            String separator)
+         throws IOException
+     {
+         String name = entity.getKey();
+         for (int i = 0; i < name.length(); i++) {
+             out.write("'" + name.charAt(i) + "'");
+             if (i < name.length() - 1)
+-                out.write(" _ ");
++                out.write(separator);
+         }
+     }
+ 
+-    private static void writeValueInitializer(Writer out, Map.Entry<String, String> entity)
++    private static void writeValueInitializer(Writer out,
++            Map.Entry<String, String> entity,
++            String separator)
+         throws IOException
+     {
+         int value = Integer.parseInt(entity.getValue(), 16);
+         if (value <= 0xFFFF) {
+             out.write(toHexString(value));
+         } else {
+             int hi = (LEAD_OFFSET + (value >> 10));
+             int lo = (0xDC00 + (value & 0x3FF));
+             out.write(toHexString(hi));
+-            out.write(" _ ");
++            out.write(separator);
+             out.write(toHexString(lo));
+         }
+     }
+ 
+-    private static void defineMacroAndInclude(Writer out, String expansion, String includeFile)
++    private static void defineMacroAndInclude(Writer out, String expansion,
++            String includeFile)
+         throws IOException
+     {
+         out.write("\n#define NAMED_CHARACTER_REFERENCE(N, CHARS, LEN, VALUE, SIZE) \\\n" +
+                   expansion + "\n");
+         out.write("#include \"" + includeFile + "\"\n");
+         out.write("#undef NAMED_CHARACTER_REFERENCE\n");
+     }
+ 
+@@ -276,38 +283,46 @@ public class GenerateNamedCharactersCpp 
+         out.write("  0x203A,\n");
+         out.write("  0x0153,\n");
+         out.write("  0xFFFD,\n");
+         out.write("  0x017E,\n");
+         out.write("  0x0178\n");
+         out.write("};\n");
+ 
+         String includeFile = cppTypes.classPrefix() + "NamedCharactersInclude.h";
+-        defineMacroAndInclude(out, "static PRUnichar const NAME_##N[] = { CHARS };", includeFile);
+-        defineMacroAndInclude(out, "static PRUnichar const VALUE_##N[] = { VALUE };", includeFile);
++        defineMacroAndInclude(out,
++                "static PRUnichar const NAME_##N[] = { CHARS };",
++                includeFile);
++        defineMacroAndInclude(out,
++                "static PRUnichar const VALUE_##N[] = { VALUE };",
++                includeFile);
+ 
+         out.write("\n// XXX bug 501082: for some reason, msvc takes forever to optimize this function\n");
+         out.write("#ifdef _MSC_VER\n");
+         out.write("#pragma optimize(\"\", off)\n");
+         out.write("#endif\n\n");
+         
+         out.write("void\n");
+         out.write(cppTypes.classPrefix()
+                 + "NamedCharacters::initializeStatics()\n");
+         out.write("{\n");
+         out.write("  NAMES = " + cppTypes.arrayTemplate() + "<"
+                 + cppTypes.arrayTemplate() + "<" + cppTypes.charType() + ","
+                 + cppTypes.intType() + ">," + cppTypes.intType() + ">("
+                 + entities.size() + ");\n");
+-        defineMacroAndInclude(out, "  NAMES[N] = jArray<PRUnichar,PRInt32>((PRUnichar*)NAME_##N, LEN);", includeFile);
++        defineMacroAndInclude(out,
++                "  NAMES[N] = jArray<PRUnichar,PRInt32>((PRUnichar*)NAME_##N, LEN);",
++                includeFile);
+ 
+         out.write("\n  VALUES = new " + cppTypes.arrayTemplate() + "<"
+                 + cppTypes.charType() + "," + cppTypes.intType() + ">["
+                 + entities.size() + "];\n");
+-        defineMacroAndInclude(out, "  VALUES[N] = jArray<PRUnichar,PRInt32>((PRUnichar*)VALUE_##N, SIZE);", includeFile);
++        defineMacroAndInclude(out,
++                "  VALUES[N] = jArray<PRUnichar,PRInt32>((PRUnichar*)VALUE_##N, SIZE);",
++                includeFile);
+ 
+         out.write("\n");
+         out.write("  WINDOWS_1252 = new " + cppTypes.charType() + "*[32];\n");
+         out.write("  for (" + cppTypes.intType() + " i = 0; i < 32; ++i) {\n");
+         out.write("    WINDOWS_1252[i] = (" + cppTypes.charType() + "*)&(WINDOWS_1252_DATA[i]);\n");
+         out.write("  }\n");
+         out.write("}\n");
+         out.write("\n");
 diff --git a/parser/html/nsHtml5NamedCharacters.cpp b/parser/html/nsHtml5NamedCharacters.cpp
 --- a/parser/html/nsHtml5NamedCharacters.cpp
 +++ b/parser/html/nsHtml5NamedCharacters.cpp
@@ -17380,7 +17561,7 @@ new file mode 100644
 + *   3.  the length of this sequence of characters,
 + *   4.  a comma-separated sequence of PRUnichar literals (high to low) corresponding
 + *       to the code-point of the named character, and
-+ *   5.  the length of this sequence of literals.
++ *   5.  the length of this sequence of literals (either 1 or 2).
 + *
 + * The macro expansion doesn't have to refer to all or any of these parameters,
 + * but common sense dictates that it should involve at least one of them.
