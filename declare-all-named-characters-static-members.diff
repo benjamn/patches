@@ -1,0 +1,61 @@
+Bug 505599 - [HTML5] GenerateNamedCharactersCpp.java should generate static member declarations for VALUES and WINDOWS_1252 as well as NAMES.
+
+diff --git a/parser/html/java/translator/src/nu/validator/htmlparser/generator/GenerateNamedCharactersCpp.java b/parser/html/java/translator/src/nu/validator/htmlparser/generator/GenerateNamedCharactersCpp.java
+--- a/parser/html/java/translator/src/nu/validator/htmlparser/generator/GenerateNamedCharactersCpp.java
++++ b/parser/html/java/translator/src/nu/validator/htmlparser/generator/GenerateNamedCharactersCpp.java
+@@ -130,16 +130,24 @@ public class GenerateNamedCharactersCpp 
+         out.write("};\n");
+ 
+         out.write("\n#endif // " + cppTypes.classPrefix()
+                 + "NamedCharacters_h__\n");
+         out.flush();
+         out.close();
+     }
+ 
++    private static void writeStaticMemberDeclaration(Writer out,
++            CppTypes cppTypes, String type, String name)
++        throws IOException
++    {
++        out.write(type + " " + cppTypes.classPrefix() + "NamedCharacters::"
++                + name + ";\n");
++    }
++
+     private static void generateCpp(File targetDirectory, CppTypes cppTypes,
+             Map<String, String> entities) throws IOException {
+         File hFile = new File(targetDirectory, cppTypes.classPrefix()
+                 + "NamedCharacters.cpp");
+         Writer out = new OutputStreamWriter(new FileOutputStream(hFile),
+                 "utf-8");
+ 
+         out.write("#define " + cppTypes.classPrefix()
+@@ -151,20 +159,27 @@ public class GenerateNamedCharactersCpp 
+             out.write("#include \"" + include + ".h\"\n");
+         }
+ 
+         out.write('\n');
+         out.write("#include \"" + cppTypes.classPrefix()
+                 + "NamedCharacters.h\"\n");
+         out.write("\n");
+ 
+-        out.write("" + cppTypes.arrayTemplate() + "<"
++        String staticMemberType = cppTypes.arrayTemplate() + "<"
+                 + cppTypes.arrayTemplate() + "<" + cppTypes.charType() + ","
+-                + cppTypes.intType() + ">," + cppTypes.intType() + "> "
+-                + cppTypes.classPrefix() + "NamedCharacters::NAMES;\n");
++                + cppTypes.intType() + ">," + cppTypes.intType() + ">";
++        writeStaticMemberDeclaration(out, cppTypes, staticMemberType, "NAMES");
++
++        staticMemberType = cppTypes.arrayTemplate() + "<"
++                + cppTypes.charType() + "," + cppTypes.intType() + ">*";
++        writeStaticMemberDeclaration(out, cppTypes, staticMemberType, "VALUES");
++
++        staticMemberType = cppTypes.charType() + "**";
++        writeStaticMemberDeclaration(out, cppTypes, staticMemberType, "WINDOWS_1252");
+ 
+         out.write("static " + cppTypes.charType() + " const WINDOWS_1252_DATA[] = {\n");
+         out.write("  0x20AC,\n");
+         out.write("  0xFFFD,\n");
+         out.write("  0x201A,\n");
+         out.write("  0x0192,\n");
+         out.write("  0x201E,\n");
+         out.write("  0x2026,\n");
