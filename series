@@ -1,4 +1,3 @@
-commit-translator-java-sources.diff
 declare-all-named-characters-static-members.diff
 reduce-named-characters-repetition.diff
 regenerate-named-characters-files.diff
