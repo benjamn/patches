@@ -1,13 +1,10 @@
-declare-all-named-characters-static-members.diff
-reduce-named-characters-repetition.diff
-regenerate-named-characters-files.diff
-qi-html5-parser-to-char-det-obs.diff
-weaken-set-parser-filter-error.diff
-allow-null-docshell.diff
-own-thread-pool-monitor.diff
 functor.diff
 runnable-functor.diff
 simplify-nsthread-init.diff
+binary-search-char-ref-names.diff
+weaken-set-parser-filter-error.diff
+allow-null-docshell.diff
+own-thread-pool-monitor.diff
 measure-event-queue-latency.diff
 measure-data-available-copy-overhead.diff
 htmltokenizer-getflags.diff
