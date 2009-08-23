@@ -7,12 +7,6 @@ allow-null-docshell.diff
 own-thread-pool-monitor.diff
 measure-event-queue-latency.diff
 measure-data-available-copy-overhead.diff
-htmltokenizer-getflags.diff
-dtdmode-simplifications.diff
-nsidtd-kill-resume-interrupt.diff
-parser-calls-sink-wbm-dbm.diff
-simplify-nsIDTD.diff
-divorce-parser-from-dtd.diff
 bug-474695.diff
 safe-suspect-forget.diff
 hdst-index-bound.diff
