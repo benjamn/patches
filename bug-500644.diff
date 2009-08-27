@@ -1,0 +1,135 @@
+Bug 500644 - PAC: crash when using PAC-based manual proxy config and the attached testcase.
+
+diff --git a/js/src/jsapi.cpp b/js/src/jsapi.cpp
+--- a/js/src/jsapi.cpp
++++ b/js/src/jsapi.cpp
+@@ -5693,16 +5693,20 @@ JS_ClearRegExpStatics(JSContext *cx)
+ 
+     /* No locking required, cx is thread-private and input must be live. */
+     res = &cx->regExpStatics;
+     res->input = NULL;
+     res->multiline = JS_FALSE;
+     res->parenCount = 0;
+     res->lastMatch = res->lastParen = js_EmptySubString;
+     res->leftContext = res->rightContext = js_EmptySubString;
++    if (res->moreParens) {
++      cx->free(res->moreParens);
++      res->moreParens = NULL;
++    }
+     cx->runtime->gcPoke = JS_TRUE;
+ }
+ 
+ JS_PUBLIC_API(void)
+ JS_ClearRegExpRoots(JSContext *cx)
+ {
+     JSRegExpStatics *res;
+ 
+diff --git a/js/src/jsregexp.cpp b/js/src/jsregexp.cpp
+--- a/js/src/jsregexp.cpp
++++ b/js/src/jsregexp.cpp
+@@ -5130,49 +5130,50 @@ js_InitRegExpStatics(JSContext *cx)
+     JS_INIT_ARENA_POOL(&cx->regexpPool, "regexp",
+                        12 * 1024 - 40,  /* FIXME: bug 421435 */
+                        sizeof(void *), &cx->scriptStackQuota);
+ 
+     JS_ClearRegExpStatics(cx);
+ }
+ 
+ JS_FRIEND_API(void)
+-js_SaveRegExpStatics(JSContext *cx, JSRegExpStatics *statics,
+-                     JSTempValueRooter *tvr)
++js_SaveAndClearRegExpStatics(JSContext *cx, JSRegExpStatics *statics,
++                             JSTempValueRooter *tvr)
+ {
+   *statics = cx->regExpStatics;
+   JS_PUSH_TEMP_ROOT_STRING(cx, statics->input, tvr);
++  /* Prevent JS_ClearRegExpStatics from freeing moreParens, since we've only
++   * moved it elsewhere (into statics->moreParens). */
++  cx->regExpStatics.moreParens = NULL;
++  JS_ClearRegExpStatics(cx);
+ }
+ 
+ JS_FRIEND_API(void)
+ js_RestoreRegExpStatics(JSContext *cx, JSRegExpStatics *statics,
+                         JSTempValueRooter *tvr)
+ {
++  /* Clear/free any new JSRegExpStatics data before clobbering. */
++  JS_ClearRegExpStatics(cx);
+   cx->regExpStatics = *statics;
+   JS_POP_TEMP_ROOT(cx, tvr);
+ }
+ 
+ void
+ js_TraceRegExpStatics(JSTracer *trc, JSContext *acx)
+ {
+     JSRegExpStatics *res = &acx->regExpStatics;
+ 
+     if (res->input)
+         JS_CALL_STRING_TRACER(trc, res->input, "res->input");
+ }
+ 
+ void
+ js_FreeRegExpStatics(JSContext *cx)
+ {
+-    JSRegExpStatics *res = &cx->regExpStatics;
+-
+-    if (res->moreParens) {
+-        cx->free(res->moreParens);
+-        res->moreParens = NULL;
+-    }
++    JS_ClearRegExpStatics(cx);
+     JS_FinishArenaPool(&cx->regexpPool);
+ }
+ 
+ static JSBool
+ regexp_static_getProperty(JSContext *cx, JSObject *obj, jsval id, jsval *vp)
+ {
+     jsint slot;
+     JSRegExpStatics *res;
+diff --git a/js/src/jsregexp.h b/js/src/jsregexp.h
+--- a/js/src/jsregexp.h
++++ b/js/src/jsregexp.h
+@@ -61,18 +61,18 @@ struct JSRegExpStatics {
+     JSSubString *moreParens;    /* null or realloc'd vector for $10, etc. */
+     JSSubString lastMatch;      /* last string matched (perl $&) */
+     JSSubString lastParen;      /* last paren matched (perl $+) */
+     JSSubString leftContext;    /* input to left of last match (perl $`) */
+     JSSubString rightContext;   /* input to right of last match (perl $') */
+ };
+ 
+ extern JS_FRIEND_API(void)
+-js_SaveRegExpStatics(JSContext *cx, JSRegExpStatics *statics,
+-                     JSTempValueRooter *tvr);
++js_SaveAndClearRegExpStatics(JSContext *cx, JSRegExpStatics *statics,
++                             JSTempValueRooter *tvr);
+ 
+ extern JS_FRIEND_API(void)
+ js_RestoreRegExpStatics(JSContext *cx, JSRegExpStatics *statics,
+                         JSTempValueRooter *tvr);
+ 
+ /*
+  * This struct holds a bitmap representation of a class from a regexp.
+  * There's a list of these referenced by the classList field in the JSRegExp
+diff --git a/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp b/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp
+--- a/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp
++++ b/js/src/xpconnect/src/XPCSafeJSObjectWrapper.cpp
+@@ -524,18 +524,17 @@ XPC_SJOW_DelProperty(JSContext *cx, JSOb
+ }
+ 
+ static inline JSBool
+ CallWithoutStatics(JSContext *cx, JSObject *obj, jsval fval, uintN argc,
+                    jsval *argv, jsval *rval)
+ {
+   JSRegExpStatics statics;
+   JSTempValueRooter tvr;
+-  js_SaveRegExpStatics(cx, &statics, &tvr);
+-  JS_ClearRegExpStatics(cx);
++  js_SaveAndClearRegExpStatics(cx, &statics, &tvr);
+   JSStackFrame *fp = JS_SaveFrameChain(cx);
+   uint32 options =
+     JS_SetOptions(cx, JS_GetOptions(cx) | JSOPTION_DONT_REPORT_UNCAUGHT);
+   JSBool ok = ::JS_CallFunctionValue(cx, obj, fval, argc, argv, rval);
+   JS_SetOptions(cx, options);
+   JS_RestoreFrameChain(cx, fp);
+   js_RestoreRegExpStatics(cx, &statics, &tvr);
+   return ok;

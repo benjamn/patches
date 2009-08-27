@@ -1,3 +1,4 @@
+bug-500644.diff
 functor.diff
 runnable-functor.diff
 simplify-nsthread-init.diff
