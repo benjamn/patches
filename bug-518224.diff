@@ -1,0 +1,123 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1253674011 25200
+# Node ID 0ce3ba9f886766850859535661a889d7930fb1ff
+# Parent  869c38f0db535eb102a7f75c61d94ed94080a475
+Bug 518224 - [HTML5] Update parser/html/java Makefiles to sync from hg.mozilla.org/projects/htmlparser.
+
+diff --git a/.hgsub b/.hgsub
+new file mode 100644
+--- /dev/null
++++ b/.hgsub
+@@ -0,0 +1,1 @@
++parser/html/java/htmlparser/src = https://hg.mozilla.org/projects/htmlparser
+diff --git a/parser/html/java/Makefile b/parser/html/java/Makefile
+--- a/parser/html/java/Makefile
++++ b/parser/html/java/Makefile
+@@ -32,24 +32,28 @@
+ # decision by deleting the provisions above and replace them with the notice
+ # and other provisions required by the GPL or the LGPL. If you do not delete
+ # the provisions above, a recipient may use your version of this file under
+ # the terms of any one of the MPL, the GPL or the LGPL.
+ #
+ # ***** END LICENSE BLOCK *****
+ 
+ libs:: clean \
+-; cd javaparser && make libs && mv javaparser.jar ../ && cd .. && \
+-  cd translator && make libs && mv translator.jar ../ && cd ..
++; cd javaparser && make libs && cd .. && \
++  cd htmlparser && make libs && cd ..
+ 
+ sync:: clean \
+ ; cd javaparser ; make sync ; cd .. ; \
+-  cd translator ; make sync ; cd .. ; \
+   cd htmlparser ; make sync ; cd ..
+ 
+ translate:: \
+ ; mkdir -p ../javasrc ; \
+-  java -jar translator.jar htmlparser/src .. ../nsHtml5AtomList.h
++  java -jar translator.jar \
++    htmlparser/src/src/nu/validator/htmlparser/impl \
++    .. ../nsHtml5AtomList.h
+ 
+ clean:: \
+ ; cd javaparser ; make clean ; cd .. ; \
+-  cd translator ; make clean ; cd .. ; \
+-  rm -rf *.jar
++  cd htmlparser ; make clean ; cd ..
++
++spotless:: \
++; cd javaparser ; make spotless ; cd .. ; \
++  cd htmlparser ; make spotless ; cd ..
+diff --git a/parser/html/java/htmlparser/Makefile b/parser/html/java/htmlparser/Makefile
+--- a/parser/html/java/htmlparser/Makefile
++++ b/parser/html/java/htmlparser/Makefile
+@@ -31,12 +31,27 @@
+ # use your version of this file under the terms of the MPL, indicate your
+ # decision by deleting the provisions above and replace them with the notice
+ # and other provisions required by the GPL or the LGPL. If you do not delete
+ # the provisions above, a recipient may use your version of this file under
+ # the terms of any one of the MPL, the GPL or the LGPL.
+ #
+ # ***** END LICENSE BLOCK *****
+ 
+-SVN_BASE=https://whattf.svn.cvsdude.com/htmlparser/trunk
++libs:: \
++; mkdir -p bin && \
++  find src/translator-src/nu/validator/htmlparser -name "*.java" | \
++    xargs javac -cp ../javaparser.jar -g -d bin && \
++  jar cfm ../translator.jar manifest.txt -C bin .
++
++named_characters:: libs \
++; java -cp ../translator.jar \
++    nu.validator.htmlparser.generator.GenerateNamedCharactersCpp \
++      named-character-references.html \
++      ../..
+ 
+ sync:: \
+-; ../sync-src.sh $(SVN_BASE)/src/nu/validator/htmlparser/impl
++; cd src && hg pull && cd ..
++
++clean:: \
++; rm -rf bin ../translator.jar
++
++spotless:: clean
+diff --git a/parser/html/java/translator/manifest.txt b/parser/html/java/htmlparser/manifest.txt
+copy from parser/html/java/translator/manifest.txt
+copy to parser/html/java/htmlparser/manifest.txt
+diff --git a/parser/html/java/translator/named-character-references.html b/parser/html/java/htmlparser/named-character-references.html
+rename from parser/html/java/translator/named-character-references.html
+rename to parser/html/java/htmlparser/named-character-references.html
+diff --git a/parser/html/java/javaparser/Makefile b/parser/html/java/javaparser/Makefile
+--- a/parser/html/java/javaparser/Makefile
++++ b/parser/html/java/javaparser/Makefile
+@@ -37,16 +37,19 @@
+ # ***** END LICENSE BLOCK *****
+ 
+ SVN_BASE=http://javaparser.googlecode.com/svn/trunk/JavaParser
+ 
+ libs:: \
+ ; mkdir -p bin && \
+   find src -name "*.java" | \
+     xargs javac -g -d bin && \
+-  jar cf javaparser.jar -C bin .
++  jar cf ../javaparser.jar -C bin .
+ 
+ sync:: \
+-; ../sync-src.sh $(SVN_BASE)/src && \
+-  ../sync-files.sh $(SVN_BASE) COPYING COPYING.LESSER readme.txt
++; ./sync-src.sh $(SVN_BASE)/src && \
++  ./sync-files.sh $(SVN_BASE) COPYING COPYING.LESSER readme.txt
+ 
+ clean:: \
+-; rm -rf bin javaparser.jar
++; rm -rf bin ../javaparser.jar
++
++spotless:: clean \
++; rm -rf src COPYING COPYING.LESSER readme.txt
+diff --git a/parser/html/java/sync-files.sh b/parser/html/java/javaparser/sync-files.sh
+rename from parser/html/java/sync-files.sh
+rename to parser/html/java/javaparser/sync-files.sh
+diff --git a/parser/html/java/sync-src.sh b/parser/html/java/javaparser/sync-src.sh
+rename from parser/html/java/sync-src.sh
+rename to parser/html/java/javaparser/sync-src.sh
