@@ -1,4 +1,5 @@
 bug-518224.diff
+remove-translator-dir.diff
 bug-500644.diff
 functor.diff
 runnable-functor.diff
