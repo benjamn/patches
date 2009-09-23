@@ -3,7 +3,7 @@ Added a test to ensure pointer-to-callable-data-member compatibility (bug 486440
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
 +++ b/xpcom/glue/Makefile.in
-@@ -122,16 +122,20 @@ SDK_HEADERS = \
+@@ -116,16 +116,20 @@ SDK_HEADERS = \
  		$(NULL)
  
  EXPORTS_NAMESPACES = mozilla
@@ -28,7 +28,7 @@ diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/functors/Functor.h
-@@ -0,0 +1,620 @@
+@@ -0,0 +1,635 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -279,15 +279,30 @@ new file mode 100644
 +   * distinction becomes important when the stored value needs to be copied or
 +   * AddRefed but the actual parameter type is just a bare pointer.
 +   */
++private:
 +  template <typename Bound>
 +  typename Binder<Functor, Bound>::Outgoing
-+  bind(Bound bound) {
++  bind_helper(Bound bound) {
 +    typedef Binder<Functor, Bound> B;
 +    typedef typename B::Outgoing O;
 +    typedef typename O::ImplType I;
 +    I* binder = new B(*this, bound);
 +    return O(binder);
 +  }
++  template <typename T> struct bind_traits { typedef T non_ptr_t; };
++  template <typename T> struct bind_traits<T*> { typedef T* ptr_t; };
++
++public:
++  template <typename P>
++  typename Binder<Functor, P>::Outgoing
++  bind(P p) { return bind_helper<typename bind_traits<P>::non_ptr_t>(p); }
++
++#define BIND_PTR(SMART_TYPE)                                                  \
++  template <class T> typename Binder<Functor, SMART_TYPE<T> >::Outgoing       \
++  bind_##SMART_TYPE(T* t) { SMART_TYPE<T> sp(t); return bind_helper(sp); }
++  BIND_PTR(nsRefPtr)
++  BIND_PTR(nsCOMPtr)
++#undef BIND_PTR
 +
 +  /**
 +   * The bind_result method may be called against non-void Functors and returns
@@ -736,9 +751,9 @@ new file mode 100644
 +//
 +//   tmpl = """
 +// template <typename R, class C%(ctnPs)s>
-+// Functor<R, TLIST%(j)d(C*%(cPs)s)>
++// Functor<R, TLIST%(j)d(C%(const)s*%(cPs)s)>
 +// functor(R (CALLING_CONVENTION C::*m)(%(Ps)s)%(const)s) {
-+//   return Functor<R, TLIST%(j)d(C*%(cPs)s)>::method(m);
++//   return Functor<R, TLIST%(j)d(C%(const)s*%(cPs)s)>::method(m);
 +// }"""
 +//
 +//   plural = "s"[int(i==1):]
@@ -775,9 +790,9 @@ new file mode 100644
 +  return Functor<R, TLIST1(C*)>::method(m);
 +}
 +template <typename R, class C>
-+Functor<R, TLIST1(C*)>
++Functor<R, TLIST1(C const*)>
 +functor(R (CALLING_CONVENTION C::*m)() const) {
-+  return Functor<R, TLIST1(C*)>::method(m);
++  return Functor<R, TLIST1(C const*)>::method(m);
 +}
 +// Adapter for global functions with 0 parameters:
 +template <typename R>
@@ -794,9 +809,9 @@ new file mode 100644
 +  return Functor<R, TLIST2(C*, P0)>::method(m);
 +}
 +template <typename R, class C, typename P0>
-+Functor<R, TLIST2(C*, P0)>
++Functor<R, TLIST2(C const*, P0)>
 +functor(R (CALLING_CONVENTION C::*m)(P0) const) {
-+  return Functor<R, TLIST2(C*, P0)>::method(m);
++  return Functor<R, TLIST2(C const*, P0)>::method(m);
 +}
 +// Adapter for global functions with 1 parameter:
 +template <typename R, typename P0>
@@ -813,9 +828,9 @@ new file mode 100644
 +  return Functor<R, TLIST3(C*, P0, P1)>::method(m);
 +}
 +template <typename R, class C, typename P0, typename P1>
-+Functor<R, TLIST3(C*, P0, P1)>
++Functor<R, TLIST3(C const*, P0, P1)>
 +functor(R (CALLING_CONVENTION C::*m)(P0, P1) const) {
-+  return Functor<R, TLIST3(C*, P0, P1)>::method(m);
++  return Functor<R, TLIST3(C const*, P0, P1)>::method(m);
 +}
 +// Adapter for global functions with 2 parameters:
 +template <typename R, typename P0, typename P1>
@@ -832,9 +847,9 @@ new file mode 100644
 +  return Functor<R, TLIST4(C*, P0, P1, P2)>::method(m);
 +}
 +template <typename R, class C, typename P0, typename P1, typename P2>
-+Functor<R, TLIST4(C*, P0, P1, P2)>
++Functor<R, TLIST4(C const*, P0, P1, P2)>
 +functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2) const) {
-+  return Functor<R, TLIST4(C*, P0, P1, P2)>::method(m);
++  return Functor<R, TLIST4(C const*, P0, P1, P2)>::method(m);
 +}
 +// Adapter for global functions with 3 parameters:
 +template <typename R, typename P0, typename P1, typename P2>
@@ -851,9 +866,9 @@ new file mode 100644
 +  return Functor<R, TLIST5(C*, P0, P1, P2, P3)>::method(m);
 +}
 +template <typename R, class C, typename P0, typename P1, typename P2, typename P3>
-+Functor<R, TLIST5(C*, P0, P1, P2, P3)>
++Functor<R, TLIST5(C const*, P0, P1, P2, P3)>
 +functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2, P3) const) {
-+  return Functor<R, TLIST5(C*, P0, P1, P2, P3)>::method(m);
++  return Functor<R, TLIST5(C const*, P0, P1, P2, P3)>::method(m);
 +}
 +// Adapter for global functions with 4 parameters:
 +template <typename R, typename P0, typename P1, typename P2, typename P3>
@@ -870,9 +885,9 @@ new file mode 100644
 +  return Functor<R, TLIST6(C*, P0, P1, P2, P3, P4)>::method(m);
 +}
 +template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4>
-+Functor<R, TLIST6(C*, P0, P1, P2, P3, P4)>
++Functor<R, TLIST6(C const*, P0, P1, P2, P3, P4)>
 +functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2, P3, P4) const) {
-+  return Functor<R, TLIST6(C*, P0, P1, P2, P3, P4)>::method(m);
++  return Functor<R, TLIST6(C const*, P0, P1, P2, P3, P4)>::method(m);
 +}
 +// Adapter for global functions with 5 parameters:
 +template <typename R, typename P0, typename P1, typename P2, typename P3, typename P4>
@@ -889,9 +904,9 @@ new file mode 100644
 +  return Functor<R, TLIST7(C*, P0, P1, P2, P3, P4, P5)>::method(m);
 +}
 +template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5>
-+Functor<R, TLIST7(C*, P0, P1, P2, P3, P4, P5)>
++Functor<R, TLIST7(C const*, P0, P1, P2, P3, P4, P5)>
 +functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2, P3, P4, P5) const) {
-+  return Functor<R, TLIST7(C*, P0, P1, P2, P3, P4, P5)>::method(m);
++  return Functor<R, TLIST7(C const*, P0, P1, P2, P3, P4, P5)>::method(m);
 +}
 +// Adapter for global functions with 6 parameters:
 +template <typename R, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5>
@@ -908,9 +923,9 @@ new file mode 100644
 +  return Functor<R, TLIST8(C*, P0, P1, P2, P3, P4, P5, P6)>::method(m);
 +}
 +template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6>
-+Functor<R, TLIST8(C*, P0, P1, P2, P3, P4, P5, P6)>
++Functor<R, TLIST8(C const*, P0, P1, P2, P3, P4, P5, P6)>
 +functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2, P3, P4, P5, P6) const) {
-+  return Functor<R, TLIST8(C*, P0, P1, P2, P3, P4, P5, P6)>::method(m);
++  return Functor<R, TLIST8(C const*, P0, P1, P2, P3, P4, P5, P6)>::method(m);
 +}
 +// Adapter for global functions with 7 parameters:
 +template <typename R, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6>
@@ -927,9 +942,9 @@ new file mode 100644
 +  return Functor<R, TLIST9(C*, P0, P1, P2, P3, P4, P5, P6, P7)>::method(m);
 +}
 +template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7>
-+Functor<R, TLIST9(C*, P0, P1, P2, P3, P4, P5, P6, P7)>
++Functor<R, TLIST9(C const*, P0, P1, P2, P3, P4, P5, P6, P7)>
 +functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2, P3, P4, P5, P6, P7) const) {
-+  return Functor<R, TLIST9(C*, P0, P1, P2, P3, P4, P5, P6, P7)>::method(m);
++  return Functor<R, TLIST9(C const*, P0, P1, P2, P3, P4, P5, P6, P7)>::method(m);
 +}
 +// Adapter for global functions with 8 parameters:
 +template <typename R, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7>
@@ -946,9 +961,9 @@ new file mode 100644
 +  return Functor<R, TLIST10(C*, P0, P1, P2, P3, P4, P5, P6, P7, P8)>::method(m);
 +}
 +template <typename R, class C, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7, typename P8>
-+Functor<R, TLIST10(C*, P0, P1, P2, P3, P4, P5, P6, P7, P8)>
++Functor<R, TLIST10(C const*, P0, P1, P2, P3, P4, P5, P6, P7, P8)>
 +functor(R (CALLING_CONVENTION C::*m)(P0, P1, P2, P3, P4, P5, P6, P7, P8) const) {
-+  return Functor<R, TLIST10(C*, P0, P1, P2, P3, P4, P5, P6, P7, P8)>::method(m);
++  return Functor<R, TLIST10(C const*, P0, P1, P2, P3, P4, P5, P6, P7, P8)>::method(m);
 +}
 +// Adapter for global functions with 9 parameters:
 +template <typename R, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6, typename P7, typename P8>
@@ -1592,8 +1607,8 @@ new file mode 100644
 +{
 +  Functor<int, TLIST1(int)> s = functor(&Succ);
 +
-+  Pred pred;
-+  Functor<int, TLIST1(int)> p = functor(&Pred::operator()).bind(&pred);
++  Location<Pred> pred;
++  Functor<int, TLIST1(int)> p = functor(&Pred::operator()).bind(pred);
 +
 +  Functor<int, TLIST3(DiffStruct*, int, int)> ds =
 +    functor(&DiffStruct::Sub);
@@ -1631,8 +1646,8 @@ new file mode 100644
 +  rv |= is(functor(&DiffStruct::Add2).bind(2).bind(3)(), 5);
 +
 +  int x = 5, y = 3;
-+  DiffStruct ds;
-+  Functor<int, TLIST2(int, int)> sub = functor(&DiffStruct::Sub).bind(&ds);
++  Location<DiffStruct> ds;
++  Functor<int, TLIST2(int, int)> sub = functor(&DiffStruct::Sub).bind(ds);
 +  Functor<int, TLIST1(int)> f = functor(sub).bind(x); // sub already a functor (perfectly ok)
 +  rv |= is(sub(x, y), x - y);
 +  rv |= is(sub(y, x), y - x);
@@ -1704,14 +1719,14 @@ new file mode 100644
 +
 +class MethodGiver {
 +  int mVal;
-+  int Foo() { return mVal; }
++  int Foo() const { return mVal; }
 +public:
 +  MethodGiver(int val) : mVal(val) {}
 +  Functor<int, TLIST0()>
 +  GetBoundFooFunctor() {
-+    return functor(&MethodGiver::Foo).bind(this);
++    return functor(&MethodGiver::Foo).bind(ref(*this));
 +  }
-+  Functor<int, TLIST1(MethodGiver*)>
++  Functor<int, TLIST1(const MethodGiver*)>
 +  GetFooFunctor() {
 +    return functor(&MethodGiver::Foo);
 +  }
@@ -1721,7 +1736,7 @@ new file mode 100644
 +  nsresult rv = NS_OK;
 +  MethodGiver mg(1);
 +  rv |= is(MethodGiver(2).GetBoundFooFunctor()(), 2);
-+  rv |= is(mg.GetFooFunctor().bind(&mg)(), 1);
++  rv |= is(mg.GetFooFunctor().bind(cref(mg))(), 1);
 +  return rv;
 +}
 +
@@ -1790,7 +1805,7 @@ new file mode 100644
 +        gb = new Bound(&gval);
 +      rv |= is(f(), 3) | is(g(), 3);
 +      f = functor(&Bound::GetVal).bind(fb);
-+      g = functor(&Bound::GetVal).bind(gb.get());
++      g = functor(&Bound::GetVal).bind(ref(*gb));
 +      rv |= is(f(), 0) | is(g(), 0);
 +    }
 +    rv |= is(fval, 0) | is(gval, 1);
@@ -1830,7 +1845,7 @@ new file mode 100644
 +  // Testing nested method pointers:
 +  Functor<int, TLIST1(int)> nested_method_pointer =
 +    functor(&HasCallableMember::Callable::operator())
-+      .bind(&hcm2.mCallable);
++      .bind(ref(hcm2.mCallable));
 +  rv |= is(nested_method_pointer(3),
 +           hcm2.mCallable.mVal + 3);
 +
