@@ -28,7 +28,7 @@ diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/functors/Functor.h
-@@ -0,0 +1,635 @@
+@@ -0,0 +1,637 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -295,7 +295,9 @@ new file mode 100644
 +public:
 +  template <typename P>
 +  typename Binder<Functor, P>::Outgoing
-+  bind(P p) { return bind_helper<typename bind_traits<P>::non_ptr_t>(p); }
++  bind(P p) { // no non_ptr_t exists if P is a pointer type:
++    return bind_helper<typename bind_traits<P>::non_ptr_t>(p);
++  }
 +
 +#define BIND_PTR(SMART_TYPE)                                                  \
 +  template <class T> typename Binder<Functor, SMART_TYPE<T> >::Outgoing       \
