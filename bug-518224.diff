@@ -5,12 +5,6 @@
 # Parent  869c38f0db535eb102a7f75c61d94ed94080a475
 Bug 518224 - [HTML5] Update parser/html/java Makefiles to sync from hg.mozilla.org/projects/htmlparser.
 
-diff --git a/.hgsub b/.hgsub
-new file mode 100644
---- /dev/null
-+++ b/.hgsub
-@@ -0,0 +1,1 @@
-+parser/html/java/htmlparser/src = https://hg.mozilla.org/projects/htmlparser
 diff --git a/parser/html/java/Makefile b/parser/html/java/Makefile
 --- a/parser/html/java/Makefile
 +++ b/parser/html/java/Makefile
@@ -52,7 +46,7 @@ diff --git a/parser/html/java/Makefile b/parser/html/java/Makefile
 diff --git a/parser/html/java/htmlparser/Makefile b/parser/html/java/htmlparser/Makefile
 --- a/parser/html/java/htmlparser/Makefile
 +++ b/parser/html/java/htmlparser/Makefile
-@@ -31,12 +31,27 @@
+@@ -31,12 +31,33 @@
  # use your version of this file under the terms of the MPL, indicate your
  # decision by deleting the provisions above and replace them with the notice
  # and other provisions required by the GPL or the LGPL. If you do not delete
@@ -76,12 +70,18 @@ diff --git a/parser/html/java/htmlparser/Makefile b/parser/html/java/htmlparser/
  
  sync:: \
 -; ../sync-src.sh $(SVN_BASE)/src/nu/validator/htmlparser/impl
-+; cd src && hg pull && cd ..
++; if [ -d src ] ; \
++  then \
++    tar czf src.`date +%s`.tgz src && \
++    rm -rf src ; \
++  fi ; \
++  hg clone https://hg.mozilla.org/projects/htmlparser src
 +
 +clean:: \
 +; rm -rf bin ../translator.jar
 +
-+spotless:: clean
++spotless:: clean \
++; rm -rf src 
 diff --git a/parser/html/java/translator/manifest.txt b/parser/html/java/htmlparser/manifest.txt
 copy from parser/html/java/translator/manifest.txt
 copy to parser/html/java/htmlparser/manifest.txt
