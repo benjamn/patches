@@ -1,4 +1,4 @@
-Added Functor::runnable to get the runnable event itself (as opposed to Functor::proxy which goes ahead and dispatches it) (bug 486440).
+Updated TestRunnableFunctor.cpp to obey new binding restrictions.
 
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
@@ -68,7 +68,7 @@ diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
    template <typename Method>
    static Functor method(Method m) {
      return Functor(new MethodHandler<Functor, Method>(m));
-@@ -629,9 +639,29 @@ private:
+@@ -623,9 +633,29 @@ private:
  // the one platform that supports it:
  #ifdef NS_WIN32 // see xpcom/base/nscore.h
  #  define CALLING_CONVENTION __stdcall
@@ -289,7 +289,7 @@ new file mode 100644
 +    if (target != thisThread)
 +      return functor(&Blocker::Create)
 +               .bind(ms)
-+               .bind_nsCOMPtr(target)
++               .bind(nsCOMPtr<nsIThread>(target))
 +               .proxy(target)->Wait();
 +    return new Blocker(ms);
 +  }
@@ -353,12 +353,12 @@ new file mode 100644
 +  {
 +    rv |= ok(thread1 && thread2);
 +    rv |= test_proxy_Wait(thread1);
-+    rv |= functor(&test_proxy_Wait).bind_nsCOMPtr(thread2).proxy(thread1)->Wait();
-+    rv |= functor(&test_proxy_Wait).bind_nsCOMPtr(thread1).proxy(thread2)->Wait();
++    rv |= functor(&test_proxy_Wait).bind(nsCOMPtr<nsIThread>(thread2)).proxy(thread1)->Wait();
++    rv |= functor(&test_proxy_Wait).bind(nsCOMPtr<nsIThread>(thread1)).proxy(thread2)->Wait();
 +
 +    Location<int> loc;
 +    rv |= functor(&test_proxy_with_bind_result)
-+            .bind_nsCOMPtr(thread2)
++            .bind(nsCOMPtr<nsIThread>(thread2))
 +            .bind(loc)
 +            .proxy(thread1)->Wait();
 +    rv |= is(int(loc), 1);

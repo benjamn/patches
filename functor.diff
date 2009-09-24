@@ -1,4 +1,4 @@
-Added a test to ensure pointer-to-callable-data-member compatibility (bug 486440).
+Functor::bind now accepts only value-type arguments.
 
 diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
 --- a/xpcom/glue/Makefile.in
@@ -28,7 +28,7 @@ diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/functors/Functor.h
-@@ -0,0 +1,637 @@
+@@ -0,0 +1,631 @@
 +/* -*- Mode: c++; tab-width: 2; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -289,22 +289,16 @@ new file mode 100644
 +    I* binder = new B(*this, bound);
 +    return O(binder);
 +  }
-+  template <typename T> struct bind_traits { typedef T non_ptr_t; };
++  template <typename T> struct bind_traits     { typedef T  val_t; };
 +  template <typename T> struct bind_traits<T*> { typedef T* ptr_t; };
++  template <typename T> struct bind_traits<T&> { typedef T& ref_t; };
 +
 +public:
 +  template <typename P>
-+  typename Binder<Functor, typename bind_traits<P>::non_ptr_t>::Outgoing
-+  bind(P p) { // no non_ptr_t exists if P is a pointer type:
-+    return bind_helper<typename bind_traits<P>::non_ptr_t>(p);
++  typename Binder<Functor, typename bind_traits<P>::val_t>::Outgoing
++  bind(P p) { // val_t defined iff P neither pointer nor reference:
++    return bind_helper<typename bind_traits<P>::val_t>(p);
 +  }
-+
-+#define BIND_PTR(SMART_TYPE)                                                  \
-+  template <class T> typename Binder<Functor, SMART_TYPE<T> >::Outgoing       \
-+  bind_##SMART_TYPE(T* t) { SMART_TYPE<T> sp(t); return bind_helper(sp); }
-+  BIND_PTR(nsRefPtr)
-+  BIND_PTR(nsCOMPtr)
-+#undef BIND_PTR
 +
 +  /**
 +   * The bind_result method may be called against non-void Functors and returns
