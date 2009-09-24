@@ -52,8 +52,8 @@ diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
   ~Functor() {} // deliberately non-virtual
  
 +  nsRefPtr<RunnableFunctor<Result> >
-+  proxy(nsIThread* target,
-+        PRUint32 flags = NS_DISPATCH_NORMAL);
++  dispatch_to(nsIThread* target,
++              PRUint32 flags = NS_DISPATCH_NORMAL);
 +
 +  RunnableFunctor<Result>* // <: nsIRunnable*
 +  runnable() {
@@ -79,7 +79,7 @@ diff --git a/xpcom/glue/functors/Functor.h b/xpcom/glue/functors/Functor.h
  
 +template <typename Result, class Params>
 +nsRefPtr<RunnableFunctor<Result> >
-+Functor<Result, Params>::proxy(nsIThread* target, PRUint32 flags)
++Functor<Result, Params>::dispatch_to(nsIThread* target, PRUint32 flags)
 +{
 +  static nsIThread* mainThread = nsnull;
 +  if (!target && (mainThread || NS_SUCCEEDED(NS_GetMainThread(&mainThread))))
@@ -290,7 +290,7 @@ new file mode 100644
 +      return functor(&Blocker::Create)
 +               .bind(ms)
 +               .bind(nsCOMPtr<nsIThread>(target))
-+               .proxy(target)->Wait();
++               .dispatch_to(target)->Wait();
 +    return new Blocker(ms);
 +  }
 +  NS_IMETHOD Run()
@@ -305,7 +305,7 @@ new file mode 100644
 +#define DISPATCH_BUSY_WORK(TARGET)                                            \
 +  functor(&Blocker::Run)                                                      \
 +    .bind(nsRefPtr<Blocker>(Blocker::Create(200, (TARGET))))                  \
-+    .proxy(TARGET)
++    .dispatch_to(TARGET)
 +
 +nsresult test_proxy_Wait(nsIThread* const target)
 +{
@@ -314,8 +314,8 @@ new file mode 100644
 +    DISPATCH_BUSY_WORK(target);
 +
 +    nsRefPtr<RunnableFunctor<int> >
-+      rf1 = functor(&one).proxy(target),
-+      rf2 = functor(&plus_two).bind(rf1->Wait()).proxy(target);
++      rf1 = functor(&one).dispatch_to(target),
++      rf2 = functor(&plus_two).bind(rf1->Wait()).dispatch_to(target);
 +
 +    rv |= is(rf2->Wait(), 3);
 +    rv |= is(rf1->Wait(), 1);
@@ -330,7 +330,7 @@ new file mode 100644
 +  loc = 0;
 +  DISPATCH_BUSY_WORK(target);
 +  nsRefPtr<RunnableFunctor<void> > rf =
-+    functor(&one).bind_result(loc).proxy(target);
++    functor(&one).bind_result(loc).dispatch_to(target);
 +  rv |= is(int(loc), 0);
 +  rf->Wait();
 +  rv |= is(int(loc), 1);
@@ -353,14 +353,14 @@ new file mode 100644
 +  {
 +    rv |= ok(thread1 && thread2);
 +    rv |= test_proxy_Wait(thread1);
-+    rv |= functor(&test_proxy_Wait).bind(nsCOMPtr<nsIThread>(thread2)).proxy(thread1)->Wait();
-+    rv |= functor(&test_proxy_Wait).bind(nsCOMPtr<nsIThread>(thread1)).proxy(thread2)->Wait();
++    rv |= functor(&test_proxy_Wait).bind(nsCOMPtr<nsIThread>(thread2)).dispatch_to(thread1)->Wait();
++    rv |= functor(&test_proxy_Wait).bind(nsCOMPtr<nsIThread>(thread1)).dispatch_to(thread2)->Wait();
 +
 +    Location<int> loc;
 +    rv |= functor(&test_proxy_with_bind_result)
 +            .bind(nsCOMPtr<nsIThread>(thread2))
 +            .bind(loc)
-+            .proxy(thread1)->Wait();
++            .dispatch_to(thread1)->Wait();
 +    rv |= is(int(loc), 1);
 +
 +    rv |= test_proxy_Run_method(thread2);
