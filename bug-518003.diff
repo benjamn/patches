@@ -109,8 +109,8 @@ diff --git a/dom/tests/mochitest/general/Makefile.in b/dom/tests/mochitest/gener
  		test_offsets.js \
  		test_offsets.xul \
  		test_windowProperties.html \
-+		test_bug518003.html \
 +		test_mozMatchesSelector.html \
++		selectortest/index.html \
  		$(NULL)
  
  libs:: $(_TEST_FILES)
