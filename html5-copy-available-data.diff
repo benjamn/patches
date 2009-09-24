@@ -1,0 +1,63 @@
+diff --git a/parser/html/nsHtml5StreamParser.cpp b/parser/html/nsHtml5StreamParser.cpp
+--- a/parser/html/nsHtml5StreamParser.cpp
++++ b/parser/html/nsHtml5StreamParser.cpp
+@@ -459,20 +459,20 @@ nsHtml5StreamParser::OnStopRequest(nsIRe
+ // nsIStreamListener method:
+ /*
+  * This function is invoked as a result of a call to a stream's
+  * ReadSegments() method. It is called for each contiguous buffer
+  * of data in the underlying stream or pipe. Using ReadSegments
+  * allows us to avoid copying data to read out of the stream.
+  */
+ NS_METHOD
+-nsHtml5StreamParser::ParserWriteFunc(nsIInputStream* aInStream,
++nsHtml5StreamParser::ParserWriteFunc(nsIInputStream*,
+                 void* aHtml5StreamParser,
+                 const char* aFromSegment,
+-                PRUint32 aToOffset,
++                PRUint32,
+                 PRUint32 aCount,
+                 PRUint32* aWriteCount)
+ {
+   nsHtml5StreamParser* streamParser = static_cast<nsHtml5StreamParser*> (aHtml5StreamParser);
+   if (streamParser->HasDecoder()) {
+     return streamParser->WriteStreamBytes((const PRUint8*)aFromSegment, aCount, aWriteCount);
+   } else {
+     return streamParser->SniffStreamBytes((const PRUint8*)aFromSegment, aCount, aWriteCount);
+@@ -486,22 +486,35 @@ nsHtml5StreamParser::OnDataAvailable(nsI
+                                PRUint32 aSourceOffset,
+                                PRUint32 aLength)
+ {
+   mExecutor->MaybeFlush();
+   NS_PRECONDITION(eOnStart == mStreamListenerState ||
+                   eOnDataAvail == mStreamListenerState,
+             "Error: OnStartRequest() must be called before OnDataAvailable()");
+   NS_ASSERTION(mRequest == aRequest, "Got data on wrong stream.");
++
+   PRUint32 totalRead;
++#ifdef ODA_READ_SEGMENTS
+   nsresult rv = aInStream->ReadSegments(nsHtml5StreamParser::ParserWriteFunc, 
+                                         static_cast<void*> (this), 
+                                         aLength, 
+                                         &totalRead);
+-  NS_ASSERTION(totalRead == aLength, "ReadSegments read the wrong number of bytes.");
++#else
++  nsAutoArrayPtr<PRUint8> data(new PRUint8[aLength + 1]);
++  nsresult rv = aInStream->Read(reinterpret_cast<char*>(data.get()),
++                                aLength, &totalRead);
++  NS_ENSURE_SUCCESS(rv, rv);
++  data[totalRead] = 0;
++  PRUint32 writeCount;
++  rv = HasDecoder() ? WriteStreamBytes(data, totalRead, &writeCount)
++                    : SniffStreamBytes(data, totalRead, &writeCount);
++#endif
++
++  NS_ASSERTION(writeCount == aLength, "Wrong number of stream bytes written/sniffed.");
+   if (!mExecutor->IsScriptExecuting()) {
+     ParseUntilSuspend();
+   }
+   return rv;
+ }
+ 
+ void
+ nsHtml5StreamParser::internalEncodingDeclaration(nsString* aEncoding)
