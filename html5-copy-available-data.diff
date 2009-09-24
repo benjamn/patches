@@ -24,7 +24,7 @@ diff --git a/parser/html/nsHtml5StreamParser.cpp b/parser/html/nsHtml5StreamPars
      return streamParser->WriteStreamBytes((const PRUint8*)aFromSegment, aCount, aWriteCount);
    } else {
      return streamParser->SniffStreamBytes((const PRUint8*)aFromSegment, aCount, aWriteCount);
-@@ -486,22 +486,35 @@ nsHtml5StreamParser::OnDataAvailable(nsI
+@@ -486,22 +486,36 @@ nsHtml5StreamParser::OnDataAvailable(nsI
                                 PRUint32 aSourceOffset,
                                 PRUint32 aLength)
  {
@@ -46,6 +46,7 @@ diff --git a/parser/html/nsHtml5StreamParser.cpp b/parser/html/nsHtml5StreamPars
 +  nsresult rv = aInStream->Read(reinterpret_cast<char*>(data.get()),
 +                                aLength, &totalRead);
 +  NS_ENSURE_SUCCESS(rv, rv);
++  NS_ASSERTION(totalRead <= aLength, "Read more bytes than were available?");
 +  data[totalRead] = 0;
 +  PRUint32 writeCount;
 +  rv = HasDecoder() ? WriteStreamBytes(data, totalRead, &writeCount)
