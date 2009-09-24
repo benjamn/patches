@@ -294,7 +294,7 @@ new file mode 100644
 +
 +public:
 +  template <typename P>
-+  typename Binder<Functor, P>::Outgoing
++  typename Binder<Functor, typename bind_traits<P>::non_ptr_t>::Outgoing
 +  bind(P p) { // no non_ptr_t exists if P is a pointer type:
 +    return bind_helper<typename bind_traits<P>::non_ptr_t>(p);
 +  }

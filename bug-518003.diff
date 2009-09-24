@@ -1,0 +1,201 @@
+Bug 518003 - implement function to check whether element matches a CSS selector.
+
+diff --git a/content/base/src/nsGenericElement.cpp b/content/base/src/nsGenericElement.cpp
+--- a/content/base/src/nsGenericElement.cpp
++++ b/content/base/src/nsGenericElement.cpp
+@@ -5323,8 +5323,35 @@ nsGenericElement::doQuerySelectorAll(nsI
+                                   getter_Transfers(selectorList),
+                                   &presContext);
+   NS_ENSURE_SUCCESS(rv, rv);
+ 
+   TryMatchingElementsInSubtree(aRoot, nsnull, presContext, selectorList,
+                                AppendAllMatchingElements, contentList);
+   return NS_OK;
+ }
++
++nsresult
++nsNSElementTearoff::MozMatchesSelector(const nsAString& aSelector, PRBool* aReturn)
++{
++  NS_PRECONDITION(aReturn, "Null out param?");
++  *aReturn = nsGenericElement::doMatchesSelector(mContent, aSelector);
++  return NS_OK;
++}
++
++/* static */
++PRBool
++nsGenericElement::doMatchesSelector(nsIContent* aNode, const nsAString& aSelector)
++{
++  nsAutoPtr<nsCSSSelectorList> selectorList;
++  nsPresContext* presContext;
++  PRBool matches = PR_FALSE;
++
++  if (NS_SUCCEEDED(ParseSelectorList(aNode, aSelector,
++                                     getter_Transfers(selectorList),
++                                     &presContext)))
++  {
++    RuleProcessorData data(presContext, aNode, nsnull);
++    matches = nsCSSRuleProcessor::SelectorListMatches(data, selectorList);
++  }
++
++  return matches;
++}
+diff --git a/content/base/src/nsGenericElement.h b/content/base/src/nsGenericElement.h
+--- a/content/base/src/nsGenericElement.h
++++ b/content/base/src/nsGenericElement.h
+@@ -665,16 +665,17 @@ public:
+   /**
+    * Helper methods for implementing querySelector/querySelectorAll
+    */
+   static nsresult doQuerySelector(nsINode* aRoot, const nsAString& aSelector,
+                                   nsIDOMElement **aReturn);
+   static nsresult doQuerySelectorAll(nsINode* aRoot,
+                                      const nsAString& aSelector,
+                                      nsIDOMNodeList **aReturn);
++  static PRBool doMatchesSelector(nsIContent* aNode, const nsAString& aSelector);
+ 
+   /**
+    * Default event prehandling for content objects. Handles event retargeting.
+    */
+   static nsresult doPreHandleEvent(nsIContent* aContent,
+                                    nsEventChainPreVisitor& aVisitor);
+ 
+   /**
+diff --git a/dom/interfaces/core/nsIDOMNSElement.idl b/dom/interfaces/core/nsIDOMNSElement.idl
+--- a/dom/interfaces/core/nsIDOMNSElement.idl
++++ b/dom/interfaces/core/nsIDOMNSElement.idl
+@@ -34,17 +34,17 @@
+  * and other provisions required by the GPL or the LGPL. If you do not delete
+  * the provisions above, a recipient may use your version of this file under
+  * the terms of any one of the MPL, the GPL or the LGPL.
+  *
+  * ***** END LICENSE BLOCK ***** */
+ 
+ #include "domstubs.idl"
+ 
+-[scriptable, uuid(FA8D7AF8-C208-4564-A0CD-346C345711F0)]
++[scriptable, uuid(D894B5D4-44F3-422A-A220-7763C12D4A94)]
+ interface nsIDOMNSElement : nsISupports
+ {
+   /*
+    * Retrieve elements matching all classes listed in a
+    * space-separated string.
+    *
+    * See <http://whatwg.org/specs/web-apps/current-work/>
+    */
+@@ -163,9 +163,14 @@ interface nsIDOMNSElement : nsISupports
+    */
+   void setCapture([optional] in boolean retargetToElement);
+ 
+   /**
+    * If this element has captured the mouse, release the capture. If another
+    * element has captured the mouse, this method has no effect.
+    */
+   void releaseCapture();
++
++  /**
++   * Returns whether this element would be selected by the given selector string.
++   */
++  boolean mozMatchesSelector(in DOMString selector);
+ };
+diff --git a/dom/tests/mochitest/general/Makefile.in b/dom/tests/mochitest/general/Makefile.in
+--- a/dom/tests/mochitest/general/Makefile.in
++++ b/dom/tests/mochitest/general/Makefile.in
+@@ -50,12 +50,14 @@ _TEST_FILES = \
+ 		test_bug504220.html \
+ 		test_domWindowUtils.html \
+ 		test_domWindowUtils_scrollXY.html \
+ 		test_innerScreen.xul \
+ 		test_offsets.html \
+ 		test_offsets.js \
+ 		test_offsets.xul \
+ 		test_windowProperties.html \
++		test_bug518003.html \
++		test_mozMatchesSelector.html \
+ 		$(NULL)
+ 
+ libs:: $(_TEST_FILES)
+ 	$(INSTALL) $^ $(DEPTH)/_tests/testing/mochitest/tests/$(relativesrcdir)
+diff --git a/dom/tests/mochitest/general/test_mozMatchesSelector.html b/dom/tests/mochitest/general/test_mozMatchesSelector.html
+new file mode 100644
+--- /dev/null
++++ b/dom/tests/mochitest/general/test_mozMatchesSelector.html
+@@ -0,0 +1,58 @@
++<!DOCTYPE HTML>
++<html>
++<!--
++https://bugzilla.mozilla.org/show_bug.cgi?id=518003
++-->
++<head>
++  <title>Test for Bug 518003</title>
++  <script type="application/javascript" src="/MochiKit/packed.js"></script>
++  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
++  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
++</head>
++<body>
++<a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=518003">Mozilla Bug 518003</a>
++<p id="display"></p>
++<div id="content" style="visibility: hidden">
++  <iframe src="test_bug518003.html" onload="scrape(this.contentWindow)">
++  </iframe>
++</div>
++<pre id="test">
++<script type="application/javascript;version=1.7">
++
++/** Test for Bug 518003 **/
++
++// var todos = (function() {
++//   var result = {};
++//   for (var i = 0; i < arguments.length; i++)
++//     result[arguments[i]] = true;
++//   return result;
++// })("Element.querySelectorAll null"
++//   ,"Element.querySelector null"
++//   ,"Syntax Error: Element.querySelectorAll null"
++//   ,"Syntax Error: Element.querySelector null"
++//   ,"Disconnected Element.querySelectorAll null"
++//   ,"Disconnected Element.querySelector null"
++//   ,"Syntax Error: Disconnected Element.querySelectorAll null"
++//   ,"Syntax Error: Disconnected Element.querySelector null"
++//   ,"Fragment.querySelectorAll null"
++//   ,"Fragment.querySelector null"
++//   ,"Syntax Error: Fragment.querySelectorAll null"
++//   ,"Syntax Error: Fragment.querySelector null"
++//   ,"Document.querySelectorAll null"
++//   ,"Document.querySelector null"
++//   ,"Syntax Error: Document.querySelectorAll null"
++//   ,"Syntax Error: Document.querySelector null");
++
++function report(results) {
++  for (var i = 0; i < results.length; i++) try {
++    ok(results[i][0], results[i][1]);
++  } catch (x) { console.log(x) }
++  SimpleTest.finish();
++}
++
++SimpleTest.waitForExplicitFinish();
++
++</script>
++</pre>
++</body>
++</html>
+diff --git a/js/src/xpconnect/src/dom_quickstubs.qsconf b/js/src/xpconnect/src/dom_quickstubs.qsconf
+--- a/js/src/xpconnect/src/dom_quickstubs.qsconf
++++ b/js/src/xpconnect/src/dom_quickstubs.qsconf
+@@ -223,16 +223,17 @@ members = [
+     'nsIDOMNSElement.getClientRects',
+     'nsIDOMNSElement.getBoundingClientRect',
+     'nsIDOMNSElement.getElementsByClassName',
+     'nsIDOMNSElement.scrollWidth',
+     'nsIDOMNSElement.clientLeft',
+     'nsIDOMNSElement.clientHeight',
+     'nsIDOMNSElement.clientWidth',
+     'nsIDOMNSElement.clientTop',
++    'nsIDOMNSElement.mozMatchesSelector',
+ 
+     # dom/public/idl/css
+     'nsIDOMElementCSSInlineStyle.style',
+     'nsIDOMCSS2Properties.*',
+     'nsIDOMNSCSS2Properties.*',
+     'nsIDOMRect.top',
+     'nsIDOMRect.right',
+     'nsIDOMRect.left',
