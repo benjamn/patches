@@ -1,4 +1,4 @@
-[HTML5] Remove unneeded parser/html/java/translator directory (bug 518224).
+[HTML5] Remove unneeded parser/html/java/translator directory (bug 518224). r=hsivonen
 
 diff --git a/parser/html/java/translator/Makefile b/parser/html/java/translator/Makefile
 deleted file mode 100644

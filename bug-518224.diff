@@ -3,7 +3,7 @@
 # Date 1253674011 25200
 # Node ID 0ce3ba9f886766850859535661a889d7930fb1ff
 # Parent  869c38f0db535eb102a7f75c61d94ed94080a475
-Bug 518224 - [HTML5] Update parser/html/java Makefiles to sync from hg.mozilla.org/projects/htmlparser.
+Bug 518224 - [HTML5] Update parser/html/java Makefiles to sync from hg.mozilla.org/projects/htmlparser. r=hsivonen
 
 diff --git a/parser/html/java/Makefile b/parser/html/java/Makefile
 --- a/parser/html/java/Makefile
