@@ -1,9 +1,14 @@
-Bug 518003 - implement function to check whether element matches a CSS selector.
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1254349034 25200
+# Node ID 3b480c8bcb7e0e07b39f33504b8b84d950d1151a
+# Parent  6e8de7ff27b891adbee888594ffa5be3b100265a
+Bug 518003 - implement function to check whether element matches a CSS selector. r+sr=bzbarsky
 
 diff --git a/content/base/src/nsGenericElement.cpp b/content/base/src/nsGenericElement.cpp
 --- a/content/base/src/nsGenericElement.cpp
 +++ b/content/base/src/nsGenericElement.cpp
-@@ -5323,8 +5323,35 @@ nsGenericElement::doQuerySelectorAll(nsI
+@@ -5317,8 +5317,35 @@ nsGenericElement::doQuerySelectorAll(nsI
                                    getter_Transfers(selectorList),
                                    &presContext);
    NS_ENSURE_SUCCESS(rv, rv);
@@ -13,7 +18,7 @@ diff --git a/content/base/src/nsGenericElement.cpp b/content/base/src/nsGenericE
    return NS_OK;
  }
 +
-+nsresult
++NS_IMETHODIMP
 +nsNSElementTearoff::MozMatchesSelector(const nsAString& aSelector, PRBool* aReturn)
 +{
 +  NS_PRECONDITION(aReturn, "Null out param?");
@@ -60,6 +65,94 @@ diff --git a/content/base/src/nsGenericElement.h b/content/base/src/nsGenericEle
                                     nsEventChainPreVisitor& aVisitor);
  
    /**
+diff --git a/content/base/test/file_bug416317.xhtml b/content/base/test/file_bug416317.xhtml
+--- a/content/base/test/file_bug416317.xhtml
++++ b/content/base/test/file_bug416317.xhtml
+@@ -494,16 +494,46 @@
+           return root[select](q, resolver);
+         } catch(e){
+           if ( e.message.indexOf("ERR") > -1 || e.code == DOMException.NAMESPACE_ERR ||
+               e.code == DOMException.SYNTAX_ERR)
+             throw e;
+         }
+       }
+ 
++      var all = query("*");
++
++      function checkMatchesSelector(results, q) {
++        var key = +new Date + ":" + Math.random();
++
++        function report(item, shouldMatch) {
++          assert( item.mozMatchesSelector(q) === shouldMatch,
++                  item + (shouldMatch ? "does not match" : "matches")
++                       + " selector '" + q + "'" );
++        }
++
++        for (var i = 0; i < results.length; i++) {
++          var item = results.item(i);
++          item[key] = true;
++          report( item, true );
++        }
++
++        for (var stride = 15, // reduce test spam
++                 i = Math.round(Math.random() * stride);
++             i < all.length; i += stride)
++        {
++          var item = all.item(i),
++              shouldMatch = !!item[key];
++          report( item, shouldMatch );
++        }
++
++        for (var i = 0; i < results.length; i++)
++          delete results.item(i)[key];
++      }
++
+       function t( name, q, ids, restrict, ids2 ) {
+         var pass = true;
+ 
+         if ( restrict === false && root != document )
+           return;
+ 
+         var namespaced = /\|[^=]/.test( q );
+         var prepend = namespaced ? "xHTML|*#root3 " : "#root3 ";
+@@ -530,16 +560,19 @@
+             var results = query(q);
+             pass = hasPassed( results, ids );
+           } catch(e) {
+             pass = e.code == DOMException.SYNTAX_ERR;
+           }
+   
+           assert( pass, type + ": " + name + " (" + nq + ")" +
+             (pass ? "" : " Expected: " + extra(ids) + " Received: " + extra(results)) );
++
++          if (results)
++            checkMatchesSelector( results, q );
+         }
+ 
+         function hasPassed(results, ids){
+           var pass = (results && results.length == ids.length) || (!results && !ids);
+   
+           if ( ids && results ) {
+             for ( var i = 0; ids && i < ids.length; i++ ) {
+               if ( ids[i] !== results[i].getAttribute("id") ) {
+@@ -582,17 +615,16 @@
+       t( "Parent Element", "xHTML|div xHTML|p", ["firstp","ap","sndp","en","sap","first"] );
+       t( "Parent Element", "*|div xHTML|p", ["firstp","ap","sndp","en","sap","first"] );
+       t( "Parent Element", "*|div *|p", ["firstp","ap","sndp","en","sap","first"] );
+       t( "Child", "xHTML|p > xHTML|a", ["simon1","google","groups","mark","yahoo","simon"] );
+       t( "Adjacent", "xHTML|a + xHTML|a", ["groups"] );
+       t( "Adjacent", "xHTML|a + a", ["groups"] );
+       t( "Nth-child", "xHTML|*#form xHTML|*#select1 xHTML|option:nth-child(3)", ["option1c"] );
+ 
+-      var all = query("*");
+       assert( all && all.length > 30, type + ": Select all" );
+       var good = all && all.length;
+       for ( var i = 0; all && i < all.length; i++ )
+         if ( all[i].nodeType != 1 )
+           good = false;
+       assert( good, type + ": Select all elements, no comment nodes" );
+ 
+       if ( root == document ) {
 diff --git a/dom/interfaces/core/nsIDOMNSElement.idl b/dom/interfaces/core/nsIDOMNSElement.idl
 --- a/dom/interfaces/core/nsIDOMNSElement.idl
 +++ b/dom/interfaces/core/nsIDOMNSElement.idl
@@ -97,87 +190,6 @@ diff --git a/dom/interfaces/core/nsIDOMNSElement.idl b/dom/interfaces/core/nsIDO
 +   */
 +  boolean mozMatchesSelector(in DOMString selector);
  };
-diff --git a/dom/tests/mochitest/general/Makefile.in b/dom/tests/mochitest/general/Makefile.in
---- a/dom/tests/mochitest/general/Makefile.in
-+++ b/dom/tests/mochitest/general/Makefile.in
-@@ -50,12 +50,14 @@ _TEST_FILES = \
- 		test_bug504220.html \
- 		test_domWindowUtils.html \
- 		test_domWindowUtils_scrollXY.html \
- 		test_innerScreen.xul \
- 		test_offsets.html \
- 		test_offsets.js \
- 		test_offsets.xul \
- 		test_windowProperties.html \
-+		test_mozMatchesSelector.html \
-+		selectortest/index.html \
- 		$(NULL)
- 
- libs:: $(_TEST_FILES)
- 	$(INSTALL) $^ $(DEPTH)/_tests/testing/mochitest/tests/$(relativesrcdir)
-diff --git a/dom/tests/mochitest/general/test_mozMatchesSelector.html b/dom/tests/mochitest/general/test_mozMatchesSelector.html
-new file mode 100644
---- /dev/null
-+++ b/dom/tests/mochitest/general/test_mozMatchesSelector.html
-@@ -0,0 +1,58 @@
-+<!DOCTYPE HTML>
-+<html>
-+<!--
-+https://bugzilla.mozilla.org/show_bug.cgi?id=518003
-+-->
-+<head>
-+  <title>Test for Bug 518003</title>
-+  <script type="application/javascript" src="/MochiKit/packed.js"></script>
-+  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
-+</head>
-+<body>
-+<a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=518003">Mozilla Bug 518003</a>
-+<p id="display"></p>
-+<div id="content" style="visibility: hidden">
-+  <iframe src="test_bug518003.html" onload="scrape(this.contentWindow)">
-+  </iframe>
-+</div>
-+<pre id="test">
-+<script type="application/javascript;version=1.7">
-+
-+/** Test for Bug 518003 **/
-+
-+// var todos = (function() {
-+//   var result = {};
-+//   for (var i = 0; i < arguments.length; i++)
-+//     result[arguments[i]] = true;
-+//   return result;
-+// })("Element.querySelectorAll null"
-+//   ,"Element.querySelector null"
-+//   ,"Syntax Error: Element.querySelectorAll null"
-+//   ,"Syntax Error: Element.querySelector null"
-+//   ,"Disconnected Element.querySelectorAll null"
-+//   ,"Disconnected Element.querySelector null"
-+//   ,"Syntax Error: Disconnected Element.querySelectorAll null"
-+//   ,"Syntax Error: Disconnected Element.querySelector null"
-+//   ,"Fragment.querySelectorAll null"
-+//   ,"Fragment.querySelector null"
-+//   ,"Syntax Error: Fragment.querySelectorAll null"
-+//   ,"Syntax Error: Fragment.querySelector null"
-+//   ,"Document.querySelectorAll null"
-+//   ,"Document.querySelector null"
-+//   ,"Syntax Error: Document.querySelectorAll null"
-+//   ,"Syntax Error: Document.querySelector null");
-+
-+function report(results) {
-+  for (var i = 0; i < results.length; i++) try {
-+    ok(results[i][0], results[i][1]);
-+  } catch (x) { console.log(x) }
-+  SimpleTest.finish();
-+}
-+
-+SimpleTest.waitForExplicitFinish();
-+
-+</script>
-+</pre>
-+</body>
-+</html>
 diff --git a/js/src/xpconnect/src/dom_quickstubs.qsconf b/js/src/xpconnect/src/dom_quickstubs.qsconf
 --- a/js/src/xpconnect/src/dom_quickstubs.qsconf
 +++ b/js/src/xpconnect/src/dom_quickstubs.qsconf
