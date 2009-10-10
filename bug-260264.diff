@@ -1,0 +1,538 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1253126765 25200
+# Node ID 7b73ffb40807593e4265a4a4c7ef70061d52504e
+# Parent  b98fabaf5cdd96047b45b1eea987d02a25d36a7f
+Bug 260264 - Popups from a Site that is in the "Allowed List" (whitelist) are blocked, starting with the n-th popup (dom.popup_maximum).
+
+diff --git a/dom/base/nsGlobalWindow.cpp b/dom/base/nsGlobalWindow.cpp
+--- a/dom/base/nsGlobalWindow.cpp
++++ b/dom/base/nsGlobalWindow.cpp
+@@ -868,21 +868,16 @@ nsGlobalWindow::CleanUp()
+   if (mContext) {
+ #ifdef DEBUG
+     nsCycleCollector_DEBUG_shouldBeFreed(mContext);
+ #endif
+     mContext = nsnull;            // Forces Release
+   }
+   mChromeEventHandler = nsnull; // Forces Release
+ 
+-  if (IsOuterWindow() && IsPopupSpamWindow()) {
+-    SetPopupSpamWindow(PR_FALSE);
+-    --gOpenPopupSpamCount;
+-  }
+-
+   nsGlobalWindow *inner = GetCurrentInnerWindowInternal();
+ 
+   if (inner) {
+     inner->CleanUp();
+   }
+ 
+   if (mHasAcceleration) {
+     nsCOMPtr<nsIAccelerometer> ac = do_GetService(NS_ACCELEROMETER_CONTRACTID);
+@@ -2069,16 +2064,25 @@ nsGlobalWindow::SetNewDocument(nsIDocume
+ void
+ nsGlobalWindow::SetDocShell(nsIDocShell* aDocShell)
+ {
+   NS_ASSERTION(IsOuterWindow(), "Uh, SetDocShell() called on inner window!");
+ 
+   if (aDocShell == mDocShell)
+     return;
+ 
++  if (!aDocShell && // window is closing
++      IsOuterWindow() && IsPopupSpamWindow())
++  {
++    SetPopupSpamWindow(PR_FALSE);
++    --gOpenPopupSpamCount;
++    NS_ASSERTION(gOpenPopupSpamCount >= 0,
++                 "Unbalanced decrement of gOpenPopupSpamCount");
++  }
++
+   PRUint32 lang_id;
+   nsIScriptContext *langCtx;
+   // SetDocShell(nsnull) means the window is being torn down. Drop our
+   // reference to the script context, allowing it to be deleted
+   // later. Meanwhile, keep our weak reference to the script object
+   // (mJSObject) so that it can be retrieved later (until it is
+   // finalized by the JS GC).
+ 
+@@ -4271,17 +4275,17 @@ nsGlobalWindow::Focus()
+    * prevent bringing a window to the front if the window is not the
+    * currently active window, but do change the currently focused
+    * window in the focus controller so that focus is in the right
+    * place when the window is activated again.
+    */
+ 
+   PRBool canFocus =
+     CanSetProperty("dom.disable_window_flip") ||
+-    CheckOpenAllow(CheckForAbusePoint()) == allowNoAbuse;
++    RevisePopupAbuseLevel(gPopupControlState) < openAbused;
+ 
+   nsCOMPtr<nsIDOMWindow> activeWindow;
+   fm->GetActiveWindow(getter_AddRefs(activeWindow));
+ 
+   nsCOMPtr<nsIDocShellTreeItem> treeItem = do_QueryInterface(mDocShell);
+   NS_ASSERTION(treeItem, "What happened?");
+   nsCOMPtr<nsIDocShellTreeItem> rootItem;
+   treeItem->GetRootTreeItem(getter_AddRefs(rootItem));
+@@ -4967,88 +4971,72 @@ nsGlobalWindow::CanSetProperty(const cha
+     return PR_TRUE;
+   }
+ 
+   // If the pref is set to true, we can not set the property
+   // and vice versa.
+   return !nsContentUtils::GetBoolPref(aPrefName, PR_TRUE);
+ }
+ 
++PRBool
++nsGlobalWindow::PopupWhitelisted()
++{
++  nsCOMPtr<nsIDOMWindow> topWindow;
++  GetTop(getter_AddRefs(topWindow));
++
++  nsCOMPtr<nsPIDOMWindow> topPIWin(do_QueryInterface(topWindow));
++
++  return topPIWin && (!IsPopupBlocked(topPIWin->GetExtantDocument()) ||
++                      !IsPopupBlocked(mDocument));
++}
+ 
+ /*
+  * Examine the current document state to see if we're in a way that is
+  * typically abused by web designers. The window.open code uses this
+  * routine to determine whether to allow the new window.
+- * Returns a value from the CheckForAbusePoint enum.
++ * Returns a value from the PopupControlState enum.
+  */
+ PopupControlState
+-nsGlobalWindow::CheckForAbusePoint()
+-{
+-  FORWARD_TO_OUTER(CheckForAbusePoint, (), openAbused);
++nsGlobalWindow::RevisePopupAbuseLevel(PopupControlState aControl)
++{
++  FORWARD_TO_OUTER(RevisePopupAbuseLevel, (aControl), aControl);
+ 
+   NS_ASSERTION(mDocShell, "Must have docshell");
+   
+   nsCOMPtr<nsIDocShellTreeItem> item(do_QueryInterface(mDocShell));
+ 
+   NS_ASSERTION(item, "Docshell doesn't implement nsIDocShellTreeItem?");
+ 
+   PRInt32 type = nsIDocShellTreeItem::typeChrome;
+   item->GetItemType(&type);
+   if (type != nsIDocShellTreeItem::typeContent)
+     return openAllowed;
+ 
+-  // level of abuse we've detected, initialized to the current popup
+-  // state
+-  PopupControlState abuse = gPopupControlState;
++  PopupControlState abuse = aControl;
++  switch (abuse) {
++  case openControlled:
++  case openAbused:
++  case openOverridden:
++    if (PopupWhitelisted())
++      abuse = PopupControlState(abuse - 1);
++  case openAllowed: break;
++  default:
++    NS_WARNING("Strange PopupControlState!");
++  }
+ 
+   // limit the number of simultaneously open popups
+   if (abuse == openAbused || abuse == openControlled) {
+     PRInt32 popupMax = nsContentUtils::GetIntPref("dom.popup_maximum", -1);
+     if (popupMax >= 0 && gOpenPopupSpamCount >= popupMax)
+       abuse = openOverridden;
+   }
+ 
+   return abuse;
+ }
+ 
+-/* Allow or deny a window open based on whether popups are suppressed.
+-   A popup generally will be allowed if it's from a white-listed domain.
+-   Returns a value from the CheckOpenAllow enum. */
+-OpenAllowValue
+-nsGlobalWindow::CheckOpenAllow(PopupControlState aAbuseLevel)
+-{
+-  NS_PRECONDITION(GetDocShell(), "Must have docshell");
+-
+-  OpenAllowValue allowWindow = allowNoAbuse; // (also used for openControlled)
+-  
+-  if (aAbuseLevel >= openAbused) {
+-    allowWindow = allowNot;
+-
+-    // However it might still not be blocked. For now we use both our
+-    // location and the top window's location when determining whether
+-    // a popup open request is whitelisted or not. This isn't ideal
+-    // when dealing with iframe/frame documents, but it'll do for
+-    // now. Getting the iframe/frame case right would require some
+-    // changes to the frontend's handling of popup events etc.
+-    if (aAbuseLevel == openAbused) {
+-      nsCOMPtr<nsIDOMWindow> topWindow;
+-      GetTop(getter_AddRefs(topWindow));
+-
+-      nsCOMPtr<nsPIDOMWindow> topPIWin(do_QueryInterface(topWindow));
+-
+-      if (topPIWin && (!IsPopupBlocked(topPIWin->GetExtantDocument()) ||
+-                       !IsPopupBlocked(mDocument))) {
+-        allowWindow = allowWhitelisted;
+-      }
+-    }
+-  }
+-
+-  return allowWindow;
+-}
+-
+ /* If a window open is blocked, fire the appropriate DOM events.
+    aBlocked signifies we just blocked a popup.
+    aWindow signifies we just opened what is probably a popup.
+ */
+ void
+ nsGlobalWindow::FireAbuseEvents(PRBool aBlocked, PRBool aWindow,
+                                 const nsAString &aPopupURL,
+                                 const nsAString &aPopupWindowName,
+@@ -7492,23 +7480,20 @@ nsGlobalWindow::OpenInternal(const nsASt
+        window.openDialog being inaccessible from web scripts */
+     if (url.get() && !aDialog)
+       rv = SecurityCheckURL(url.get());
+   }
+ 
+   if (NS_FAILED(rv))
+     return rv;
+ 
+-  // These next two variables are only accessed when checkForPopup is true
+-  PopupControlState abuseLevel;
+-  OpenAllowValue allowReason;
++  PopupControlState abuseLevel = gPopupControlState;
+   if (checkForPopup) {
+-    abuseLevel = CheckForAbusePoint();
+-    allowReason = CheckOpenAllow(abuseLevel);
+-    if (allowReason == allowNot) {
++    abuseLevel = RevisePopupAbuseLevel(abuseLevel);
++    if (abuseLevel >= openAbused) {
+       if (aJSCallerContext) {
+         // If script in some other window is doing a window.open on us and
+         // it's being blocked, then it's OK to close us afterwards, probably.
+         // But if we're doing a window.open on ourselves and block the popup,
+         // prevent this window from closing until after this script terminates
+         // so that whatever popup blocker UI the app has will be visible.
+         if (mContext == GetScriptContextFromJSContext(aJSCallerContext)) {
+           mBlockScriptedClosingFlag = PR_TRUE;
+diff --git a/dom/base/nsGlobalWindow.h b/dom/base/nsGlobalWindow.h
+--- a/dom/base/nsGlobalWindow.h
++++ b/dom/base/nsGlobalWindow.h
+@@ -121,23 +121,16 @@ class WindowStateHolder;
+ class nsGlobalWindowObserver;
+ class nsGlobalWindow;
+ class nsDummyJavaPluginOwner;
+ class PostMessageEvent;
+ 
+ class nsDOMOfflineResourceList;
+ class nsGeolocation;
+ 
+-// permissible values for CheckOpenAllow
+-enum OpenAllowValue {
+-  allowNot = 0,     // the window opening is denied
+-  allowNoAbuse,     // allowed: not a popup
+-  allowWhitelisted  // allowed: it's whitelisted or popup blocking is disabled
+-};
+-
+ extern nsresult
+ NS_CreateJSTimeoutHandler(nsGlobalWindow *aWindow,
+                           PRBool *aIsInterval,
+                           PRInt32 *aInterval,
+                           nsIScriptTimeoutHandler **aRet);
+ 
+ /*
+  * Timeout struct that holds information about each script
+@@ -567,18 +560,18 @@ protected:
+   nsresult GetWebBrowserChrome(nsIWebBrowserChrome** aBrowserChrome);
+   // GetScrollInfo does not flush.  Callers should do it themselves as needed,
+   // depending on which info they actually want off the scrollable view.
+   nsresult GetScrollInfo(nsIScrollableView** aScrollableView);
+   nsresult SecurityCheckURL(const char *aURL);
+   nsresult BuildURIfromBase(const char *aURL,
+                             nsIURI **aBuiltURI,
+                             PRBool *aFreeSecurityPass, JSContext **aCXused);
+-  PopupControlState CheckForAbusePoint();
+-  OpenAllowValue CheckOpenAllow(PopupControlState aAbuseLevel);
++  PRBool PopupWhitelisted();
++  PopupControlState RevisePopupAbuseLevel(PopupControlState);
+   void     FireAbuseEvents(PRBool aBlocked, PRBool aWindow,
+                            const nsAString &aPopupURL,
+                            const nsAString &aPopupWindowName,
+                            const nsAString &aPopupWindowFeatures);
+   void FireOfflineStatusEvent();
+   nsresult FireHashchange();
+   
+   void FlushPendingNotifications(mozFlushType aType);
+diff --git a/dom/tests/mochitest/bugs/Makefile.in b/dom/tests/mochitest/bugs/Makefile.in
+--- a/dom/tests/mochitest/bugs/Makefile.in
++++ b/dom/tests/mochitest/bugs/Makefile.in
+@@ -97,12 +97,13 @@ _TEST_FILES	= \
+ 		iframe_bug463000.html \
+ 		test_bug465263.html \
+ 		test_bug479143.html \
+ 		test_bug484775.html \
+ 		test_bug427744.html \
+ 		test_bug495219.html \
+ 		test_bug504862.html \
+ 		file_bug504862.html \
++		test_bug260264.html \
+ 		$(NULL)
+ 
+ libs:: 	$(_TEST_FILES)
+ 	$(INSTALL) $(foreach f,$^,"$f") $(DEPTH)/_tests/testing/mochitest/tests/$(relativesrcdir)
+diff --git a/dom/tests/mochitest/bugs/test_bug260264.html b/dom/tests/mochitest/bugs/test_bug260264.html
+new file mode 100644
+--- /dev/null
++++ b/dom/tests/mochitest/bugs/test_bug260264.html
+@@ -0,0 +1,249 @@
++<!DOCTYPE HTML>
++<html>
++<!--
++https://bugzilla.mozilla.org/show_bug.cgi?id=260264
++-->
++<head>
++  <title>Test for Bug 260264</title>
++  <script type="application/javascript" src="/MochiKit/packed.js"></script>
++  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
++  <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
++  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
++</head>
++<body>
++<a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=260264">Mozilla Bug 260264</a>
++<p id="display">
++  <a id="link" href="javascript:(function(){})()">link</a>
++</p>
++<div id="content" style="display: none">
++
++</div>
++<pre id="test">
++<script type="application/javascript">
++
++/** Test for Bug 260264 **/
++
++SimpleTest.waitForExplicitFinish();
++
++/**
++ * Dispatches |handler| to |element|, as if fired in response to |event|.
++ */
++function send(element, event, handler) {
++  function unique_handler() { return handler.apply(this, arguments) }
++  element.addEventListener(event, unique_handler, false);
++  try { sendMouseEvent({ type: event }, element.id) }
++  finally { element.removeEventListener(event, unique_handler, false) }
++}
++
++/**
++ * Because it's not nice to leave popup windows open after the tests are
++ * finished, we need a foolproof way to close some/all window.opened windows.
++ */
++(function(originalOpen) {
++  var wins = [];
++  (window.open = function() {
++    var win = originalOpen.apply(window, arguments);
++    if (win)
++      wins[wins.length] = win;
++    return win;
++  }).close = function(n) {
++    if (arguments.length < 1)
++      n = wins.length;
++    while (n --> 0) {
++      var win = wins.pop();
++      if (win) win.close();
++      else break;
++    }
++  };
++})(window.open);
++
++netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
++var prefService = Components.classes["@mozilla.org/preferences-service;1"]
++                            .getService(Components.interfaces.nsIPrefService),
++    pm = Components.classes["@mozilla.org/permissionmanager;1"]
++                   .getService(Components.interfaces.nsIPermissionManager),
++    ioService = Components.classes["@mozilla.org/network/io-service;1"]
++                          .getService(Components.interfaces.nsIIOService),
++    ownUri = ioService.newURI(location.href, null, null);
++
++/**
++ * This ridiculously over-engineered function makes an accessor function from
++ * any given preference string.  Such accessors may be passed as the first
++ * parameter to the |hold| function defined below.
++ */
++function makePrefAccessor(pref) {
++  var splat = pref.split('.'),
++      basePref = splat.pop(),
++      branch, kind;
++
++  try {
++    branch = prefService.getBranch(splat.join('.') + '.');
++  } catch (x) {
++    alert("Calling prefService.getBranch failed: " + 
++      "did you forget to enable UniversalXPConnect?");
++    throw x;
++  }
++
++  switch (branch.getPrefType(basePref)) {
++  case branch.PREF_STRING:  kind = "CharPref"; break;
++  case branch.PREF_INT:     kind = "IntPref"; break;
++  case branch.PREF_BOOL:    kind = "BoolPref"; break;
++  case branch.PREF_INVALID: kind = "ComplexValue";
++  }
++
++  return function(value) {
++    var oldValue = branch['get' + kind](basePref);
++    if (arguments.length > 0)
++      branch['set' + kind](basePref, value);
++    return oldValue;
++  };
++}
++
++/**
++ * This function takes an accessor function, a new value, and a callback
++ * function.  It assigns the new value to the accessor, saving the old value,
++ * then calls the callback function with the new and old values.  Before
++ * returning, |hold| sets the accessor back to the old value, even if the
++ * callback function misbehaved (i.e., threw).
++ *
++ * For sanity's sake, |hold| also ensures that the accessor still has the new
++ * value at the time the old value is reassigned.  The accessor's value might
++ * have changed to something entirely different during the execution of the
++ * callback function, but it must have changed back.
++ *
++ * Without such a mechanism it would be very difficult to verify that these
++ * tests leave the browser's preferences/privileges as they were originally.
++ */
++function hold(accessor, value, body) {
++  var old_value = accessor(value);
++  try { return body(value, old_value) }
++  finally {
++    old_value = accessor(old_value);
++    if (old_value !== value)
++      throw [accessor, value, old_value];
++  }
++}
++
++/**
++ * These functions can be called without arguments to retrieve the current
++ * value of the preference/privilege, or called with a single argument to set
++ * the preference/privilege to a new value.
++ *
++ * In other words, they obey the interface that |hold| expects its |accessor|
++ * parameter to obey.
++ */
++var popupMax = makePrefAccessor("dom.popup_maximum"),
++    popupEvents = makePrefAccessor("dom.popup_allowed_events"),
++    popupPrivilege = function(permission) {
++      var old = pm.testPermission(ownUri, "popup");
++      if (arguments.length) {
++        pm.remove(ownUri.host, "popup");
++        pm.add(ownUri, "popup", permission);
++        is(popupPrivilege(), permission, "Couldn't set permission?");
++      }
++      return old;
++    };
++
++var a = $("link"),
++    checkOpened = function(win) { ok(window.open("http://example.com"), "not properly opened") },
++    checkBlocked = function(win) { ok(!window.open("http://example.com"), "not properly blocked") };
++
++/**
++ * Intentional popups are not limited by dom.popup_maximum.
++ */
++function testIntentional(event) {
++  hold(popupMax, 3, function() {
++    send(a, event, checkOpened);
++    send(a, event, checkOpened);
++    send(a, event, checkOpened);
++    send(a, event, checkOpened);
++  });
++  window.open.close();
++}
++
++/**
++ * Probably-intentional popups are limited only by dom.popup_maximum, and
++ * closing the popup window immediately allows another to open.
++ */
++function testProbablyIntentional(event) {
++  hold(popupMax, 2, function() {
++    send(a, event, checkOpened);
++    send(a, event, checkOpened);
++    send(a, event, checkBlocked);
++    window.open.close(1);
++    send(a, event, checkOpened);
++    send(a, event, checkBlocked);
++    send(a, event, checkBlocked);
++    window.open.close();
++    send(a, event, checkOpened);
++    send(a, event, checkOpened);
++    send(a, event, checkBlocked);
++  });
++  window.open.close();
++}
++
++/**
++ * Probably-unintentional popups are forbidden entirely.
++ */
++function testProbablyUnintentional(event) {
++  hold(popupMax, 2, function() {
++    send(a, event, checkBlocked);
++  });
++  window.open.close();
++}
++
++/**
++ * Please be patient; run_tests opens/closes a LOT of windows.
++ */
++function run_tests() {
++  hold(popupEvents, "click mouseup", function() {
++    // Note: pm.UNKNOWN_ACTION is the same as pm.DENY_ACTION.
++    hold(popupPrivilege, pm.DENY_ACTION, function() {
++      testIntentional("click");
++      testProbablyIntentional("mouseup");
++      testProbablyUnintentional("mouseover");
++    });
++    hold(popupPrivilege, pm.ALLOW_ACTION, function() {
++      testIntentional("click");
++      testIntentional("mouseup");
++      testProbablyIntentional("mouseover");
++    });
++  });
++
++  hold(popupEvents, "click", function() {
++    // Note: pm.UNKNOWN_ACTION is the same as pm.DENY_ACTION.
++    hold(popupPrivilege, pm.DENY_ACTION, function() {
++      testIntentional("click");
++      testProbablyUnintentional("mouseup");
++      testProbablyUnintentional("mouseover");
++    });
++    hold(popupPrivilege, pm.ALLOW_ACTION, function() {
++      testIntentional("click");
++      testProbablyIntentional("mouseup");
++      testProbablyIntentional("mouseover");
++    });
++  });
++
++  window.open.close(); // just in case
++}
++
++function check_sanity() {
++  hold(popupPrivilege, pm.UNKNOWN_ACTION, function(unknown) {
++    hold(popupPrivilege, pm.ALLOW_ACTION, function(allow) {
++      is(popupPrivilege(), allow, "properly set to allow");
++    });
++    is(popupPrivilege(), unknown, "properly reset to unknown");
++  });
++}
++
++setTimeout(function() {
++  netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
++  check_sanity();
++  run_tests();
++  SimpleTest.finish();
++}, 200);
++
++</script>
++</pre>
++</body>
++</html>
