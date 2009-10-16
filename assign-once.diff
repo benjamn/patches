@@ -1,0 +1,92 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1255652753 25200
+# Node ID 9425dad7ab06b4a63037285473bff9e6bffabd50
+# Parent  41c64ec7839519f61bbb24704714b84e82e8fce2
+Bug 522806 - Implement a DEBUG-only class AssignOnce<T> to enforce single assignment assumptions.
+
+diff --git a/xpcom/glue/AssignOnce.h b/xpcom/glue/AssignOnce.h
+new file mode 100644
+--- /dev/null
++++ b/xpcom/glue/AssignOnce.h
+@@ -0,0 +1,59 @@
++#ifndef AssignOnce_h__
++#define AssignOnce_h__
++
++namespace mozilla {
++
++template <typename T>
++class AssignOnce {
++
++  // AssignOnce itself should never be instantiated:
++  AssignOnce();
++ ~AssignOnce();
++
++public:
++
++#ifndef DEBUG
++
++  typedef T type;
++
++#else
++
++  class type {
++
++    PRBool mAssigned;
++    T mValue;
++
++  public:
++
++    type()
++      : mAssigned(PR_FALSE)
++      , mValue()
++    {}
++
++    type(const T& t)
++      : mAssigned(PR_FALSE)
++      , mValue(t)
++    {}
++
++    operator const T&() const
++    {
++      return mValue;
++    }
++
++    type& operator=(const T& t)
++    {
++      NS_ASSERTION(!mAssigned, "Assigned too many times!");
++      mValue = t;
++      mAssigned = PR_TRUE;
++      return *this;
++    }
++
++  }; // class type
++
++#endif
++
++}; // class AssignOnce
++
++} // namespace mozilla
++
++#endif
+diff --git a/xpcom/glue/Makefile.in b/xpcom/glue/Makefile.in
+--- a/xpcom/glue/Makefile.in
++++ b/xpcom/glue/Makefile.in
+@@ -124,16 +124,17 @@ EXPORTS = \
+ 		$(NULL)
+ 
+ EXPORTS_mozilla = \
+   BlockingResourceBase.h \
+   CondVar.h \
+   DeadlockDetector.h \
+   Monitor.h \
+   Mutex.h \
++  AssignOnce.h \
+   $(NULL)
+ 
+ SDK_LIBRARY     =                        \
+ 		$(LIB_PREFIX)xpcomglue_s.$(LIB_SUFFIX) \
+ 		$(NULL)
+ 
+ 
+ # we don't want the shared lib, but we want to force the creation of a static lib.

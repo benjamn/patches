@@ -1,8 +1,8 @@
 # HG changeset patch
 # User Ben Newman <bnewman@mozilla.com>
 # Date 1253126765 25200
-# Node ID 7b73ffb40807593e4265a4a4c7ef70061d52504e
-# Parent  b98fabaf5cdd96047b45b1eea987d02a25d36a7f
+# Node ID 043a47f91a76c2db9a552effb82ee7cb182a9280
+# Parent  d761860c50c7a535148a1056e72b8022059b2b02
 Bug 260264 - Popups from a Site that is in the "Allowed List" (whitelist) are blocked, starting with the n-th popup (dom.popup_maximum).
 
 diff --git a/dom/base/nsGlobalWindow.cpp b/dom/base/nsGlobalWindow.cpp
@@ -286,7 +286,7 @@ diff --git a/dom/tests/mochitest/bugs/test_bug260264.html b/dom/tests/mochitest/
 new file mode 100644
 --- /dev/null
 +++ b/dom/tests/mochitest/bugs/test_bug260264.html
-@@ -0,0 +1,249 @@
+@@ -0,0 +1,250 @@
 +<!DOCTYPE HTML>
 +<html>
 +<!--
@@ -423,6 +423,7 @@ new file mode 100644
 + */
 +var popupMax = makePrefAccessor("dom.popup_maximum"),
 +    popupEvents = makePrefAccessor("dom.popup_allowed_events"),
++    blockPopups = makePrefAccessor("dom.disable_open_during_load"),
 +    popupPrivilege = function(permission) {
 +      var old = pm.testPermission(ownUri, "popup");
 +      if (arguments.length) {
@@ -528,7 +529,7 @@ new file mode 100644
 +setTimeout(function() {
 +  netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
 +  check_sanity();
-+  run_tests();
++  hold(blockPopups, true, run_tests);
 +  SimpleTest.finish();
 +}, 200);
 +
