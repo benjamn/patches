@@ -75,7 +75,7 @@ diff --git a/dom/base/nsGlobalWindow.cpp b/dom/base/nsGlobalWindow.cpp
    NS_ASSERTION(treeItem, "What happened?");
    nsCOMPtr<nsIDocShellTreeItem> rootItem;
    treeItem->GetRootTreeItem(getter_AddRefs(rootItem));
-@@ -4967,88 +4971,72 @@ nsGlobalWindow::CanSetProperty(const cha
+@@ -4967,88 +4971,79 @@ nsGlobalWindow::CanSetProperty(const cha
      return PR_TRUE;
    }
  
@@ -87,13 +87,20 @@ diff --git a/dom/base/nsGlobalWindow.cpp b/dom/base/nsGlobalWindow.cpp
 +PRBool
 +nsGlobalWindow::PopupWhitelisted()
 +{
-+  nsCOMPtr<nsIDOMWindow> topWindow;
-+  GetTop(getter_AddRefs(topWindow));
++  if (!IsPopupBlocked(mDocument))
++    return PR_TRUE;
 +
-+  nsCOMPtr<nsPIDOMWindow> topPIWin(do_QueryInterface(topWindow));
++  nsCOMPtr<nsIDOMWindow> parent;
 +
-+  return topPIWin && (!IsPopupBlocked(topPIWin->GetExtantDocument()) ||
-+                      !IsPopupBlocked(mDocument));
++  if (NS_FAILED(GetParent(getter_AddRefs(parent))) ||
++      parent == static_cast<nsIDOMWindow*>(this))
++  {
++    return PR_FALSE;
++  }
++
++  return static_cast<nsGlobalWindow*>
++                    (static_cast<nsIDOMWindow*>
++                                (parent.get()))->PopupWhitelisted();
 +}
  
  /*
@@ -190,7 +197,7 @@ diff --git a/dom/base/nsGlobalWindow.cpp b/dom/base/nsGlobalWindow.cpp
  nsGlobalWindow::FireAbuseEvents(PRBool aBlocked, PRBool aWindow,
                                  const nsAString &aPopupURL,
                                  const nsAString &aPopupWindowName,
-@@ -7492,23 +7480,20 @@ nsGlobalWindow::OpenInternal(const nsASt
+@@ -7489,23 +7484,20 @@ nsGlobalWindow::OpenInternal(const nsASt
         window.openDialog being inaccessible from web scripts */
      if (url.get() && !aDialog)
        rv = SecurityCheckURL(url.get());
@@ -268,7 +275,7 @@ diff --git a/dom/base/nsGlobalWindow.h b/dom/base/nsGlobalWindow.h
 diff --git a/dom/tests/mochitest/bugs/Makefile.in b/dom/tests/mochitest/bugs/Makefile.in
 --- a/dom/tests/mochitest/bugs/Makefile.in
 +++ b/dom/tests/mochitest/bugs/Makefile.in
-@@ -97,12 +97,13 @@ _TEST_FILES	= \
+@@ -97,12 +97,16 @@ _TEST_FILES	= \
  		iframe_bug463000.html \
  		test_bug465263.html \
  		test_bug479143.html \
@@ -278,15 +285,67 @@ diff --git a/dom/tests/mochitest/bugs/Makefile.in b/dom/tests/mochitest/bugs/Mak
  		test_bug504862.html \
  		file_bug504862.html \
 +		test_bug260264.html \
++		child_bug260264.html \
++		grandchild_bug260264.html \
++		utils_bug260264.js \
  		$(NULL)
  
  libs:: 	$(_TEST_FILES)
  	$(INSTALL) $(foreach f,$^,"$f") $(DEPTH)/_tests/testing/mochitest/tests/$(relativesrcdir)
+diff --git a/dom/tests/mochitest/bugs/child_bug260264.html b/dom/tests/mochitest/bugs/child_bug260264.html
+new file mode 100644
+--- /dev/null
++++ b/dom/tests/mochitest/bugs/child_bug260264.html
+@@ -0,0 +1,13 @@
++<html>
++  <head>
++    <script type="application/javascript" src="utils_bug260264.js"></script>
++  </head>
++  <body>
++    <iframe id="frame"></iframe>
++    <script type="application/javascript">
++      document.getElementById("frame").src =
++        alter_file(alter_host(location.href, "localhost:8888"),
++                   "grandchild_bug260264.html");
++    </script>
++  </body>
++</html>
+diff --git a/dom/tests/mochitest/bugs/grandchild_bug260264.html b/dom/tests/mochitest/bugs/grandchild_bug260264.html
+new file mode 100644
+--- /dev/null
++++ b/dom/tests/mochitest/bugs/grandchild_bug260264.html
+@@ -0,0 +1,26 @@
++<html>
++  <head>
++    <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
++  </head>
++  <body>
++    <a id="nested link" href="javascript:(function(){})()">nested link</a>
++    <script type="application/javascript">
++      var event = location.hash.split("#").pop(),
++          a = document.getElementById("nested link");
++      a.addEventListener(event, function() {
++        var win = window,
++            popup = win.open("http://example.com");
++        netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
++        while (win.parent != win)
++          win = win.parent;
++        var wtnf = win.test_nested_frames,
++            report = wtnf && wtnf.report;
++        if (report)
++          report.call(win, popup);
++        if (popup)
++          popup.close();
++      }, false);
++      sendMouseEvent({ type: event }, a.id);
++    </script>
++  </body>
++</html>
 diff --git a/dom/tests/mochitest/bugs/test_bug260264.html b/dom/tests/mochitest/bugs/test_bug260264.html
 new file mode 100644
 --- /dev/null
 +++ b/dom/tests/mochitest/bugs/test_bug260264.html
-@@ -0,0 +1,250 @@
+@@ -0,0 +1,336 @@
 +<!DOCTYPE HTML>
 +<html>
 +<!--
@@ -297,12 +356,15 @@ new file mode 100644
 +  <script type="application/javascript" src="/MochiKit/packed.js"></script>
 +  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
 +  <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
++  <script type="application/javascript" src="utils_bug260264.js"></script>
 +  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 +</head>
 +<body>
 +<a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=260264">Mozilla Bug 260264</a>
 +<p id="display">
 +  <a id="link" href="javascript:(function(){})()">link</a>
++  <br />
++  <iframe id="nest"></iframe>
 +</p>
 +<div id="content" style="display: none">
 +
@@ -353,7 +415,8 @@ new file mode 100644
 +                   .getService(Components.interfaces.nsIPermissionManager),
 +    ioService = Components.classes["@mozilla.org/network/io-service;1"]
 +                          .getService(Components.interfaces.nsIIOService),
-+    ownUri = ioService.newURI(location.href, null, null);
++    ownUri = ioService.newURI(location.href, null, null),
++    exampleUri = ioService.newURI("http://example.com", null, null);
 +
 +/**
 + * This ridiculously over-engineered function makes an accessor function from
@@ -385,6 +448,18 @@ new file mode 100644
 +    if (arguments.length > 0)
 +      branch['set' + kind](basePref, value);
 +    return oldValue;
++  };
++}
++
++function makePopupPrivAccessor(uri) {
++  uri = ioService.newURI(uri, null, null);
++  return function(permission) {
++    var old = pm.testPermission(uri, "popup");
++    if (arguments.length) {
++      pm.remove(uri.host, "popup");
++      pm.add(uri, "popup", permission);
++    }
++    return old;
 +  };
 +}
 +
@@ -424,19 +499,12 @@ new file mode 100644
 +var popupMax = makePrefAccessor("dom.popup_maximum"),
 +    popupEvents = makePrefAccessor("dom.popup_allowed_events"),
 +    blockPopups = makePrefAccessor("dom.disable_open_during_load"),
-+    popupPrivilege = function(permission) {
-+      var old = pm.testPermission(ownUri, "popup");
-+      if (arguments.length) {
-+        pm.remove(ownUri.host, "popup");
-+        pm.add(ownUri, "popup", permission);
-+        is(popupPrivilege(), permission, "Couldn't set permission?");
-+      }
-+      return old;
-+    };
++    ownPopupPriv = makePopupPrivAccessor(location.href),
++    exPopupPriv = makePopupPrivAccessor("http://example.com");
 +
 +var a = $("link"),
-+    checkOpened = function(win) { ok(window.open("http://example.com"), "not properly opened") },
-+    checkBlocked = function(win) { ok(!window.open("http://example.com"), "not properly blocked") };
++    checkOpened = function() { ok(window.open("http://example.com"), "not properly opened") },
++    checkBlocked = function() { ok(!window.open("http://example.com"), "not properly blocked") };
 +
 +/**
 + * Intentional popups are not limited by dom.popup_maximum.
@@ -488,12 +556,12 @@ new file mode 100644
 +function run_tests() {
 +  hold(popupEvents, "click mouseup", function() {
 +    // Note: pm.UNKNOWN_ACTION is the same as pm.DENY_ACTION.
-+    hold(popupPrivilege, pm.DENY_ACTION, function() {
++    hold(ownPopupPriv, pm.DENY_ACTION, function() {
 +      testIntentional("click");
 +      testProbablyIntentional("mouseup");
 +      testProbablyUnintentional("mouseover");
 +    });
-+    hold(popupPrivilege, pm.ALLOW_ACTION, function() {
++    hold(ownPopupPriv, pm.ALLOW_ACTION, function() {
 +      testIntentional("click");
 +      testIntentional("mouseup");
 +      testProbablyIntentional("mouseover");
@@ -502,12 +570,12 @@ new file mode 100644
 +
 +  hold(popupEvents, "click", function() {
 +    // Note: pm.UNKNOWN_ACTION is the same as pm.DENY_ACTION.
-+    hold(popupPrivilege, pm.DENY_ACTION, function() {
++    hold(ownPopupPriv, pm.DENY_ACTION, function() {
 +      testIntentional("click");
 +      testProbablyUnintentional("mouseup");
 +      testProbablyUnintentional("mouseover");
 +    });
-+    hold(popupPrivilege, pm.ALLOW_ACTION, function() {
++    hold(ownPopupPriv, pm.ALLOW_ACTION, function() {
 +      testIntentional("click");
 +      testProbablyIntentional("mouseup");
 +      testProbablyIntentional("mouseover");
@@ -515,25 +583,126 @@ new file mode 100644
 +  });
 +
 +  window.open.close(); // just in case
++  finish_one();
++}
++
++function test_nested_frames() {
++
++  function performer(event) {
++    $("nest").src =
++      alter_file(alter_host(location.href, "example.com"),
++                 "child_bug260264.html#" + event);
++  }
++
++  function finisher(old) {
++    popupEvents(old.events);
++    ownPopupPriv(old.ownPriv);
++    exPopupPriv(old.exPriv);
++    test_nested_frames.report = null;
++  }
++
++  var tests = [{
++    event: "mouseup",
++    setup: function(old) {
++      old.events = popupEvents("click");
++      old.ownPriv = ownPopupPriv(pm.DENY_ACTION);
++      old.exPriv = exPopupPriv(pm.ALLOW_ACTION);
++    },
++    report: function(popup) {
++      ok(popup, "popup should not have been blocked");
++    },
++    perform: performer,
++    finish: finisher
++  }, {
++    event: "mouseup",
++    setup: function(old) {
++      old.events = popupEvents("click");
++      old.ownPriv = ownPopupPriv(pm.DENY_ACTION);
++      old.exPriv = exPopupPriv(pm.DENY_ACTION);
++    },
++    report: function(popup) {
++      ok(!popup, "popup should have been blocked");
++    },
++    perform: performer,
++    finish: finisher
++  }];
++
++  (function() {
++    var options = tests.shift(), old;
++    if (options) {
++      test_nested_frames.report = function(popup) {
++        netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
++        try { options.report(popup) }
++        finally {
++          options.finish(old);
++          setTimeout(arguments.callee, 10);
++        }
++      };
++      netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
++      options.setup(old = {});
++      options.perform(options.event);
++    } else {
++      finish_one();
++    }
++  })();
++
 +}
 +
 +function check_sanity() {
-+  hold(popupPrivilege, pm.UNKNOWN_ACTION, function(unknown) {
-+    hold(popupPrivilege, pm.ALLOW_ACTION, function(allow) {
-+      is(popupPrivilege(), allow, "properly set to allow");
++  hold(ownPopupPriv, pm.UNKNOWN_ACTION, function(unknown) {
++    hold(ownPopupPriv, pm.ALLOW_ACTION, function(allow) {
++      is(ownPopupPriv(), allow, "properly set to allow");
 +    });
-+    is(popupPrivilege(), unknown, "properly reset to unknown");
++    is(ownPopupPriv(), unknown, "properly reset to unknown");
 +  });
++  finish_one();
 +}
++
++var tests = [
++  // check_sanity,
++  // run_tests,
++  test_nested_frames
++];
++
++(function(expected) {
++  finish_one = function() {
++    if (--expected == 0)
++      SimpleTest.finish();
++  };
++})(tests.length);
 +
 +setTimeout(function() {
 +  netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
-+  check_sanity();
-+  hold(blockPopups, true, run_tests);
-+  SimpleTest.finish();
++  var test;
++  while ((test = tests.shift()))
++    hold(blockPopups, true, test);
 +}, 200);
 +
 +</script>
 +</pre>
 +</body>
 +</html>
+diff --git a/dom/tests/mochitest/bugs/utils_bug260264.js b/dom/tests/mochitest/bugs/utils_bug260264.js
+new file mode 100644
+--- /dev/null
++++ b/dom/tests/mochitest/bugs/utils_bug260264.js
+@@ -0,0 +1,19 @@
++function _alter_helper(uri, fn) {
++  var hash_splat = uri.split("#"),
++      splat = hash_splat.shift().split("/");
++  fn(splat);
++  hash_splat.unshift(splat.join("/"));
++  return hash_splat.join("#");
++}
++
++function alter_host(uri, host) {
++  return _alter_helper(uri, function(splat) {
++    splat.splice(2, 1, host);
++  });
++}
++
++function alter_file(uri, file) {
++  return _alter_helper(uri, function(splat) {
++    splat[splat.length - 1] = file;
++  });
++}
