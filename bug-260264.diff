@@ -275,7 +275,7 @@ diff --git a/dom/base/nsGlobalWindow.h b/dom/base/nsGlobalWindow.h
 diff --git a/dom/tests/mochitest/bugs/Makefile.in b/dom/tests/mochitest/bugs/Makefile.in
 --- a/dom/tests/mochitest/bugs/Makefile.in
 +++ b/dom/tests/mochitest/bugs/Makefile.in
-@@ -97,12 +97,16 @@ _TEST_FILES	= \
+@@ -97,12 +97,17 @@ _TEST_FILES	= \
  		iframe_bug463000.html \
  		test_bug465263.html \
  		test_bug479143.html \
@@ -285,6 +285,7 @@ diff --git a/dom/tests/mochitest/bugs/Makefile.in b/dom/tests/mochitest/bugs/Mak
  		test_bug504862.html \
  		file_bug504862.html \
 +		test_bug260264.html \
++		test_bug260264_nested.html \
 +		child_bug260264.html \
 +		grandchild_bug260264.html \
 +		utils_bug260264.js \
@@ -314,30 +315,22 @@ diff --git a/dom/tests/mochitest/bugs/grandchild_bug260264.html b/dom/tests/moch
 new file mode 100644
 --- /dev/null
 +++ b/dom/tests/mochitest/bugs/grandchild_bug260264.html
-@@ -0,0 +1,26 @@
+@@ -0,0 +1,18 @@
 +<html>
 +  <head>
-+    <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
++    <script type="application/javascript" src="utils_bug260264.js"></script>
 +  </head>
 +  <body>
 +    <a id="nested link" href="javascript:(function(){})()">nested link</a>
 +    <script type="application/javascript">
-+      var event = location.hash.split("#").pop(),
-+          a = document.getElementById("nested link");
-+      a.addEventListener(event, function() {
++      var event = location.hash.split("#").pop();
++      send(document.getElementById("nested link"), event, function() {
 +        var win = window,
 +            popup = win.open("http://example.com");
 +        netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
-+        while (win.parent != win)
-+          win = win.parent;
-+        var wtnf = win.test_nested_frames,
-+            report = wtnf && wtnf.report;
-+        if (report)
-+          report.call(win, popup);
-+        if (popup)
-+          popup.close();
-+      }, false);
-+      sendMouseEvent({ type: event }, a.id);
++        try { window.top.report(popup) }
++        finally { popup && popup.close() }
++      });
 +    </script>
 +  </body>
 +</html>
@@ -345,7 +338,7 @@ diff --git a/dom/tests/mochitest/bugs/test_bug260264.html b/dom/tests/mochitest/
 new file mode 100644
 --- /dev/null
 +++ b/dom/tests/mochitest/bugs/test_bug260264.html
-@@ -0,0 +1,336 @@
+@@ -0,0 +1,144 @@
 +<!DOCTYPE HTML>
 +<html>
 +<!--
@@ -355,7 +348,6 @@ new file mode 100644
 +  <title>Test for Bug 260264</title>
 +  <script type="application/javascript" src="/MochiKit/packed.js"></script>
 +  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-+  <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
 +  <script type="application/javascript" src="utils_bug260264.js"></script>
 +  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 +</head>
@@ -363,8 +355,6 @@ new file mode 100644
 +<a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=260264">Mozilla Bug 260264</a>
 +<p id="display">
 +  <a id="link" href="javascript:(function(){})()">link</a>
-+  <br />
-+  <iframe id="nest"></iframe>
 +</p>
 +<div id="content" style="display: none">
 +
@@ -377,118 +367,6 @@ new file mode 100644
 +SimpleTest.waitForExplicitFinish();
 +
 +/**
-+ * Dispatches |handler| to |element|, as if fired in response to |event|.
-+ */
-+function send(element, event, handler) {
-+  function unique_handler() { return handler.apply(this, arguments) }
-+  element.addEventListener(event, unique_handler, false);
-+  try { sendMouseEvent({ type: event }, element.id) }
-+  finally { element.removeEventListener(event, unique_handler, false) }
-+}
-+
-+/**
-+ * Because it's not nice to leave popup windows open after the tests are
-+ * finished, we need a foolproof way to close some/all window.opened windows.
-+ */
-+(function(originalOpen) {
-+  var wins = [];
-+  (window.open = function() {
-+    var win = originalOpen.apply(window, arguments);
-+    if (win)
-+      wins[wins.length] = win;
-+    return win;
-+  }).close = function(n) {
-+    if (arguments.length < 1)
-+      n = wins.length;
-+    while (n --> 0) {
-+      var win = wins.pop();
-+      if (win) win.close();
-+      else break;
-+    }
-+  };
-+})(window.open);
-+
-+netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
-+var prefService = Components.classes["@mozilla.org/preferences-service;1"]
-+                            .getService(Components.interfaces.nsIPrefService),
-+    pm = Components.classes["@mozilla.org/permissionmanager;1"]
-+                   .getService(Components.interfaces.nsIPermissionManager),
-+    ioService = Components.classes["@mozilla.org/network/io-service;1"]
-+                          .getService(Components.interfaces.nsIIOService),
-+    ownUri = ioService.newURI(location.href, null, null),
-+    exampleUri = ioService.newURI("http://example.com", null, null);
-+
-+/**
-+ * This ridiculously over-engineered function makes an accessor function from
-+ * any given preference string.  Such accessors may be passed as the first
-+ * parameter to the |hold| function defined below.
-+ */
-+function makePrefAccessor(pref) {
-+  var splat = pref.split('.'),
-+      basePref = splat.pop(),
-+      branch, kind;
-+
-+  try {
-+    branch = prefService.getBranch(splat.join('.') + '.');
-+  } catch (x) {
-+    alert("Calling prefService.getBranch failed: " + 
-+      "did you forget to enable UniversalXPConnect?");
-+    throw x;
-+  }
-+
-+  switch (branch.getPrefType(basePref)) {
-+  case branch.PREF_STRING:  kind = "CharPref"; break;
-+  case branch.PREF_INT:     kind = "IntPref"; break;
-+  case branch.PREF_BOOL:    kind = "BoolPref"; break;
-+  case branch.PREF_INVALID: kind = "ComplexValue";
-+  }
-+
-+  return function(value) {
-+    var oldValue = branch['get' + kind](basePref);
-+    if (arguments.length > 0)
-+      branch['set' + kind](basePref, value);
-+    return oldValue;
-+  };
-+}
-+
-+function makePopupPrivAccessor(uri) {
-+  uri = ioService.newURI(uri, null, null);
-+  return function(permission) {
-+    var old = pm.testPermission(uri, "popup");
-+    if (arguments.length) {
-+      pm.remove(uri.host, "popup");
-+      pm.add(uri, "popup", permission);
-+    }
-+    return old;
-+  };
-+}
-+
-+/**
-+ * This function takes an accessor function, a new value, and a callback
-+ * function.  It assigns the new value to the accessor, saving the old value,
-+ * then calls the callback function with the new and old values.  Before
-+ * returning, |hold| sets the accessor back to the old value, even if the
-+ * callback function misbehaved (i.e., threw).
-+ *
-+ * For sanity's sake, |hold| also ensures that the accessor still has the new
-+ * value at the time the old value is reassigned.  The accessor's value might
-+ * have changed to something entirely different during the execution of the
-+ * callback function, but it must have changed back.
-+ *
-+ * Without such a mechanism it would be very difficult to verify that these
-+ * tests leave the browser's preferences/privileges as they were originally.
-+ */
-+function hold(accessor, value, body) {
-+  var old_value = accessor(value);
-+  try { return body(value, old_value) }
-+  finally {
-+    old_value = accessor(old_value);
-+    if (old_value !== value)
-+      throw [accessor, value, old_value];
-+  }
-+}
-+
-+/**
 + * These functions can be called without arguments to retrieve the current
 + * value of the preference/privilege, or called with a single argument to set
 + * the preference/privilege to a new value.
@@ -496,11 +374,11 @@ new file mode 100644
 + * In other words, they obey the interface that |hold| expects its |accessor|
 + * parameter to obey.
 + */
++netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
 +var popupMax = makePrefAccessor("dom.popup_maximum"),
 +    popupEvents = makePrefAccessor("dom.popup_allowed_events"),
 +    blockPopups = makePrefAccessor("dom.disable_open_during_load"),
-+    ownPopupPriv = makePopupPrivAccessor(location.href),
-+    exPopupPriv = makePopupPrivAccessor("http://example.com");
++    ownPopupPriv = makePopupPrivAccessor(location.href);
 +
 +var a = $("link"),
 +    checkOpened = function() { ok(window.open("http://example.com"), "not properly opened") },
@@ -555,13 +433,13 @@ new file mode 100644
 + */
 +function run_tests() {
 +  hold(popupEvents, "click mouseup", function() {
-+    // Note: pm.UNKNOWN_ACTION is the same as pm.DENY_ACTION.
-+    hold(ownPopupPriv, pm.DENY_ACTION, function() {
++    // Note: UNKNOWN_ACTION is the same as DENY_ACTION.
++    hold(ownPopupPriv, DENY_ACTION, function() {
 +      testIntentional("click");
 +      testProbablyIntentional("mouseup");
 +      testProbablyUnintentional("mouseover");
 +    });
-+    hold(ownPopupPriv, pm.ALLOW_ACTION, function() {
++    hold(ownPopupPriv, ALLOW_ACTION, function() {
 +      testIntentional("click");
 +      testIntentional("mouseup");
 +      testProbablyIntentional("mouseover");
@@ -569,13 +447,13 @@ new file mode 100644
 +  });
 +
 +  hold(popupEvents, "click", function() {
-+    // Note: pm.UNKNOWN_ACTION is the same as pm.DENY_ACTION.
-+    hold(ownPopupPriv, pm.DENY_ACTION, function() {
++    // Note: UNKNOWN_ACTION is the same as DENY_ACTION.
++    hold(ownPopupPriv, DENY_ACTION, function() {
 +      testIntentional("click");
 +      testProbablyUnintentional("mouseup");
 +      testProbablyUnintentional("mouseover");
 +    });
-+    hold(ownPopupPriv, pm.ALLOW_ACTION, function() {
++    hold(ownPopupPriv, ALLOW_ACTION, function() {
 +      testIntentional("click");
 +      testProbablyIntentional("mouseup");
 +      testProbablyIntentional("mouseover");
@@ -583,100 +461,144 @@ new file mode 100644
 +  });
 +
 +  window.open.close(); // just in case
-+  finish_one();
 +}
++
++function check_sanity() {
++  hold(ownPopupPriv, UNKNOWN_ACTION, function(unknown) {
++    hold(ownPopupPriv, ALLOW_ACTION, function(allow) {
++      is(ownPopupPriv(), allow, "properly set to allow");
++    });
++    is(ownPopupPriv(), unknown, "properly reset to unknown");
++  });
++}
++
++setTimeout(function() {
++  netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
++  check_sanity();
++  hold(blockPopups, true, run_tests);
++  SimpleTest.finish();
++}, 200);
++
++</script>
++</pre>
++</body>
++</html>
+diff --git a/dom/tests/mochitest/bugs/test_bug260264_nested.html b/dom/tests/mochitest/bugs/test_bug260264_nested.html
+new file mode 100644
+--- /dev/null
++++ b/dom/tests/mochitest/bugs/test_bug260264_nested.html
+@@ -0,0 +1,116 @@
++<!DOCTYPE HTML>
++<html>
++<!--
++https://bugzilla.mozilla.org/show_bug.cgi?id=260264
++-->
++<head>
++  <title>Test for Bug 260264</title>
++  <script type="application/javascript" src="/MochiKit/packed.js"></script>
++  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
++  <script type="application/javascript" src="utils_bug260264.js"></script>
++  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
++</head>
++<body>
++<a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=260264">Mozilla Bug 260264</a>
++<p id="display"></p>
++<div id="content" style="display: none">
++  
++</div>
++<pre id="test">
++<script type="application/javascript">
++
++/** Test for Bug 260264 **/
++
++SimpleTest.waitForExplicitFinish();
++
++netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
++var popupEvents = makePrefAccessor("dom.popup_allowed_events"),
++    blockPopups = makePrefAccessor("dom.disable_open_during_load"),
++    ownPopupPriv = makePopupPrivAccessor(location.href),
++    ecPopupPriv = makePopupPrivAccessor("http://example.com");
 +
 +function test_nested_frames() {
 +
 +  function performer(event) {
-+    $("nest").src =
++    $("display").appendChild(document.createElement("iframe")).src =
 +      alter_file(alter_host(location.href, "example.com"),
-+                 "child_bug260264.html#" + event);
++                             "child_bug260264.html#" + event);
 +  }
 +
 +  function finisher(old) {
 +    popupEvents(old.events);
 +    ownPopupPriv(old.ownPriv);
-+    exPopupPriv(old.exPriv);
-+    test_nested_frames.report = null;
++    ecPopupPriv(old.ecPriv);
++  }
++  
++  function should_have_blocked(popup) {
++    ok(!popup, "popup should have been blocked");
 +  }
 +
-+  var tests = [{
-+    event: "mouseup",
-+    setup: function(old) {
-+      old.events = popupEvents("click");
-+      old.ownPriv = ownPopupPriv(pm.DENY_ACTION);
-+      old.exPriv = exPopupPriv(pm.ALLOW_ACTION);
-+    },
-+    report: function(popup) {
-+      ok(popup, "popup should not have been blocked");
-+    },
-+    perform: performer,
-+    finish: finisher
-+  }, {
-+    event: "mouseup",
-+    setup: function(old) {
-+      old.events = popupEvents("click");
-+      old.ownPriv = ownPopupPriv(pm.DENY_ACTION);
-+      old.exPriv = exPopupPriv(pm.DENY_ACTION);
-+    },
-+    report: function(popup) {
-+      ok(!popup, "popup should have been blocked");
-+    },
-+    perform: performer,
-+    finish: finisher
-+  }];
++  function should_not_have_blocked(popup) {
++    ok(popup, "popup should not have been blocked");
++  }
 +
-+  (function() {
-+    var options = tests.shift(), old;
++  /**
++   * The example_priv parameter controls whether or not the child frame has
++   * popup clearance.  Neither the top window nor the grandchild frame have
++   * this clearance.  The point of these tests is to make sure the child's
++   * clearance (or lack thereof) is properly considered when opening a popup
++   * from the grandchild.
++   */
++  function makeTest(event, example_priv, reporter, allowed_events) {
++    return {
++      event: event,
++      setup: function(old) {
++        old.events = popupEvents(allowed_events || "click mouseup");
++        old.ownPriv = ownPopupPriv(DENY_ACTION);
++        old.ecPriv = ecPopupPriv(example_priv);
++      },
++      report: reporter,
++      perform: performer,
++      finish: finisher
++    };
++  };
++
++  var old, tests = [
++    makeTest("mouseup",    DENY_ACTION, should_not_have_blocked),
++    makeTest("mouseup",   ALLOW_ACTION, should_not_have_blocked),
++    makeTest("mouseup",   ALLOW_ACTION, should_not_have_blocked, "click"),
++    makeTest("mouseup",    DENY_ACTION, should_have_blocked, "click"),
++    makeTest("mouseover",  DENY_ACTION, should_have_blocked),
++    makeTest("mouseover", ALLOW_ACTION, should_not_have_blocked),
++    makeTest("click",      DENY_ACTION, should_not_have_blocked),
++    makeTest("click",     ALLOW_ACTION, should_not_have_blocked)
++  ];
++
++  // Visible to child windows:
++  window.report = function(popup) {
++    netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
++    try { tests[0].report(popup) }
++    finally {
++      tests.shift().finish(old);
++      resume();
++    }
++  }
++
++  function resume() {
++    var options = tests[0];
 +    if (options) {
-+      test_nested_frames.report = function(popup) {
-+        netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
-+        try { options.report(popup) }
-+        finally {
-+          options.finish(old);
-+          setTimeout(arguments.callee, 10);
-+        }
-+      };
 +      netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
 +      options.setup(old = {});
 +      options.perform(options.event);
 +    } else {
-+      finish_one();
-+    }
-+  })();
-+
-+}
-+
-+function check_sanity() {
-+  hold(ownPopupPriv, pm.UNKNOWN_ACTION, function(unknown) {
-+    hold(ownPopupPriv, pm.ALLOW_ACTION, function(allow) {
-+      is(ownPopupPriv(), allow, "properly set to allow");
-+    });
-+    is(ownPopupPriv(), unknown, "properly reset to unknown");
-+  });
-+  finish_one();
-+}
-+
-+var tests = [
-+  // check_sanity,
-+  // run_tests,
-+  test_nested_frames
-+];
-+
-+(function(expected) {
-+  finish_one = function() {
-+    if (--expected == 0)
 +      SimpleTest.finish();
-+  };
-+})(tests.length);
++    }
++  }
 +
-+setTimeout(function() {
-+  netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
-+  var test;
-+  while ((test = tests.shift()))
-+    hold(blockPopups, true, test);
-+}, 200);
++  resume();
++
++}
++
++test_nested_frames();
 +
 +</script>
 +</pre>
@@ -686,7 +608,46 @@ diff --git a/dom/tests/mochitest/bugs/utils_bug260264.js b/dom/tests/mochitest/b
 new file mode 100644
 --- /dev/null
 +++ b/dom/tests/mochitest/bugs/utils_bug260264.js
-@@ -0,0 +1,19 @@
+@@ -0,0 +1,145 @@
++(function() {
++  // For sendMouseEvent:
++  document.getElementsByTagName("head").item(0)
++    .appendChild(document.createElement("script")).src =
++      "/tests/SimpleTest/EventUtils.js";
++})();
++
++/**
++ * Dispatches |handler| to |element|, as if fired in response to |event|.
++ */
++function send(element, event, handler) {
++  function unique_handler() { return handler.apply(this, arguments) }
++  element.addEventListener(event, unique_handler, false);
++  try { sendMouseEvent({ type: event }, element.id) }
++  finally { element.removeEventListener(event, unique_handler, false) }
++}
++
++/**
++ * Because it's not nice to leave popup windows open after the tests are
++ * finished, we need a foolproof way to close some/all window.opened windows.
++ */
++(function(originalOpen) {
++  var wins = [];
++  (window.open = function() {
++    var win = originalOpen.apply(window, arguments);
++    if (win)
++      wins[wins.length] = win;
++    return win;
++  }).close = function(n) {
++    if (arguments.length < 1)
++      n = wins.length;
++    while (n --> 0) {
++      var win = wins.pop();
++      if (win) win.close();
++      else break;
++    }
++  };
++})(window.open);
++
 +function _alter_helper(uri, fn) {
 +  var hash_splat = uri.split("#"),
 +      splat = hash_splat.shift().split("/");
@@ -706,3 +667,91 @@ new file mode 100644
 +    splat[splat.length - 1] = file;
 +  });
 +}
++
++(function() {
++
++  netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
++
++  var prefService = Components.classes["@mozilla.org/preferences-service;1"]
++                              .getService(Components.interfaces.nsIPrefService),
++      pm = Components.classes["@mozilla.org/permissionmanager;1"]
++                     .getService(Components.interfaces.nsIPermissionManager),
++      ioService = Components.classes["@mozilla.org/network/io-service;1"]
++                            .getService(Components.interfaces.nsIIOService);
++
++  ALLOW_ACTION = pm.ALLOW_ACTION;
++  DENY_ACTION = pm.DENY_ACTION;
++  UNKNOWN_ACTION = pm.UNKNOWN_ACTION;
++
++  /**
++   * This ridiculously over-engineered function makes an accessor function from
++   * any given preference string.  Such accessors may be passed as the first
++   * parameter to the |hold| function defined below.
++   */
++  makePrefAccessor = function(pref) {
++    var splat = pref.split('.'),
++        basePref = splat.pop(),
++        branch, kind;
++
++    try {
++      branch = prefService.getBranch(splat.join('.') + '.');
++    } catch (x) {
++      alert("Calling prefService.getBranch failed: " + 
++        "did you forget to enable UniversalXPConnect?");
++      throw x;
++    }
++
++    switch (branch.getPrefType(basePref)) {
++    case branch.PREF_STRING:  kind = "CharPref"; break;
++    case branch.PREF_INT:     kind = "IntPref"; break;
++    case branch.PREF_BOOL:    kind = "BoolPref"; break;
++    case branch.PREF_INVALID: kind = "ComplexValue";
++    }
++
++    return function(value) {
++      var oldValue = branch['get' + kind](basePref);
++      if (arguments.length > 0)
++        branch['set' + kind](basePref, value);
++      return oldValue;
++    };
++  };
++
++  makePopupPrivAccessor = function(uri) {
++    uri = ioService.newURI(uri, null, null);
++    return function(permission) {
++      var old = pm.testPermission(uri, "popup");
++      if (arguments.length) {
++        pm.remove(uri.host, "popup");
++        pm.add(uri, "popup", permission);
++      }
++      return old;
++    };
++  };
++
++})();
++
++/**
++ * This function takes an accessor function, a new value, and a callback
++ * function.  It assigns the new value to the accessor, saving the old value,
++ * then calls the callback function with the new and old values.  Before
++ * returning, |hold| sets the accessor back to the old value, even if the
++ * callback function misbehaved (i.e., threw).
++ *
++ * For sanity's sake, |hold| also ensures that the accessor still has the new
++ * value at the time the old value is reassigned.  The accessor's value might
++ * have changed to something entirely different during the execution of the
++ * callback function, but it must have changed back.
++ *
++ * Without such a mechanism it would be very difficult to verify that these
++ * tests leave the browser's preferences/privileges as they were originally.
++ */
++function hold(accessor, value, body) {
++  var old_value = accessor(value);
++  try { return body(value, old_value) }
++  finally {
++    old_value = accessor(old_value);
++    if (old_value !== value)
++      throw [accessor, value, old_value];
++  }
++}
+\ No newline at end of file

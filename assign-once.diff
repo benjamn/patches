@@ -1,15 +1,15 @@
 # HG changeset patch
 # User Ben Newman <bnewman@mozilla.com>
 # Date 1255652753 25200
-# Node ID 9425dad7ab06b4a63037285473bff9e6bffabd50
-# Parent  41c64ec7839519f61bbb24704714b84e82e8fce2
+# Node ID df7e04c0be158c950c0e484b394d0831bd1cfc17
+# Parent  69678b3039a8d67c8b7d681f8ab580d105458f1c
 Bug 522806 - Implement a DEBUG-only class AssignOnce<T> to enforce single assignment assumptions.
 
 diff --git a/xpcom/glue/AssignOnce.h b/xpcom/glue/AssignOnce.h
 new file mode 100644
 --- /dev/null
 +++ b/xpcom/glue/AssignOnce.h
-@@ -0,0 +1,59 @@
+@@ -0,0 +1,61 @@
 +#ifndef AssignOnce_h__
 +#define AssignOnce_h__
 +
@@ -54,7 +54,9 @@ new file mode 100644
 +
 +    type& operator=(const T& t)
 +    {
-+      NS_ASSERTION(!mAssigned, "Assigned too many times!");
++      if (mAssigned) {
++        NS_ASSERTION(!mAssigned, "Assigned too many times!");
++      }
 +      mValue = t;
 +      mAssigned = PR_TRUE;
 +      return *this;
