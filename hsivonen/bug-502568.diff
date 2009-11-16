@@ -1,0 +1,1116 @@
+diff --git a/parser/html/nsAHtml5TreeOpSink.h b/parser/html/nsAHtml5TreeOpSink.h
+--- a/parser/html/nsAHtml5TreeOpSink.h
++++ b/parser/html/nsAHtml5TreeOpSink.h
+@@ -43,21 +43,15 @@
+  * (main-thread case), a tree op stage (non-speculative off-the-main-thread
+  * case) or a speculation (speculative case).
+  */
+ class nsAHtml5TreeOpSink {
+   public:
+   
+     /**
+      * Flush the operations from the tree operations from the argument
+-     * queue if flushing is not expensive.
++     * queue into this sink unconditionally.
+      */
+-    virtual void MaybeFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue) = 0;
+-
+-    /**
+-     * Flush the operations from the tree operations from the argument
+-     * queue unconditionally.
+-     */
+-    virtual void ForcedFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue) = 0;
++    virtual void MoveOpsFrom(nsTArray<nsHtml5TreeOperation>& aOpQueue) = 0;
+     
+ };
+ 
+ #endif /* nsAHtml5TreeOpSink_h___ */
+diff --git a/parser/html/nsHtml5Speculation.cpp b/parser/html/nsHtml5Speculation.cpp
+--- a/parser/html/nsHtml5Speculation.cpp
++++ b/parser/html/nsHtml5Speculation.cpp
+@@ -50,28 +50,22 @@ nsHtml5Speculation::nsHtml5Speculation(n
+ }
+ 
+ nsHtml5Speculation::~nsHtml5Speculation()
+ {
+   MOZ_COUNT_DTOR(nsHtml5Speculation);
+ }
+ 
+ void
+-nsHtml5Speculation::MaybeFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue)
+-{
+-  // No-op
+-}
+-
+-void
+-nsHtml5Speculation::ForcedFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue)
++nsHtml5Speculation::MoveOpsFrom(nsTArray<nsHtml5TreeOperation>& aOpQueue)
+ {
+   if (mOpQueue.IsEmpty()) {
+     mOpQueue.SwapElements(aOpQueue);
+     return;
+   }
+   mOpQueue.MoveElementsFrom(aOpQueue);
+ }
+ 
+ void
+ nsHtml5Speculation::FlushToSink(nsAHtml5TreeOpSink* aSink)
+ {
+-  aSink->ForcedFlush(mOpQueue);
++  aSink->MoveOpsFrom(mOpQueue);
+ }
+diff --git a/parser/html/nsHtml5Speculation.h b/parser/html/nsHtml5Speculation.h
+--- a/parser/html/nsHtml5Speculation.h
++++ b/parser/html/nsHtml5Speculation.h
+@@ -67,25 +67,20 @@ class nsHtml5Speculation : public nsAHtm
+       return mStartLineNumber;
+     }
+     
+     nsAHtml5TreeBuilderState* GetSnapshot() {
+       return mSnapshot;
+     }
+ 
+     /**
+-     * No-op.
+-     */
+-    virtual void MaybeFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue);
+-
+-    /**
+      * Flush the operations from the tree operations from the argument
+      * queue unconditionally.
+      */
+-    virtual void ForcedFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue);
++    virtual void MoveOpsFrom(nsTArray<nsHtml5TreeOperation>& aOpQueue);
+     
+     void FlushToSink(nsAHtml5TreeOpSink* aSink);
+ 
+   private:
+     /**
+      * The first buffer in the pending UTF-16 buffer queue
+      */
+     nsRefPtr<nsHtml5UTF16Buffer>        mBuffer;
+diff --git a/parser/html/nsHtml5StreamParser.cpp b/parser/html/nsHtml5StreamParser.cpp
+--- a/parser/html/nsHtml5StreamParser.cpp
++++ b/parser/html/nsHtml5StreamParser.cpp
+@@ -713,18 +713,24 @@ nsHtml5StreamParser::ParseAvailableData(
+       if (mFirstBuffer == mLastBuffer) {
+         switch (mStreamState) {
+           case STREAM_BEING_READ:
+             // never release the last buffer.
+             if (!mSpeculating) {
+               // reuse buffer space if not speculating
+               mFirstBuffer->setStart(0);
+               mFirstBuffer->setEnd(0);
++              // we aren't speculating and we don't know when new data is
++              // going to arrive. Send data to the main thread.
++              mTreeBuilder->flushCharacters();
++              mTreeBuilder->Flush();
++              if (NS_FAILED(NS_DispatchToMainThread(mExecutorFlusher))) {
++                NS_WARNING("failed to dispatch executor flush event");
++              }
+             }
+-            mTreeBuilder->Flush();
+             return; // no more data for now but expecting more
+           case STREAM_ENDED:
+             if (mAtEOF) {
+                 return;
+             }
+             mAtEOF = PR_TRUE;
+             mTokenizer->eof();
+             mTreeBuilder->StreamEnded();
+@@ -767,17 +773,16 @@ nsHtml5StreamParser::ParseAvailableData(
+         }
+         mTreeBuilder->SetOpSink(speculation);
+         mSpeculations.AppendElement(speculation); // adopts the pointer
+         mSpeculating = PR_TRUE;
+       }
+       if (IsTerminatedOrInterrupted()) {
+         return;
+       }
+-      mTreeBuilder->MaybeFlush();
+     }
+     continue;
+   }
+ }
+ 
+ class nsHtml5StreamParserContinuation : public nsRunnable
+ {
+ private:
+diff --git a/parser/html/nsHtml5TreeBuilderCppSupplement.h b/parser/html/nsHtml5TreeBuilderCppSupplement.h
+--- a/parser/html/nsHtml5TreeBuilderCppSupplement.h
++++ b/parser/html/nsHtml5TreeBuilderCppSupplement.h
+@@ -319,25 +319,19 @@ nsHtml5TreeBuilder::insertFosterParented
+ {
+   NS_PRECONDITION(aBuffer, "Null buffer");
+   NS_PRECONDITION(aTable, "Null table");
+   NS_PRECONDITION(aStackParent, "Null stack parent");
+ 
+   PRUnichar* bufferCopy = new PRUnichar[aLength];
+   memcpy(bufferCopy, aBuffer, aLength * sizeof(PRUnichar));
+   
+-  nsIContent** text = AllocateContentHandle();
+-
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   NS_ASSERTION(treeOp, "Tree op allocation failed.");
+-  treeOp->Init(eTreeOpCreateTextNode, bufferCopy, aLength, text);
+-
+-  treeOp = mOpQueue.AppendElement();
+-  NS_ASSERTION(treeOp, "Tree op allocation failed.");
+-  treeOp->Init(eTreeOpFosterParent, text, aStackParent, aTable);
++  treeOp->Init(eTreeOpFosterParentText, bufferCopy, aLength, aStackParent, aTable);
+ }
+ 
+ void
+ nsHtml5TreeBuilder::insertFosterParentedChild(nsIContent** aChild, nsIContent** aTable, nsIContent** aStackParent)
+ {
+   NS_PRECONDITION(aChild, "Null child");
+   NS_PRECONDITION(aTable, "Null table");
+   NS_PRECONDITION(aStackParent, "Null stack parent");
+@@ -351,64 +345,46 @@ void
+ nsHtml5TreeBuilder::appendCharacters(nsIContent** aParent, PRUnichar* aBuffer, PRInt32 aStart, PRInt32 aLength)
+ {
+   NS_PRECONDITION(aBuffer, "Null buffer");
+   NS_PRECONDITION(aParent, "Null parent");
+ 
+   PRUnichar* bufferCopy = new PRUnichar[aLength];
+   memcpy(bufferCopy, aBuffer, aLength * sizeof(PRUnichar));
+   
+-  nsIContent** text = AllocateContentHandle();
+-
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   NS_ASSERTION(treeOp, "Tree op allocation failed.");
+-  treeOp->Init(eTreeOpCreateTextNode, bufferCopy, aLength, text);
+-
+-  treeOp = mOpQueue.AppendElement();
+-  NS_ASSERTION(treeOp, "Tree op allocation failed.");
+-  treeOp->Init(eTreeOpAppend, text, aParent);
++  treeOp->Init(eTreeOpAppendText, bufferCopy, aLength, aParent);
+ }
+ 
+ void
+ nsHtml5TreeBuilder::appendComment(nsIContent** aParent, PRUnichar* aBuffer, PRInt32 aStart, PRInt32 aLength)
+ {
+   NS_PRECONDITION(aBuffer, "Null buffer");
+   NS_PRECONDITION(aParent, "Null parent");
+ 
+   PRUnichar* bufferCopy = new PRUnichar[aLength];
+   memcpy(bufferCopy, aBuffer, aLength * sizeof(PRUnichar));
+   
+-  nsIContent** comment = AllocateContentHandle();
+-
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   NS_ASSERTION(treeOp, "Tree op allocation failed.");
+-  treeOp->Init(eTreeOpCreateComment, bufferCopy, aLength, comment);
+-
+-  treeOp = mOpQueue.AppendElement();
+-  NS_ASSERTION(treeOp, "Tree op allocation failed.");
+-  treeOp->Init(eTreeOpAppend, comment, aParent);
++  treeOp->Init(eTreeOpAppendComment, bufferCopy, aLength, aParent);
+ }
+ 
+ void
+ nsHtml5TreeBuilder::appendCommentToDocument(PRUnichar* aBuffer, PRInt32 aStart, PRInt32 aLength)
+ {
+   NS_PRECONDITION(aBuffer, "Null buffer");
+ 
+   PRUnichar* bufferCopy = new PRUnichar[aLength];
+   memcpy(bufferCopy, aBuffer, aLength * sizeof(PRUnichar));
+   
+-  nsIContent** comment = AllocateContentHandle();
+-
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   NS_ASSERTION(treeOp, "Tree op allocation failed.");
+-  treeOp->Init(eTreeOpCreateComment, bufferCopy, aLength, comment);
+-
+-  treeOp = mOpQueue.AppendElement();
+-  NS_ASSERTION(treeOp, "Tree op allocation failed.");
+-  treeOp->Init(eTreeOpAppendToDocument, comment);
++  treeOp->Init(eTreeOpAppendCommentToDocument, bufferCopy, aLength);
+ }
+ 
+ void
+ nsHtml5TreeBuilder::addAttributesToElement(nsIContent** aElement, nsHtml5HtmlAttributes* aAttributes)
+ {
+   NS_PRECONDITION(aElement, "Null element");
+   NS_PRECONDITION(aAttributes, "Null attributes");
+ 
+@@ -448,25 +424,19 @@ nsHtml5TreeBuilder::end()
+ #endif
+ }
+ 
+ void
+ nsHtml5TreeBuilder::appendDoctypeToDocument(nsIAtom* aName, nsString* aPublicId, nsString* aSystemId)
+ {
+   NS_PRECONDITION(aName, "Null name");
+ 
+-  nsIContent** content = AllocateContentHandle();
+-
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   NS_ASSERTION(treeOp, "Tree op allocation failed.");
+-  treeOp->Init(aName, *aPublicId, *aSystemId, content);
+-  
+-  treeOp = mOpQueue.AppendElement();
+-  NS_ASSERTION(treeOp, "Tree op allocation failed.");
+-  treeOp->Init(eTreeOpAppendToDocument, content);
++  treeOp->Init(aName, *aPublicId, *aSystemId);
+   // nsXMLContentSink can flush here, but what's the point?
+   // It can also interrupt here, but we can't.
+ }
+ 
+ void
+ nsHtml5TreeBuilder::elementPushed(PRInt32 aNamespace, nsIAtom* aName, nsIContent** aElement)
+ {
+   NS_ASSERTION(aNamespace == kNameSpaceID_XHTML || aNamespace == kNameSpaceID_SVG || aNamespace == kNameSpaceID_MathML, "Element isn't HTML, SVG or MathML!");
+@@ -622,23 +592,17 @@ nsHtml5TreeBuilder::HasScript()
+     return PR_FALSE;
+   }
+   return mOpQueue.ElementAt(len - 1).IsRunScript();
+ }
+ 
+ void
+ nsHtml5TreeBuilder::Flush()
+ {
+-  mOpSink->ForcedFlush(mOpQueue);
+-}
+-
+-void
+-nsHtml5TreeBuilder::MaybeFlush()
+-{
+-  mOpSink->MaybeFlush(mOpQueue);
++  mOpSink->MoveOpsFrom(mOpQueue);
+ }
+ 
+ void
+ nsHtml5TreeBuilder::SetDocumentCharset(nsACString& aCharset)
+ {
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   NS_ASSERTION(treeOp, "Tree op allocation failed.");
+   treeOp->Init(eTreeOpSetDocumentCharset, aCharset);  
+diff --git a/parser/html/nsHtml5TreeBuilderHSupplement.h b/parser/html/nsHtml5TreeBuilderHSupplement.h
+--- a/parser/html/nsHtml5TreeBuilderHSupplement.h
++++ b/parser/html/nsHtml5TreeBuilderHSupplement.h
+@@ -75,18 +75,16 @@
+     }
+     
+     void SetSpeculativeLoaderWithDocument(nsIDocument* aDocument);
+ 
+     void DropSpeculativeLoader();
+ 
+     void Flush();
+     
+-    void MaybeFlush();
+-    
+     void SetDocumentCharset(nsACString& aCharset);
+ 
+     void StreamEnded();
+ 
+     void NeedsCharsetSwitchTo(const nsACString& aEncoding);
+ 
+     void AddSnapshotToScript(nsAHtml5TreeBuilderState* aSnapshot, PRInt32 aLine);
+ 
+diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpExecutor.cpp
+--- a/parser/html/nsHtml5TreeOpExecutor.cpp
++++ b/parser/html/nsHtml5TreeOpExecutor.cpp
+@@ -55,63 +55,46 @@
+ #include "nsHtml5Parser.h"
+ #include "nsHtml5Tokenizer.h"
+ #include "nsHtml5TreeBuilder.h"
+ #include "nsHtml5StreamParser.h"
+ 
+ #define NS_HTML5_TREE_OP_EXECUTOR_MAX_QUEUE_TIME 3000UL // milliseconds
+ #define NS_HTML5_TREE_OP_EXECUTOR_DEFAULT_QUEUE_LENGTH 200
+ #define NS_HTML5_TREE_OP_EXECUTOR_MIN_QUEUE_LENGTH 100
+-#define NS_HTML5_TREE_OP_EXECUTOR_MAX_TIME_WITHOUT_FLUSH 5000 // milliseconds
+ 
+ NS_IMPL_CYCLE_COLLECTION_CLASS(nsHtml5TreeOpExecutor)
+ 
+ NS_INTERFACE_TABLE_HEAD_CYCLE_COLLECTION_INHERITED(nsHtml5TreeOpExecutor)
+   NS_INTERFACE_TABLE_INHERITED1(nsHtml5TreeOpExecutor, 
+                                 nsIContentSink)
+ NS_INTERFACE_TABLE_TAIL_INHERITING(nsContentSink)
+ 
+ NS_IMPL_ADDREF_INHERITED(nsHtml5TreeOpExecutor, nsContentSink)
+ 
+ NS_IMPL_RELEASE_INHERITED(nsHtml5TreeOpExecutor, nsContentSink)
+ 
+ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(nsHtml5TreeOpExecutor, nsContentSink)
+-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mFlushTimer)
+   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMARRAY(mOwnedElements)
+-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMARRAY(mOwnedNonElements)
++  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mPreviousTextNode)
+ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+ 
+ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(nsHtml5TreeOpExecutor, nsContentSink)
+-  if (tmp->mFlushTimer) {
+-    tmp->mFlushTimer->Cancel();
+-  }
+-  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mFlushTimer)
+   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMARRAY(mOwnedElements)
+-  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMARRAY(mOwnedNonElements)
++  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mPreviousTextNode)
+ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+ 
+ nsHtml5TreeOpExecutor::nsHtml5TreeOpExecutor()
+-  : mFlushTimer(do_CreateInstance("@mozilla.org/timer;1"))
+ {
+-  // zeroing operator new for everything else
++  // zeroing operator new for everything
+ }
+ 
+ nsHtml5TreeOpExecutor::~nsHtml5TreeOpExecutor()
+ {
+   NS_ASSERTION(mOpQueue.IsEmpty(), "Somehow there's stuff in the op queue.");
+-  if (mFlushTimer) {
+-    mFlushTimer->Cancel(); // XXX why is this even necessary? it is, though.
+-  }
+-  mFlushTimer = nsnull;
+-}
+-
+-static void
+-TimerCallbackFunc(nsITimer* aTimer, void* aClosure)
+-{
+-  (static_cast<nsHtml5TreeOpExecutor*> (aClosure))->Flush();
+ }
+ 
+ // nsIContentSink
+ NS_IMETHODIMP
+ nsHtml5TreeOpExecutor::WillParse()
+ {
+   NS_NOTREACHED("No one should call this");
+   return NS_ERROR_NOT_IMPLEMENTED;
+@@ -278,30 +261,29 @@ nsHtml5TreeOpExecutor::UpdateStyleSheet(
+   // Re-open update
+   BeginDocUpdate();
+ }
+ 
+ void
+ nsHtml5TreeOpExecutor::Flush()
+ {
+   if (!mParser) {
+-    mFlushTimer->Cancel();
+     return;
+   }
+   if (mFlushState != eNotFlushing) {
+     return;
+   }
+   
+   mFlushState = eInFlush;
+ 
+   nsRefPtr<nsHtml5TreeOpExecutor> kungFuDeathGrip(this); // avoid crashing near EOF
+   nsCOMPtr<nsIParser> parserKungFuDeathGrip(mParser);
+ 
+   if (mReadingFromStage) {
+-    mStage.RetrieveOperations(mOpQueue);
++    mStage.MoveOpsTo(mOpQueue);
+   }
+   
+   nsIContent* scriptElement = nsnull;
+   
+   BeginDocUpdate();
+ 
+   PRIntervalTime flushStart = 0;
+   PRUint32 opQueueLength = mOpQueue.Length();
+@@ -343,33 +325,21 @@ nsHtml5TreeOpExecutor::Flush()
+   EndDocUpdate();
+ 
+   mFlushState = eNotFlushing;
+ 
+   if (!mParser) {
+     return;
+   }
+ 
+-  ScheduleTimer();
+-
+   if (scriptElement) {
+     RunScript(scriptElement); // must be tail call when mFlushState is eNotFlushing
+   }
+ }
+ 
+-void
+-nsHtml5TreeOpExecutor::ScheduleTimer()
+-{
+-  mFlushTimer->Cancel();
+-  mFlushTimer->InitWithFuncCallback(TimerCallbackFunc, 
+-                                    static_cast<void*> (this), 
+-                                    NS_HTML5_TREE_OP_EXECUTOR_MAX_TIME_WITHOUT_FLUSH, 
+-                                    nsITimer::TYPE_ONE_SHOT);
+-}
+-
+ nsresult
+ nsHtml5TreeOpExecutor::ProcessBASETag(nsIContent* aContent)
+ {
+   NS_ASSERTION(aContent, "missing base-element");
+   if (mHasProcessedBase) {
+     return NS_OK;
+   }
+   mHasProcessedBase = PR_TRUE;
+@@ -523,17 +493,16 @@ nsHtml5TreeOpExecutor::Init(nsIDocument*
+   return rv;
+ }
+ 
+ void
+ nsHtml5TreeOpExecutor::Start()
+ {
+   NS_PRECONDITION(!mStarted, "Tried to start when already started.");
+   mStarted = PR_TRUE;
+-  ScheduleTimer();
+ }
+ 
+ void
+ nsHtml5TreeOpExecutor::NeedsCharsetSwitchTo(const char* aEncoding)
+ {
+   EndDocUpdate();
+ 
+   if(NS_UNLIKELY(!mParser)) {
+@@ -578,26 +547,21 @@ nsHtml5TreeOpExecutor::GetTokenizer()
+ void
+ nsHtml5TreeOpExecutor::Reset() {
+   mHasProcessedBase = PR_FALSE;
+   mReadingFromStage = PR_FALSE;
+   mOpQueue.Clear();
+   mStarted = PR_FALSE;
+   mFlushState = eNotFlushing;
+   mFragmentMode = PR_FALSE;
++  mPreviousTextNode = nsnull;
+ }
+ 
+ void
+-nsHtml5TreeOpExecutor::MaybeFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue)
+-{
+-  // no-op
+-}
+-
+-void
+-nsHtml5TreeOpExecutor::ForcedFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue)
++nsHtml5TreeOpExecutor::MoveOpsFrom(nsTArray<nsHtml5TreeOperation>& aOpQueue)
+ {
+   NS_PRECONDITION(mFlushState == eNotFlushing, "mOpQueue modified during tree op execution.");
+   if (mOpQueue.IsEmpty()) {
+     mOpQueue.SwapElements(aOpQueue);
+     return;
+   }
+   mOpQueue.MoveElementsFrom(aOpQueue);
+ }
+diff --git a/parser/html/nsHtml5TreeOpExecutor.h b/parser/html/nsHtml5TreeOpExecutor.h
+--- a/parser/html/nsHtml5TreeOpExecutor.h
++++ b/parser/html/nsHtml5TreeOpExecutor.h
+@@ -90,28 +90,23 @@ class nsHtml5TreeOpExecutor : public nsC
+ 
+     /**
+      * Whether EOF needs to be suppressed
+      */
+     PRBool                               mSuppressEOF;
+     
+     PRBool                               mHasProcessedBase;
+     PRBool                               mReadingFromStage;
+-    nsCOMPtr<nsITimer>                   mFlushTimer;
+     nsTArray<nsHtml5TreeOperation>       mOpQueue;
+     nsTArray<nsIContentPtr>              mElementsSeenInThisAppendBatch;
+     nsTArray<nsHtml5PendingNotification> mPendingNotifications;
+     nsHtml5StreamParser*                 mStreamParser;
+     nsCOMArray<nsIContent>               mOwnedElements;
++    nsCOMPtr<nsIContent>                 mPreviousTextNode;
+     
+-    // This could be optimized away by introducing more tree ops so that 
+-    // non-elements wouldn't use the handle setup but the text node / comment
+-    // / doctype operand would be remembered by the tree op executor.
+-    nsCOMArray<nsIContent>               mOwnedNonElements;
+-  
+     /**
+      * Whether the parser has started
+      */
+     PRBool                        mStarted;
+ 
+     nsHtml5TreeOpStage            mStage;
+ 
+     eHtml5FlushState              mFlushState;
+@@ -354,45 +349,42 @@ class nsHtml5TreeOpExecutor : public nsC
+     void RunScript(nsIContent* aScriptElement);
+     
+     void Reset();
+     
+     inline void HoldElement(nsIContent* aContent) {
+       mOwnedElements.AppendObject(aContent);
+     }
+ 
+-    inline void HoldNonElement(nsIContent* aContent) {
+-      mOwnedNonElements.AppendObject(aContent);
+-    }
+-
+     // The following two methods are for the main-thread case
+ 
+     /**
+-     * No-op
+-     */    
+-    virtual void MaybeFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue);
+-
+-    /**
+      * Flush the operations from the tree operations from the argument
+      * queue unconditionally.
+      */
+-    virtual void ForcedFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue);
++    virtual void MoveOpsFrom(nsTArray<nsHtml5TreeOperation>& aOpQueue);
+     
+     nsAHtml5TreeOpSink* GetStage() {
+       return &mStage;
+     }
+     
+     void StartReadingFromStage() {
+       mReadingFromStage = PR_TRUE;
+     }
+ 
+     void StreamEnded();
+     
+-    void ScheduleTimer();
+-
++    nsIContent* GetPreviousTextNode() {
++      return mPreviousTextNode;
++    }
++    
++    void SetPreviousTextNode(nsIContent* aText) {
++      mPreviousTextNode = aText;
++    }
++    
+ #ifdef DEBUG
+     void AssertStageEmpty() {
+       mStage.AssertEmpty();
+     }
+ #endif
+ 
+   private:
+ 
+diff --git a/parser/html/nsHtml5TreeOpStage.cpp b/parser/html/nsHtml5TreeOpStage.cpp
+--- a/parser/html/nsHtml5TreeOpStage.cpp
++++ b/parser/html/nsHtml5TreeOpStage.cpp
+@@ -42,37 +42,28 @@ nsHtml5TreeOpStage::nsHtml5TreeOpStage()
+ {
+ }
+     
+ nsHtml5TreeOpStage::~nsHtml5TreeOpStage()
+ {
+ }
+ 
+ void
+-nsHtml5TreeOpStage::MaybeFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue)
+-{
+-  mozilla::MutexAutoLock autoLock(mMutex);
+-  if (mOpQueue.IsEmpty()) {
+-    mOpQueue.SwapElements(aOpQueue);
+-  }  
+-}
+-
+-void
+-nsHtml5TreeOpStage::ForcedFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue)
++nsHtml5TreeOpStage::MoveOpsFrom(nsTArray<nsHtml5TreeOperation>& aOpQueue)
+ {
+   mozilla::MutexAutoLock autoLock(mMutex);
+   if (mOpQueue.IsEmpty()) {
+     mOpQueue.SwapElements(aOpQueue);
+     return;
+   }
+   mOpQueue.MoveElementsFrom(aOpQueue);
+ }
+     
+ void
+-nsHtml5TreeOpStage::RetrieveOperations(nsTArray<nsHtml5TreeOperation>& aOpQueue)
++nsHtml5TreeOpStage::MoveOpsTo(nsTArray<nsHtml5TreeOperation>& aOpQueue)
+ {
+   mozilla::MutexAutoLock autoLock(mMutex);
+   if (aOpQueue.IsEmpty()) {
+     mOpQueue.SwapElements(aOpQueue);
+     return;
+   }
+   aOpQueue.MoveElementsFrom(mOpQueue);
+ }
+diff --git a/parser/html/nsHtml5TreeOpStage.h b/parser/html/nsHtml5TreeOpStage.h
+--- a/parser/html/nsHtml5TreeOpStage.h
++++ b/parser/html/nsHtml5TreeOpStage.h
+@@ -47,30 +47,24 @@ class nsHtml5TreeOpStage : public nsAHtm
+   public:
+   
+     nsHtml5TreeOpStage();
+     
+     ~nsHtml5TreeOpStage();
+   
+     /**
+      * Flush the operations from the tree operations from the argument
+-     * queue if flushing is not expensive.
+-     */
+-    virtual void MaybeFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue);
+-
+-    /**
+-     * Flush the operations from the tree operations from the argument
+      * queue unconditionally.
+      */
+-    virtual void ForcedFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue);
++    virtual void MoveOpsFrom(nsTArray<nsHtml5TreeOperation>& aOpQueue);
+     
+     /**
+      * Retrieve the staged operations into the argument.
+      */
+-    void RetrieveOperations(nsTArray<nsHtml5TreeOperation>& aOpQueue);
++    void MoveOpsTo(nsTArray<nsHtml5TreeOperation>& aOpQueue);
+ 
+ #ifdef DEBUG
+     void AssertEmpty();
+ #endif
+ 
+   private:
+     nsTArray<nsHtml5TreeOperation> mOpQueue;
+     mozilla::Mutex                 mMutex;
+diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOperation.cpp
+--- a/parser/html/nsHtml5TreeOperation.cpp
++++ b/parser/html/nsHtml5TreeOperation.cpp
+@@ -100,63 +100,113 @@ nsHtml5TreeOperation::~nsHtml5TreeOperat
+   NS_ASSERTION(mOpCode != eTreeOpUninitialized, "Uninitialized tree op.");
+   switch(mOpCode) {
+     case eTreeOpAddAttributes:
+       delete mTwo.attributes;
+       break;
+     case eTreeOpCreateElement:
+       delete mThree.attributes;
+       break;
+-    case eTreeOpCreateDoctype:
++    case eTreeOpAppendDoctypeToDocument:
+       delete mTwo.stringPair;
+       break;
+-    case eTreeOpCreateTextNode:
+-    case eTreeOpCreateComment:
++    case eTreeOpFosterParentText:
++    case eTreeOpAppendText:
++    case eTreeOpAppendComment:
++    case eTreeOpAppendCommentToDocument:
+       delete[] mTwo.unicharPtr;
+       break;
+     case eTreeOpSetDocumentCharset:
+     case eTreeOpNeedsCharsetSwitchTo:
+       delete[] mOne.charPtr;
+       break;
+     default: // keep the compiler happy
+       break;
+   }
+ }
+ 
+ nsresult
++nsHtml5TreeOperation::AppendText(PRUnichar* aBuffer,
++                                 PRInt32 aLength,
++                                 nsIContent* aParent,
++                                 nsHtml5TreeOpExecutor* aBuilder)
++{
++  nsresult rv = NS_OK;
++  nsIContent* previousTextNode = aBuilder->GetPreviousTextNode();
++  if (aParent->GetLastChild() == previousTextNode) {
++    nsHtml5OtherDocUpdate update(aParent->GetOwnerDoc(),
++                                 aBuilder->GetDocument());
++    // XXX notifications!
++    rv = previousTextNode->AppendText(aBuffer, aLength, PR_FALSE);
++    return rv;
++  }
++
++  nsCOMPtr<nsIContent> text;
++  NS_NewTextNode(getter_AddRefs(text), aBuilder->GetNodeInfoManager());
++  NS_ASSERTION(text, "Infallible malloc failed?");
++  rv = text->SetText(aBuffer, aLength, PR_FALSE);
++  NS_ENSURE_SUCCESS(rv, rv);
++
++  aBuilder->SetPreviousTextNode(text);
++
++  return Append(text, aParent, aBuilder);
++}
++
++nsresult
++nsHtml5TreeOperation::Append(nsIContent* aNode,
++                             nsIContent* aParent,
++                             nsHtml5TreeOpExecutor* aBuilder)
++{
++  nsresult rv = NS_OK;
++  nsIDocument* executorDoc = aBuilder->GetDocument();
++  NS_ASSERTION(executorDoc, "Null doc on executor");
++  nsIDocument* parentDoc = aParent->GetOwnerDoc();
++  NS_ASSERTION(parentDoc, "Null owner doc on old node.");
++
++  if (NS_LIKELY(executorDoc == parentDoc)) {
++    // the usual case. the parent is in the parser's doc
++    aBuilder->PostPendingAppendNotification(aParent, aNode);
++    rv = aParent->AppendChildTo(aNode, PR_FALSE);
++    return rv;
++  }
++
++  // The parent has been moved to another doc
++  parentDoc->BeginUpdate(UPDATE_CONTENT_MODEL);
++
++  PRUint32 childCount = aParent->GetChildCount();
++  rv = aParent->AppendChildTo(aNode, PR_FALSE);
++  nsNodeUtils::ContentAppended(aParent, childCount);
++
++  parentDoc->EndUpdate(UPDATE_CONTENT_MODEL);
++  return rv;
++}
++
++nsresult
++nsHtml5TreeOperation::AppendToDocument(nsIContent* aNode,
++                                       nsHtml5TreeOpExecutor* aBuilder)
++{
++  nsresult rv = NS_OK;
++  aBuilder->FlushPendingAppendNotifications();
++  nsIDocument* doc = aBuilder->GetDocument();
++  PRUint32 childCount = doc->GetChildCount();
++  rv = doc->AppendChildTo(aNode, PR_FALSE);
++  NS_ENSURE_SUCCESS(rv, rv);
++  nsNodeUtils::ContentInserted(doc, aNode, childCount);
++}
++
++nsresult
+ nsHtml5TreeOperation::Perform(nsHtml5TreeOpExecutor* aBuilder,
+                               nsIContent** aScriptElement)
+ {
+   nsresult rv = NS_OK;
+   switch(mOpCode) {
+     case eTreeOpAppend: {
+       nsIContent* node = *(mOne.node);
+       nsIContent* parent = *(mTwo.node);
+-
+-      nsIDocument* executorDoc = aBuilder->GetDocument();
+-      NS_ASSERTION(executorDoc, "Null doc on executor");
+-      nsIDocument* parentDoc = parent->GetOwnerDoc();
+-      NS_ASSERTION(parentDoc, "Null owner doc on old node.");
+-
+-      if (NS_LIKELY(executorDoc == parentDoc)) {
+-        // the usual case. the parent is in the parser's doc
+-        aBuilder->PostPendingAppendNotification(parent, node);
+-        rv = parent->AppendChildTo(node, PR_FALSE);
+-        return rv;
+-      }
+-      
+-      // The parent has been moved to another doc
+-      parentDoc->BeginUpdate(UPDATE_CONTENT_MODEL);
+-
+-      PRUint32 childCount = parent->GetChildCount();
+-      rv = parent->AppendChildTo(node, PR_FALSE);
+-      nsNodeUtils::ContentAppended(parent, childCount);
+-
+-      parentDoc->EndUpdate(UPDATE_CONTENT_MODEL);
+-      return rv;
++      return Append(node, parent, aBuilder);
+     }
+     case eTreeOpDetach: {
+       nsIContent* node = *(mOne.node);
+       aBuilder->FlushPendingAppendNotifications();
+       nsIContent* parent = node->GetParent();
+       if (parent) {
+         nsHtml5OtherDocUpdate update(parent->GetOwnerDoc(),
+                                      aBuilder->GetDocument());
+@@ -204,47 +254,21 @@ nsHtml5TreeOperation::Perform(nsHtml5Tre
+ 
+         PRUint32 pos = foster->IndexOf(table);
+         rv = foster->InsertChildAt(node, pos, PR_FALSE);
+         NS_ENSURE_SUCCESS(rv, rv);
+         nsNodeUtils::ContentInserted(foster, node, pos);
+         return rv;
+       }
+ 
+-      nsIDocument* executorDoc = aBuilder->GetDocument();
+-      NS_ASSERTION(executorDoc, "Null doc on executor");
+-      nsIDocument* parentDoc = parent->GetOwnerDoc();
+-      NS_ASSERTION(parentDoc, "Null owner doc on old node.");
+-
+-      if (NS_LIKELY(executorDoc == parentDoc)) {
+-        // the usual case. the parent is in the parser's doc
+-        aBuilder->PostPendingAppendNotification(parent, node);
+-        rv = parent->AppendChildTo(node, PR_FALSE);
+-        return rv;
+-      }
+-      
+-      // The parent has been moved to another doc
+-      parentDoc->BeginUpdate(UPDATE_CONTENT_MODEL);
+-
+-      PRUint32 childCount = parent->GetChildCount();
+-      rv = parent->AppendChildTo(node, PR_FALSE);
+-      nsNodeUtils::ContentAppended(parent, childCount);
+-
+-      parentDoc->EndUpdate(UPDATE_CONTENT_MODEL);
+-      return rv;
++      return Append(node, parent, aBuilder);
+     }
+     case eTreeOpAppendToDocument: {
+       nsIContent* node = *(mOne.node);
+-      aBuilder->FlushPendingAppendNotifications();
+-      nsIDocument* doc = aBuilder->GetDocument();
+-      PRUint32 childCount = doc->GetChildCount();
+-      rv = doc->AppendChildTo(node, PR_FALSE);
+-      NS_ENSURE_SUCCESS(rv, rv);
+-      nsNodeUtils::ContentInserted(doc, node, childCount);
+-      return rv;
++      return AppendToDocument(node, aBuilder);
+     }
+     case eTreeOpAddAttributes: {
+       nsIContent* node = *(mOne.node);
+       nsHtml5HtmlAttributes* attributes = mTwo.attributes;
+ 
+       nsHtml5OtherDocUpdate update(node->GetOwnerDoc(),
+                                    aBuilder->GetDocument());
+ 
+@@ -344,51 +368,92 @@ nsHtml5TreeOperation::Perform(nsHtml5Tre
+       // TODO: uncomment the above line when <output> (bug 346485) and <keygen> (bug 101019) are supported by Gecko
+       nsCOMPtr<nsIDOMHTMLFormElement> formElement(do_QueryInterface(parent));
+       NS_ASSERTION(formElement, "The form element doesn't implement nsIDOMHTMLFormElement.");
+       if (formControl) { // avoid crashing on <output> and <keygen>
+         formControl->SetForm(formElement);
+       }
+       return rv;
+     }
+-    case eTreeOpCreateTextNode: {
+-      nsIContent** target = mOne.node;
++    case eTreeOpAppendText: {
++      nsIContent* parent = *mOne.node;
+       PRUnichar* buffer = mTwo.unicharPtr;
+       PRInt32 length = mInt;
++      return AppendText(buffer, length, parent, aBuilder);
++    }
++    case eTreeOpFosterParentText: {
++      nsIContent* stackParent = *mOne.node;
++      PRUnichar* buffer = mTwo.unicharPtr;
++      PRInt32 length = mInt;
++      nsIContent* table = *mThree.node;
+       
+-      nsCOMPtr<nsIContent> text;
+-      NS_NewTextNode(getter_AddRefs(text), aBuilder->GetNodeInfoManager());
+-      // XXX nsresult and comment null check?
+-      text->SetText(buffer, length, PR_FALSE);
+-      // XXX nsresult
++      nsIContent* foster = table->GetParent();
++
++      if (foster && foster->IsNodeOfType(nsINode::eELEMENT)) {
++        aBuilder->FlushPendingAppendNotifications();
++
++        nsHtml5OtherDocUpdate update(foster->GetOwnerDoc(),
++                                     aBuilder->GetDocument());
++
++        PRUint32 pos = foster->IndexOf(table);
++        
++        nsIContent* previousTextNode = aBuilder->GetPreviousTextNode();
++        if (foster->GetChildAt(pos - 1) == previousTextNode) {
++          // XXX notifications!
++          rv = previousTextNode->AppendText(buffer, length, PR_FALSE);
++          return rv;
++        }
++        
++        nsCOMPtr<nsIContent> text;
++        NS_NewTextNode(getter_AddRefs(text), aBuilder->GetNodeInfoManager());
++        NS_ASSERTION(text, "Infallible malloc failed?");
++        rv = text->SetText(buffer, length, PR_FALSE);
++        NS_ENSURE_SUCCESS(rv, rv);
++        
++        aBuilder->SetPreviousTextNode(text);
+       
+-      aBuilder->HoldNonElement(*target = text);
+-      return rv;
++        rv = foster->InsertChildAt(text, pos, PR_FALSE);
++        NS_ENSURE_SUCCESS(rv, rv);
++        nsNodeUtils::ContentInserted(foster, text, pos);
++        return rv;
++      }
++      
++      return AppendText(buffer, length, stackParent, aBuilder);
+     }
+-    case eTreeOpCreateComment: {
+-      nsIContent** target = mOne.node;
++    case eTreeOpAppendComment: {
++      nsIContent* parent = *mOne.node;
+       PRUnichar* buffer = mTwo.unicharPtr;
+       PRInt32 length = mInt;
+       
+       nsCOMPtr<nsIContent> comment;
+       NS_NewCommentNode(getter_AddRefs(comment), aBuilder->GetNodeInfoManager());
+-      // XXX nsresult and comment null check?
+-      comment->SetText(buffer, length, PR_FALSE);
+-      // XXX nsresult
++      NS_ASSERTION(comment, "Infallible malloc failed?");
++      rv = comment->SetText(buffer, length, PR_FALSE);
++      NS_ENSURE_SUCCESS(rv, rv);
+       
+-      aBuilder->HoldNonElement(*target = comment);
+-      return rv;
++      return Append(comment, parent, aBuilder);
+     }
+-    case eTreeOpCreateDoctype: {
++    case eTreeOpAppendCommentToDocument: {
++      PRUnichar* buffer = mTwo.unicharPtr;
++      PRInt32 length = mInt;
++      
++      nsCOMPtr<nsIContent> comment;
++      NS_NewCommentNode(getter_AddRefs(comment), aBuilder->GetNodeInfoManager());
++      NS_ASSERTION(comment, "Infallible malloc failed?");
++      rv = comment->SetText(buffer, length, PR_FALSE);
++      NS_ENSURE_SUCCESS(rv, rv);
++      
++      return AppendToDocument(comment, aBuilder);
++    }
++    case eTreeOpAppendDoctypeToDocument: {
+       nsCOMPtr<nsIAtom> name = Reget(mOne.atom);
+       nsHtml5TreeOperationStringPair* pair = mTwo.stringPair;
+       nsString publicId;
+       nsString systemId;
+       pair->Get(publicId, systemId);
+-      nsIContent** target = mThree.node;
+       
+       // Adapted from nsXMLContentSink
+       // Create a new doctype node
+       nsCOMPtr<nsIDOMDocumentType> docType;
+       nsAutoString voidString;
+       voidString.SetIsVoid(PR_TRUE);
+       NS_NewDOMDocumentType(getter_AddRefs(docType),
+                             aBuilder->GetNodeInfoManager(),
+@@ -396,18 +461,17 @@ nsHtml5TreeOperation::Perform(nsHtml5Tre
+                             name,
+                             nsnull,
+                             nsnull,
+                             publicId,
+                             systemId,
+                             voidString);
+       NS_ASSERTION(docType, "Doctype creation failed.");
+       nsCOMPtr<nsIContent> asContent = do_QueryInterface(docType);
+-      aBuilder->HoldNonElement(*target = asContent);      
+-      return rv;
++      return AppendToDocument(asContent, aBuilder);
+     }
+     case eTreeOpRunScript: {
+       nsIContent* node = *(mOne.node);
+       nsAHtml5TreeBuilderState* snapshot = mTwo.state;
+       if (snapshot) {
+         aBuilder->InitializeDocWriteParserState(snapshot, mInt);
+       }
+       *aScriptElement = node;
+diff --git a/parser/html/nsHtml5TreeOperation.h b/parser/html/nsHtml5TreeOperation.h
+--- a/parser/html/nsHtml5TreeOperation.h
++++ b/parser/html/nsHtml5TreeOperation.h
+@@ -54,19 +54,21 @@ enum eHtml5TreeOperation {
+   eTreeOpDetach,
+   eTreeOpAppendChildrenToNewParent,
+   eTreeOpFosterParent,
+   eTreeOpAppendToDocument,
+   eTreeOpAddAttributes,
+   eTreeOpDocumentMode,
+   eTreeOpCreateElement,
+   eTreeOpSetFormElement,
+-  eTreeOpCreateTextNode,
+-  eTreeOpCreateComment,
+-  eTreeOpCreateDoctype,
++  eTreeOpAppendText,
++  eTreeOpFosterParentText,
++  eTreeOpAppendComment,
++  eTreeOpAppendCommentToDocument,
++  eTreeOpAppendDoctypeToDocument,
+   // Gecko-specific on-pop ops
+   eTreeOpRunScript,
+   eTreeOpRunScriptAsyncDefer,
+   eTreeOpDoneAddingChildren,
+   eTreeOpDoneCreatingElement,
+   eTreeOpSetDocumentCharset,
+   eTreeOpNeedsCharsetSwitchTo,
+   eTreeOpUpdateStyleSheet,
+@@ -183,45 +185,70 @@ class nsHtml5TreeOperation {
+       } else {
+         mThree.attributes = aAttributes;
+       }
+     }
+ 
+     inline void Init(eHtml5TreeOperation aOpCode, 
+                      PRUnichar* aBuffer, 
+                      PRInt32 aLength, 
+-                     nsIContent** aTarget) {
++                     nsIContent** aStackParent,
++                     nsIContent** aTable) {
+       NS_PRECONDITION(mOpCode == eTreeOpUninitialized,
+         "Op code must be uninitialized when initializing.");
+       NS_PRECONDITION(aBuffer, "Initialized tree op with null buffer.");
+       mOpCode = aOpCode;
+-      mOne.node = aTarget;
++      mOne.node = aStackParent;
++      mTwo.unicharPtr = aBuffer;
++      mThree.node = aTable;
++      mInt = aLength;
++    }
++
++    inline void Init(eHtml5TreeOperation aOpCode, 
++                     PRUnichar* aBuffer, 
++                     PRInt32 aLength, 
++                     nsIContent** aParent) {
++      NS_PRECONDITION(mOpCode == eTreeOpUninitialized,
++        "Op code must be uninitialized when initializing.");
++      NS_PRECONDITION(aBuffer, "Initialized tree op with null buffer.");
++      mOpCode = aOpCode;
++      mOne.node = aParent;
++      mTwo.unicharPtr = aBuffer;
++      mInt = aLength;
++    }
++
++    inline void Init(eHtml5TreeOperation aOpCode, 
++                     PRUnichar* aBuffer, 
++                     PRInt32 aLength) {
++      NS_PRECONDITION(mOpCode == eTreeOpUninitialized,
++        "Op code must be uninitialized when initializing.");
++      NS_PRECONDITION(aBuffer, "Initialized tree op with null buffer.");
++      mOpCode = aOpCode;
+       mTwo.unicharPtr = aBuffer;
+       mInt = aLength;
+     }
+     
+     inline void Init(nsIContent** aElement,
+                      nsHtml5HtmlAttributes* aAttributes) {
+       NS_PRECONDITION(mOpCode == eTreeOpUninitialized,
+         "Op code must be uninitialized when initializing.");
+       NS_PRECONDITION(aElement, "Initialized tree op with null element.");
+       mOpCode = eTreeOpAddAttributes;
+       mOne.node = aElement;
+       mTwo.attributes = aAttributes;
+     }
+     
+     inline void Init(nsIAtom* aName, 
+                      const nsAString& aPublicId, 
+-                     const nsAString& aSystemId, nsIContent** aTarget) {
++                     const nsAString& aSystemId) {
+       NS_PRECONDITION(mOpCode == eTreeOpUninitialized,
+         "Op code must be uninitialized when initializing.");
+-      mOpCode = eTreeOpCreateDoctype;
++      mOpCode = eTreeOpAppendDoctypeToDocument;
+       mOne.atom = aName;
+       mTwo.stringPair = new nsHtml5TreeOperationStringPair(aPublicId, aSystemId);
+-      mThree.node = aTarget;
+     }
+     
+     inline void Init(eHtml5TreeOperation aOpCode, const nsACString& aString) {
+       NS_PRECONDITION(mOpCode == eTreeOpUninitialized,
+         "Op code must be uninitialized when initializing.");
+ 
+       PRInt32 len = aString.Length();
+       char* str = new char[len + 1];
+@@ -265,16 +292,28 @@ class nsHtml5TreeOperation {
+         return aAtom;
+       }
+       nsAutoString str;
+       aAtom->ToString(str);
+       return do_GetAtom(str);
+     }
+ 
+   private:
++
++    nsresult AppendText(PRUnichar* aBuffer,
++                        PRInt32 aLength,
++                        nsIContent* aParent,
++                        nsHtml5TreeOpExecutor* aBuilder);
++
++    nsresult Append(nsIContent* aNode,
++                    nsIContent* aParent,
++                    nsHtml5TreeOpExecutor* aBuilder);
++
++    nsresult AppendToDocument(nsIContent* aNode,
++                              nsHtml5TreeOpExecutor* aBuilder);
+   
+     // possible optimization:
+     // Make the queue take items the size of pointer and make the op code
+     // decide how many operands it dequeues after it.
+     eHtml5TreeOperation mOpCode;
+     union {
+       nsIContent**                    node;
+       nsIAtom*                        atom;

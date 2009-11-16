@@ -1,0 +1,983 @@
+diff --git a/content/base/public/nsIScriptElement.h b/content/base/public/nsIScriptElement.h
+--- a/content/base/public/nsIScriptElement.h
++++ b/content/base/public/nsIScriptElement.h
+@@ -38,34 +38,36 @@
+ 
+ #ifndef nsIScriptElement_h___
+ #define nsIScriptElement_h___
+ 
+ #include "nsISupports.h"
+ #include "nsIURI.h"
+ #include "nsCOMPtr.h"
+ #include "nsIScriptLoaderObserver.h"
++#include "nsWeakPtr.h"
++#include "nsIParser.h"
+ 
+-// e68ddc48-4055-4ba9-978d-c49d9cf3189a
+ #define NS_ISCRIPTELEMENT_IID \
+-{ 0xe68ddc48, 0x4055, 0x4ba9, \
+-  { 0x97, 0x8d, 0xc4, 0x9d, 0x9c, 0xf3, 0x18, 0x9a } }
++{ 0xa28c198e, 0x14f0, 0x42b1, \
++{ 0x8f, 0x6b, 0x0e, 0x7f, 0xca, 0xb4, 0xf4, 0xe8 } }
+ 
+ /**
+  * Internal interface implemented by script elements
+  */
+ class nsIScriptElement : public nsIScriptLoaderObserver {
+ public:
+   NS_DECLARE_STATIC_IID_ACCESSOR(NS_ISCRIPTELEMENT_IID)
+ 
+   nsIScriptElement()
+     : mLineNumber(0),
+       mIsEvaluated(PR_FALSE),
+       mMalformed(PR_FALSE),
+-      mDoneAddingChildren(PR_TRUE)
++      mDoneAddingChildren(PR_TRUE),
++      mCreatorParser(nsnull)
+   {
+   }
+ 
+   /**
+    * Content type identifying the scripting language. Can be empty, in
+    * which case javascript will be assumed.
+    */
+   virtual void GetScriptType(nsAString& type) = 0;
+@@ -117,18 +119,59 @@ public:
+   }
+ 
+   void WillCallDoneAddingChildren()
+   {
+     NS_ASSERTION(mDoneAddingChildren, "unexpected, but not fatal");
+     mDoneAddingChildren = PR_FALSE;
+   }
+ 
++  void SetCreatorParser(nsIParser* aParser)
++  {
++    mCreatorParser = getter_AddRefs(NS_GetWeakReference(aParser));
++  }
++
++  /**
++   * Informs the creator parser that the evaluation of this script is starting
++   */
++  void BeginEvaluating()
++  {
++    // Once the async attribute is supported, don't do this if this is an
++    // async script.
++    nsCOMPtr<nsIParser> parser = do_QueryReferent(mCreatorParser);
++    if (parser) {
++      parser->BeginEvaluatingParserInsertedScript();
++    }
++  }
++
++  /**
++   * Informs the creator parser that the evaluation of this script is ending
++   */
++  void EndEvaluating()
++  {
++    // Once the async attribute is supported, don't do this if this is an
++    // async script.
++    nsCOMPtr<nsIParser> parser = do_QueryReferent(mCreatorParser);
++    if (parser) {
++      parser->EndEvaluatingParserInsertedScript();
++    }
++  }
++  
++  /**
++   * Retrieves a pointer to the creator parser if this has one or null if not
++   */
++  already_AddRefed<nsIParser> GetCreatorParser()
++  {
++    nsCOMPtr<nsIParser> parser = do_QueryReferent(mCreatorParser);
++    return parser.forget();
++  }
++
+ protected:
+   PRUint32 mLineNumber;
+   PRPackedBool mIsEvaluated;
+   PRPackedBool mMalformed;
+   PRPackedBool mDoneAddingChildren;
++  nsWeakPtr    mCreatorParser;
+ };
+ 
+ NS_DEFINE_STATIC_IID_ACCESSOR(nsIScriptElement, NS_ISCRIPTELEMENT_IID)
+ 
+ #endif // nsIScriptElement_h___
+diff --git a/content/base/src/nsScriptLoader.cpp b/content/base/src/nsScriptLoader.cpp
+--- a/content/base/src/nsScriptLoader.cpp
++++ b/content/base/src/nsScriptLoader.cpp
+@@ -617,17 +617,19 @@ nsScriptLoader::ProcessRequest(nsScriptL
+ 
+     script = &textData;
+   }
+   else {
+     script = &aRequest->mScriptText;
+   }
+ 
+   FireScriptAvailable(NS_OK, aRequest);
++  aRequest->mElement->BeginEvaluating();
+   nsresult rv = EvaluateScript(aRequest, *script);
++  aRequest->mElement->EndEvaluating();
+   FireScriptEvaluated(rv, aRequest);
+ 
+   return rv;
+ }
+ 
+ void
+ nsScriptLoader::FireScriptAvailable(nsresult aResult,
+                                     nsScriptLoadRequest* aRequest)
+diff --git a/content/html/document/src/nsHTMLDocument.cpp b/content/html/document/src/nsHTMLDocument.cpp
+--- a/content/html/document/src/nsHTMLDocument.cpp
++++ b/content/html/document/src/nsHTMLDocument.cpp
+@@ -730,16 +730,17 @@ nsHTMLDocument::StartDocumentLoad(const 
+     cachingChan->GetCacheToken(getter_AddRefs(cacheToken));
+     if (cacheToken)
+       cacheDescriptor = do_QueryInterface(cacheToken);
+   }
+ 
+   if (needsParser) {
+     if (loadAsHtml5) {
+       mParser = nsHtml5Module::NewHtml5Parser();
++      mParser->MarkAsNotScriptCreated();
+     } else {
+       mParser = do_CreateInstance(kCParserCID, &rv);
+       NS_ENSURE_SUCCESS(rv, rv);
+     }
+   }
+ 
+   PRInt32 textType = GET_BIDI_OPTION_TEXTTYPE(GetBidiOptions());
+ 
+@@ -2137,17 +2138,18 @@ nsHTMLDocument::WriteCommon(const nsAStr
+     return NS_ERROR_DOM_INVALID_ACCESS_ERR;
+   }
+ 
+   nsresult rv = NS_OK;
+ 
+   void *key = GenerateParserKey();
+   if (mWriteState == eDocumentClosed ||
+       (mWriteState == ePendingClose &&
+-       !mPendingScripts.Contains(key))) {
++       !mPendingScripts.Contains(key)) ||
++      (mParser && !mParser->IsInsertionPointDefined())) {
+     mWriteState = eDocumentClosed;
+     mParser->Terminate();
+     NS_ASSERTION(!mParser, "mParser should have been null'd out");
+   }
+ 
+   if (!mParser) {
+     rv = Open();
+ 
+@@ -2930,17 +2932,31 @@ nsHTMLDocument::GenerateParserKey(void)
+   if (!mScriptLoader) {
+     // If we don't have a script loader, then the parser probably isn't parsing
+     // anything anyway, so just return null.
+     return nsnull;
+   }
+ 
+   // The script loader provides us with the currently executing script element,
+   // which is guaranteed to be unique per script.
+-  return mScriptLoader->GetCurrentScript();
++  if (nsHtml5Module::sEnabled) {
++    nsIScriptElement* script = mScriptLoader->GetCurrentScript();
++    if (script && mParser && mParser->IsScriptCreated()) {
++      nsCOMPtr<nsIParser> creatorParser = script->GetCreatorParser();
++      if (creatorParser != mParser) {
++        // Make scripts that aren't inserted by the active parser of this document
++        // participate in the context of the script that document.open()ed 
++        // this document.
++        return mParser->GetRootContextKey();
++      }
++    }
++    return script;
++  } else {
++    return mScriptLoader->GetCurrentScript();
++  }
+ }
+ 
+ /* attribute DOMString designMode; */
+ NS_IMETHODIMP
+ nsHTMLDocument::GetDesignMode(nsAString & aDesignMode)
+ {
+   if (HasFlag(NODE_IS_EDITABLE)) {
+     aDesignMode.AssignLiteral("on");
+diff --git a/parser/html/nsHtml5Parser.cpp b/parser/html/nsHtml5Parser.cpp
+--- a/parser/html/nsHtml5Parser.cpp
++++ b/parser/html/nsHtml5Parser.cpp
+@@ -80,17 +80,17 @@ public:
+     mParser->HandleParserContinueEvent(this);
+     return NS_OK;
+   }
+ };
+ //-------------- End ParseContinue Event Definition ------------------------
+ 
+ 
+ NS_INTERFACE_TABLE_HEAD(nsHtml5Parser)
+-  NS_INTERFACE_TABLE1(nsHtml5Parser, nsIParser)
++  NS_INTERFACE_TABLE2(nsHtml5Parser, nsIParser, nsISupportsWeakReference)
+   NS_INTERFACE_TABLE_TO_MAP_SEGUE_CYCLE_COLLECTION(nsHtml5Parser)
+ NS_INTERFACE_MAP_END
+ 
+ NS_IMPL_CYCLE_COLLECTING_ADDREF(nsHtml5Parser)
+ NS_IMPL_CYCLE_COLLECTING_RELEASE(nsHtml5Parser)
+ 
+ NS_IMPL_CYCLE_COLLECTION_CLASS(nsHtml5Parser)
+ 
+@@ -185,24 +185,17 @@ nsHtml5Parser::GetDTD(nsIDTD** aDTD)
+ {
+   *aDTD = nsnull;
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ nsHtml5Parser::GetStreamListener(nsIStreamListener** aListener)
+ {
+-  if (!mStreamParser) {
+-    mStreamParser = new nsHtml5StreamParser(mExecutor, this);
+-    nsIDocument* doc = mExecutor->GetDocument();
+-    if (doc) {
+-      mStreamParser->SetSpeculativeLoaderWithDocument(doc);
+-    }
+-  }
+-  NS_ADDREF(*aListener = mStreamParser);
++  NS_IF_ADDREF(*aListener = mStreamParser);
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ nsHtml5Parser::ContinueParsing()
+ {
+   UnblockParser();
+   return ContinueInterruptedParsing();
+@@ -219,16 +212,17 @@ nsHtml5Parser::ContinueInterruptedParsin
+   }
+   // If the stream has already finished, there's a good chance
+   // that we might start closing things down when the parser
+   // is reenabled. To make sure that we're not deleted across
+   // the reenabling process, hold a reference to ourselves.
+   nsCOMPtr<nsIParser> kungFuDeathGrip(this);
+   nsRefPtr<nsHtml5StreamParser> streamKungFuDeathGrip(mStreamParser);
+   nsRefPtr<nsHtml5TreeOpExecutor> treeOpKungFuDeathGrip(mExecutor);
++  CancelParsingEvents(); // If the executor caused us to continue, ignore event
+   ParseUntilScript();
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP_(void)
+ nsHtml5Parser::BlockParser()
+ {
+   mBlocked = PR_TRUE;
+@@ -259,23 +253,18 @@ nsHtml5Parser::Parse(nsIURI* aURL, // le
+                      nsDTDMode aMode) // legacy; ignored
+ {
+   /*
+    * Do NOT cause WillBuildModel to be called synchronously from here!
+    * The document won't be ready for it until OnStartRequest!
+    */
+   NS_PRECONDITION(!mExecutor->HasStarted(), 
+                   "Tried to start parse without initializing the parser properly.");
+-  if (!mStreamParser) {
+-    mStreamParser = new nsHtml5StreamParser(mExecutor, this);
+-    nsIDocument* doc = mExecutor->GetDocument();
+-    if (doc) {
+-      mStreamParser->SetSpeculativeLoaderWithDocument(doc);
+-    }
+-  }
++  NS_PRECONDITION(mStreamParser, 
++                  "Can't call this variant of Parse() on script-created parser");
+   mStreamParser->SetObserver(aObserver);
+   mExecutor->SetStreamParser(mStreamParser);
+   mExecutor->SetParser(this);
+   mRootContextKey = aKey;
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+@@ -314,93 +303,102 @@ nsHtml5Parser::Parse(const nsAString& aS
+   if (mExecutor->IsComplete()) {
+     return NS_OK;
+   }
+   if (aLastCall && aSourceBuffer.IsEmpty() && aKey == GetRootContextKey()) {
+     // document.close()
+       NS_ASSERTION(!mStreamParser,
+                    "Had stream parser but got document.close().");
+     mDocumentClosed = PR_TRUE;
++    // TODO: Try to tokenize: http://www.w3.org/Bugs/Public/show_bug.cgi?id=7917
+     MaybePostContinueEvent();
+     return NS_OK;
+   }
+ 
++  NS_PRECONDITION(IsInsertionPointDefined(), 
++                  "Document.write called when insertion point not defined.");
++
++  if (aSourceBuffer.IsEmpty()) {
++    return NS_OK;
++  }
++
+   PRInt32 lineNumberSave = mTokenizer->getLineNumber();
+ 
+-  if (!aSourceBuffer.IsEmpty()) {
+-    nsRefPtr<nsHtml5UTF16Buffer> buffer = new nsHtml5UTF16Buffer(aSourceBuffer.Length());
+-    memcpy(buffer->getBuffer(), aSourceBuffer.BeginReading(), aSourceBuffer.Length() * sizeof(PRUnichar));
+-    buffer->setEnd(aSourceBuffer.Length());
+-    if (!mBlocked) {
+-      // mExecutor->WillResume();
+-      while (buffer->hasMore()) {
+-        buffer->adjust(mLastWasCR);
+-        mLastWasCR = PR_FALSE;
+-        if (buffer->hasMore()) {
+-          mLastWasCR = mTokenizer->tokenizeBuffer(buffer);
+-          if (mTreeBuilder->HasScript()) {
+-            mTreeBuilder->flushCharacters(); // Flush trailing characters
+-            mTreeBuilder->Flush(); // Move ops to the executor
+-            mExecutor->Flush(); // run the ops    
+-          }
+-          if (mBlocked) {
+-            // mExecutor->WillInterrupt();
+-            break;
+-          }
+-          // Ignore suspension requests
++  nsRefPtr<nsHtml5UTF16Buffer> buffer = new nsHtml5UTF16Buffer(aSourceBuffer.Length());
++  memcpy(buffer->getBuffer(), aSourceBuffer.BeginReading(), aSourceBuffer.Length() * sizeof(PRUnichar));
++  buffer->setEnd(aSourceBuffer.Length());
++
++  // The buffer is inserted to the stream here in case it won't be parsed
++  // to completion.
++  // The script is identified by aKey. If there's nothing in the buffer
++  // chain for that key, we'll insert at the head of the queue.
++  // When the script leaves something in the queue, a zero-length
++  // key-holder "buffer" is inserted in the queue. If the same script
++  // leaves something in the chain again, it will be inserted immediately
++  // before the old key holder belonging to the same script.
++  nsHtml5UTF16Buffer* prevSearchBuf = nsnull;
++  nsHtml5UTF16Buffer* searchBuf = mFirstBuffer;
++  if (aKey) { // after document.open, the first level of document.write has null key
++    while (searchBuf != mLastBuffer) {
++      if (searchBuf->key == aKey) {
++        // found a key holder
++        // now insert the new buffer between the previous buffer
++        // and the key holder.
++        buffer->next = searchBuf;
++        if (prevSearchBuf) {
++          prevSearchBuf->next = buffer;
++        } else {
++          mFirstBuffer = buffer;
+         }
++        break;
++      }
++      prevSearchBuf = searchBuf;
++      searchBuf = searchBuf->next;
++    }
++  }
++  if (searchBuf == mLastBuffer || !aKey) {
++    // key was not found or we have a first-level write after document.open
++    // we'll insert to the head of the queue
++    nsHtml5UTF16Buffer* keyHolder = new nsHtml5UTF16Buffer(aKey);
++    keyHolder->next = mFirstBuffer;
++    buffer->next = keyHolder;
++    mFirstBuffer = buffer;
++  }
++
++  if (!mBlocked) {
++    // mExecutor->WillResume();
++    while (buffer->hasMore()) {
++      buffer->adjust(mLastWasCR);
++      mLastWasCR = PR_FALSE;
++      if (buffer->hasMore()) {
++        mLastWasCR = mTokenizer->tokenizeBuffer(buffer);
++        if (mTreeBuilder->HasScript()) {
++          // No need to flush characters, because an end tag was tokenized last
++          mTreeBuilder->Flush(); // Move ops to the executor
++          mExecutor->Flush(); // run the ops    
++        }
++        if (mBlocked) {
++          // mExecutor->WillInterrupt();
++          break;
++        }
++        // Ignore suspension requests
+       }
+     }
++  }
+ 
+-    if (buffer->hasMore()) {
+-      // If we got here, the buffer wasn't parsed synchronously to completion
+-      // and its tail needs to go into the chain of pending buffers.
+-      // The script is identified by aKey. If there's nothing in the buffer
+-      // chain for that key, we'll insert at the head of the queue.
+-      // When the script leaves something in the queue, a zero-length
+-      // key-holder "buffer" is inserted in the queue. If the same script
+-      // leaves something in the chain again, it will be inserted immediately
+-      // before the old key holder belonging to the same script.
+-      nsHtml5UTF16Buffer* prevSearchBuf = nsnull;
+-      nsHtml5UTF16Buffer* searchBuf = mFirstBuffer;
+-      if (aKey) { // after document.open, the first level of document.write has null key
+-        while (searchBuf != mLastBuffer) {
+-          if (searchBuf->key == aKey) {
+-            // found a key holder
+-            // now insert the new buffer between the previous buffer
+-            // and the key holder.
+-            buffer->next = searchBuf;
+-            if (prevSearchBuf) {
+-              prevSearchBuf->next = buffer;
+-            } else {
+-              mFirstBuffer = buffer;
+-            }
+-            break;
+-          }
+-          prevSearchBuf = searchBuf;
+-          searchBuf = searchBuf->next;
+-        }
+-      }
+-      if (searchBuf == mLastBuffer || !aKey) {
+-        // key was not found or we have a first-level write after document.open
+-        // we'll insert to the head of the queue
+-        nsHtml5UTF16Buffer* keyHolder = new nsHtml5UTF16Buffer(aKey);
+-        keyHolder->next = mFirstBuffer;
+-        buffer->next = keyHolder;
+-        mFirstBuffer = buffer;
+-      }
+-      if (!mStreamParser) {
+-        MaybePostContinueEvent();
+-      }
+-    } else { // buffer didn't have more
+-      // Scripting semantics require a forced tree builder flush here
+-      mTreeBuilder->flushCharacters(); // Flush trailing characters
+-      mTreeBuilder->Flush(); // Move ops to the executor
+-      mExecutor->Flush(); // run the ops    
+-    }
++  if (!mBlocked) { // buffer was tokenized to completion
++    // Scripting semantics require a forced tree builder flush here
++    mTreeBuilder->flushCharacters(); // Flush trailing characters
++    mTreeBuilder->Flush(); // Move ops to the executor
++    mExecutor->Flush(); // run the ops    
++  } else if (!mStreamParser && buffer->hasMore() && aKey == mRootContextKey) {
++    // The buffer wasn't parsed completely, the document was created by
++    // document.open() and the script that wrote wasn't created by this parser. 
++    // Can't rely on the executor causing the parser to continue.
++    MaybePostContinueEvent();
+   }
+ 
+   mTokenizer->setLineNumber(lineNumberSave);
+   return NS_OK;
+ }
+ 
+ /**
+  * This magic value is passed to the previous method on document.close()
+@@ -520,31 +518,64 @@ void
+ nsHtml5Parser::Reset()
+ {
+   mExecutor->Reset();
+   mLastWasCR = PR_FALSE;
+   mFragmentMode = PR_FALSE;
+   UnblockParser();
+   mDocumentClosed = PR_FALSE;
+   mStreamParser = nsnull;
++  mParserInsertedScriptsBeingEvaluated = 0;
+   mRootContextKey = nsnull;
+   mContinueEvent = nsnull;  // weak ref
+   mAtomTable.Clear(); // should be already cleared in the fragment case anyway
+   // Portable parser objects
+   mFirstBuffer->next = nsnull;
+   mFirstBuffer->setStart(0);
+   mFirstBuffer->setEnd(0);
+ }
+ 
+ PRBool
+ nsHtml5Parser::CanInterrupt()
+ {
+   return !mFragmentMode;
+ }
+ 
++PRBool
++nsHtml5Parser::IsInsertionPointDefined()
++{
++  return !mExecutor->IsFlushing() &&
++    (!mStreamParser || mParserInsertedScriptsBeingEvaluated);
++}
++
++void
++nsHtml5Parser::BeginEvaluatingParserInsertedScript()
++{
++  ++mParserInsertedScriptsBeingEvaluated;
++}
++
++void
++nsHtml5Parser::EndEvaluatingParserInsertedScript()
++{
++  --mParserInsertedScriptsBeingEvaluated;
++}
++
++void
++nsHtml5Parser::MarkAsNotScriptCreated()
++{
++  NS_PRECONDITION(!mStreamParser, "Must not call this twice.");
++  mStreamParser = new nsHtml5StreamParser(mExecutor, this);
++}
++
++PRBool
++nsHtml5Parser::IsScriptCreated()
++{
++  return !mStreamParser;
++}
++
+ /* End nsIParser  */
+ 
+ // not from interface
+ void
+ nsHtml5Parser::HandleParserContinueEvent(nsHtml5ParserContinueEvent* ev)
+ {
+   // Ignore any revoked continue events...
+   if (mContinueEvent != ev)
+diff --git a/parser/html/nsHtml5Parser.h b/parser/html/nsHtml5Parser.h
+--- a/parser/html/nsHtml5Parser.h
++++ b/parser/html/nsHtml5Parser.h
+@@ -56,18 +56,21 @@
+ #include "nsIUnicharStreamListener.h"
+ #include "nsCycleCollectionParticipant.h"
+ #include "nsIInputStream.h"
+ #include "nsDetectionConfident.h"
+ #include "nsHtml5UTF16Buffer.h"
+ #include "nsHtml5TreeOpExecutor.h"
+ #include "nsHtml5StreamParser.h"
+ #include "nsHtml5AtomTable.h"
++#include "nsWeakReference.h"
+ 
+-class nsHtml5Parser : public nsIParser {
++class nsHtml5Parser : public nsIParser,
++                      public nsSupportsWeakReference
++{
+   public:
+     NS_DECL_AND_IMPL_ZEROING_OPERATOR_NEW
+     NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+ 
+     NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsHtml5Parser, nsIParser)
+ 
+     nsHtml5Parser();
+     virtual ~nsHtml5Parser();
+@@ -245,17 +248,43 @@ class nsHtml5Parser : public nsIParser {
+      * Sets the state to initial values
+      */
+     virtual void Reset();
+     
+     /**
+      * True in fragment mode and during synchronous document.write
+      */
+     virtual PRBool CanInterrupt();
+-    
++
++    /**
++     * True if the insertion point (per HTML5) is defined.
++     */
++    virtual PRBool IsInsertionPointDefined();
++
++    /**
++     * Call immediately before starting to evaluate a parser-inserted script.
++     */
++    virtual void BeginEvaluatingParserInsertedScript();
++
++    /**
++     * Call immediately after having evaluated a parser-inserted script.
++     */
++    virtual void EndEvaluatingParserInsertedScript();
++
++    /**
++     * Marks the HTML5 parser as not a script-created parser: Prepares the 
++     * parser to be able to read a stream.
++     */
++    virtual void MarkAsNotScriptCreated();
++
++    /**
++     * True if this is a script-created HTML5 parser.
++     */
++    virtual PRBool IsScriptCreated();
++
+     /* End nsIParser  */
+ 
+     /**
+      *  Fired when the continue parse event is triggered.
+      */
+     void HandleParserContinueEvent(class nsHtml5ParserContinueEvent *);
+ 
+     // Not from an external interface
+@@ -314,16 +343,21 @@ class nsHtml5Parser : public nsIParser {
+     PRBool                        mFragmentMode;
+ 
+     /**
+      * The parser is blocking on a script
+      */
+     PRBool                        mBlocked;
+     
+     /**
++     * The number of parser-inserted script currently being evaluated.
++     */
++    PRInt32                       mParserInsertedScriptsBeingEvaluated;
++
++    /**
+      * True if document.close() has been called.
+      */
+     PRBool                        mDocumentClosed;
+ 
+     // Gecko integration
+     void*                         mRootContextKey;
+     nsIRunnable*                  mContinueEvent;  // weak ref
+ 
+diff --git a/parser/html/nsHtml5StreamParser.cpp b/parser/html/nsHtml5StreamParser.cpp
+--- a/parser/html/nsHtml5StreamParser.cpp
++++ b/parser/html/nsHtml5StreamParser.cpp
+@@ -64,27 +64,30 @@ NS_INTERFACE_TABLE_HEAD(nsHtml5StreamPar
+   NS_INTERFACE_TABLE_TO_MAP_SEGUE_CYCLE_COLLECTION(nsHtml5StreamParser)
+ NS_INTERFACE_MAP_END
+ 
+ NS_IMPL_CYCLE_COLLECTION_CLASS(nsHtml5StreamParser)
+ 
+ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsHtml5StreamParser)
+   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mObserver)
+   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mRequest)
+-  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mOwner)
++  tmp->mOwner = nsnull;
+   tmp->mExecutorFlusher = nsnull;
+   tmp->mExecutor = nsnull;
+   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mDocument)
+   tmp->mTreeBuilder->DropSpeculativeLoader();
+ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+ 
+ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsHtml5StreamParser)
+   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mObserver)
+   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mRequest)
+-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mOwner)
++  if (tmp->mOwner) {
++    NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mOwner");
++    cb.NoteXPCOMChild(static_cast<nsIParser*> (tmp->mOwner));
++  }
+   // hack: count the strongly owned edge wrapped in the runnable
+   if (tmp->mExecutorFlusher) {
+     NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mExecutorFlusher->mExecutor");
+     cb.NoteXPCOMChild(static_cast<nsIContentSink*> (tmp->mExecutor));
+   }
+   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mDocument)  
+   // hack: count the strongly owned edge wrapped in the speculative loader
+   if (tmp->mDocument) {
+diff --git a/parser/html/nsHtml5StreamParser.h b/parser/html/nsHtml5StreamParser.h
+--- a/parser/html/nsHtml5StreamParser.h
++++ b/parser/html/nsHtml5StreamParser.h
+@@ -376,17 +376,17 @@ class nsHtml5StreamParser : public nsISt
+     /**
+      * The scoped atom table
+      */
+     nsHtml5AtomTable              mAtomTable;
+ 
+     /**
+      * The owner parser.
+      */
+-    nsCOMPtr<nsHtml5Parser>       mOwner;
++    nsRefPtr<nsHtml5Parser>       mOwner;
+ 
+     /**
+      * Whether the last character tokenized was a carriage return (for CRLF)
+      */
+     PRBool                        mLastWasCR;
+ 
+     /**
+      * For tracking stream life cycle
+diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpExecutor.cpp
+--- a/parser/html/nsHtml5TreeOpExecutor.cpp
++++ b/parser/html/nsHtml5TreeOpExecutor.cpp
+@@ -263,16 +263,21 @@ nsHtml5TreeOpExecutor::UpdateStyleSheet(
+ 
+ void
+ nsHtml5TreeOpExecutor::Flush()
+ {
+   if (!mParser) {
+     mFlushTimer->Cancel();
+     return;
+   }
++  if (mFlushing) {
++    return;
++  }
++  
++  mFlushing = PR_TRUE;
+ 
+   nsRefPtr<nsHtml5TreeOpExecutor> kungFuDeathGrip(this); // avoid crashing near EOF
+   nsCOMPtr<nsIParser> parserKungFuDeathGrip(mParser);
+ 
+   if (mReadingFromStage) {
+     mStage.RetrieveOperations(mOpQueue);
+   }
+   
+@@ -307,19 +312,22 @@ nsHtml5TreeOpExecutor::Flush()
+         sTreeOpQueueMaxLength = NS_HTML5_TREE_OP_EXECUTOR_MIN_QUEUE_LENGTH;
+       }
+ #ifdef DEBUG_hsivonen
+       printf("QUEUE MAX LENGTH: %d\n", sTreeOpQueueMaxLength);
+ #endif
+     }
+   }
+   ScheduleTimer();
++  
++  mFlushing = PR_FALSE;
++  
+   if (mScriptElement) {
+     NS_ASSERTION(!mCallDidBuildModel, "Had a script element and DidBuildModel call");
+-    ExecuteScript();
++    RunScript();
+   } else if (mCallDidBuildModel) {
+     mCallDidBuildModel = PR_FALSE;
+     DidBuildModel(PR_FALSE);
+   }
+ }
+ 
+ void
+ nsHtml5TreeOpExecutor::ScheduleTimer()
+@@ -405,29 +413,30 @@ nsHtml5TreeOpExecutor::DocumentMode(nsHt
+ 
+ /**
+  * The reason why this code is here and not in the tree builder even in the 
+  * main-thread case is to allow the control to return from the tokenizer 
+  * before scripts run. This way, the tokenizer is not invoked re-entrantly 
+  * although the parser is.
+  */
+ void
+-nsHtml5TreeOpExecutor::ExecuteScript()
++nsHtml5TreeOpExecutor::RunScript()
+ {
+   mReadingFromStage = PR_FALSE;
+   NS_ASSERTION(mScriptElement, "No script to run");
+ 
+   nsCOMPtr<nsIScriptElement> sele = do_QueryInterface(mScriptElement);
+   if (!mParser) {
+     NS_ASSERTION(sele->IsMalformed(), "Script wasn't marked as malformed.");
+     // We got here not because of an end tag but because the tree builder
+     // popped an incomplete script element on EOF. Returning here to avoid
+     // calling back into mParser anymore. mParser has been nulled out by now.
+     return;
+   }
++  sele->SetCreatorParser(mParser);
+   // Notify our document that we're loading this script.
+   nsCOMPtr<nsIHTMLDocument> htmlDocument = do_QueryInterface(mDocument);
+   NS_ASSERTION(htmlDocument, "Document didn't QI into HTML document.");
+   htmlDocument->ScriptLoading(sele);
+    // Copied from nsXMLContentSink
+   // Now tell the script that it's ready to go. This may execute the script
+   // or return NS_ERROR_HTMLPARSER_BLOCK. Or neither if the script doesn't
+   // need executing.
+@@ -511,16 +520,17 @@ void
+ nsHtml5TreeOpExecutor::MaybeFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue)
+ {
+   // no-op
+ }
+ 
+ void
+ nsHtml5TreeOpExecutor::ForcedFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue)
+ {
++  NS_PRECONDITION(!mFlushing, "mOpQueue modified during tree op execution.");
+   if (mOpQueue.IsEmpty()) {
+     mOpQueue.SwapElements(aOpQueue);
+     return;
+   }
+   mOpQueue.MoveElementsFrom(aOpQueue);
+ }
+ 
+ void
+diff --git a/parser/html/nsHtml5TreeOpExecutor.h b/parser/html/nsHtml5TreeOpExecutor.h
+--- a/parser/html/nsHtml5TreeOpExecutor.h
++++ b/parser/html/nsHtml5TreeOpExecutor.h
+@@ -106,16 +106,18 @@ class nsHtml5TreeOpExecutor : public nsC
+     PRBool                        mStarted;
+ 
+     /**
+      * Script to run ASAP
+      */
+     nsCOMPtr<nsIContent>          mScriptElement;
+     
+     nsHtml5TreeOpStage            mStage;
++
++    PRBool                        mFlushing;
+     
+     /**
+      * Used for deferring DidBuildModel call out of notification batch
+      */
+     PRBool                        mCallDidBuildModel;
+ 
+   public:
+   
+@@ -310,17 +312,21 @@ class nsHtml5TreeOpExecutor : public nsC
+     PRBool IsComplete() {
+       return !mParser;
+     }
+     
+     PRBool HasStarted() {
+       return mStarted;
+     }
+     
+-    void ExecuteScript();
++    PRBool IsFlushing() {
++      return mFlushing;
++    }
++    
++    void RunScript();
+     
+     void MaybePreventExecution() {
+       if (mScriptElement) {
+         nsCOMPtr<nsIScriptElement> script = do_QueryInterface(mScriptElement);
+         NS_ASSERTION(script, "mScriptElement didn't QI to nsIScriptElement!");
+         script->PreventExecution();
+         mScriptElement = nsnull;
+       }    
+diff --git a/parser/htmlparser/public/nsIParser.h b/parser/htmlparser/public/nsIParser.h
+--- a/parser/htmlparser/public/nsIParser.h
++++ b/parser/htmlparser/public/nsIParser.h
+@@ -49,20 +49,19 @@
+ 
+ #include "nsISupports.h"
+ #include "nsIStreamListener.h"
+ #include "nsIDTD.h"
+ #include "nsStringGlue.h"
+ #include "nsTArray.h"
+ #include "nsIAtom.h"
+ 
+-// 506527cc-d832-420b-ba3a-80c05aa105f4
+ #define NS_IPARSER_IID \
+-{ 0x506527cc, 0xd832, 0x420b, \
+-  { 0xba, 0x3a, 0x80, 0xc0, 0x5a, 0xa1, 0x05, 0xf4 } }
++{ 0xa44dc586, 0xc521, 0x40a1, \
++{ 0xa0, 0xaf, 0xbe, 0x02, 0xa5, 0x51, 0xe0, 0xb7 } }
+ 
+ 
+ // {41421C60-310A-11d4-816F-000064657374}
+ #define NS_IDEBUG_DUMP_CONTENT_IID \
+ { 0x41421c60, 0x310a, 0x11d4, \
+ { 0x81, 0x6f, 0x0, 0x0, 0x64, 0x65, 0x73, 0x74 } }
+ 
+ class nsIContentSink;
+@@ -295,16 +294,41 @@ class nsIParser : public nsISupports {
+ 
+     virtual void Reset() = 0;
+ 
+     /**
+      * True if the parser can currently be interrupted. Returns false when
+      * parsing for example document.write or innerHTML.
+      */
+     virtual PRBool CanInterrupt() = 0;
++
++    /**
++     * True if the insertion point (per HTML5) is defined.
++     */
++    virtual PRBool IsInsertionPointDefined() = 0;
++
++    /**
++     * Call immediately before starting to evaluate a parser-inserted script.
++     */
++    virtual void BeginEvaluatingParserInsertedScript() = 0;
++
++    /**
++     * Call immediately after having evaluated a parser-inserted script.
++     */
++    virtual void EndEvaluatingParserInsertedScript() = 0;
++
++    /**
++     * Marks the HTML5 parser as not a script-created parser.
++     */
++    virtual void MarkAsNotScriptCreated() = 0;
++
++    /**
++     * True if this is a script-created HTML5 parser.
++     */
++    virtual PRBool IsScriptCreated() = 0;
+ };
+ 
+ NS_DEFINE_STATIC_IID_ACCESSOR(nsIParser, NS_IPARSER_IID)
+ 
+ /* ===========================================================*
+   Some useful constants...
+  * ===========================================================*/
+ 
+diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
+--- a/parser/htmlparser/src/nsParser.cpp
++++ b/parser/htmlparser/src/nsParser.cpp
+@@ -1927,16 +1927,43 @@ nsParser::DataAdded(const nsSubstring& a
+ }
+ 
+ PRBool
+ nsParser::CanInterrupt()
+ {
+   return (mFlags & NS_PARSER_FLAG_CAN_INTERRUPT) != 0;
+ }
+ 
++PRBool
++nsParser::IsInsertionPointDefined()
++{
++  return PR_TRUE;
++}
++
++void
++nsParser::BeginEvaluatingParserInsertedScript()
++{
++}
++
++void
++nsParser::EndEvaluatingParserInsertedScript()
++{
++}
++
++void
++nsParser::MarkAsNotScriptCreated()
++{
++}
++
++PRBool
++nsParser::IsScriptCreated()
++{
++  return PR_FALSE;
++}
++
+ void
+ nsParser::SetCanInterrupt(PRBool aCanInterrupt)
+ {
+   if (aCanInterrupt) {
+     mFlags |= NS_PARSER_FLAG_CAN_INTERRUPT;
+   } else {
+     mFlags &= ~NS_PARSER_FLAG_CAN_INTERRUPT;
+   }
+diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
+--- a/parser/htmlparser/src/nsParser.h
++++ b/parser/htmlparser/src/nsParser.h
+@@ -339,16 +339,41 @@ class nsParser : public nsIParser,
+     /**  
+      *  Indicates whether the parser is in a state where it
+      *  can be interrupted.
+      *  @return PR_TRUE if parser can be interrupted, PR_FALSE if it can not be interrupted.
+      *  @update  kmcclusk 5/18/98
+      */
+     virtual PRBool CanInterrupt();
+ 
++    /**
++     * Return true.
++     */
++    virtual PRBool IsInsertionPointDefined();
++
++    /**
++     * No-op.
++     */
++    virtual void BeginEvaluatingParserInsertedScript();
++
++    /**
++     * No-op.
++     */
++    virtual void EndEvaluatingParserInsertedScript();
++
++    /**
++     * No-op.
++     */
++    virtual void MarkAsNotScriptCreated();
++
++    /**
++     * Always false.
++     */
++    virtual PRBool IsScriptCreated();
++
+     /**  
+      *  Set to parser state to indicate whether parsing tokens can be interrupted
+      *  @param aCanInterrupt PR_TRUE if parser can be interrupted, PR_FALSE if it can not be interrupted.
+      *  @update  kmcclusk 5/18/98
+      */
+     void SetCanInterrupt(PRBool aCanInterrupt);
+ 
+     /**

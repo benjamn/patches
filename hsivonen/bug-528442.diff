@@ -1,0 +1,23 @@
+diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOperation.cpp
+--- a/parser/html/nsHtml5TreeOperation.cpp
++++ b/parser/html/nsHtml5TreeOperation.cpp
+@@ -312,16 +312,19 @@ nsHtml5TreeOperation::Perform(nsHtml5Tre
+       aBuilder->HoldElement(*target = newContent);      
+ 
+       if (NS_UNLIKELY(name == nsHtml5Atoms::style || name == nsHtml5Atoms::link)) {
+         nsCOMPtr<nsIStyleSheetLinkingElement> ssle(do_QueryInterface(newContent));
+         if (ssle) {
+           ssle->InitStyleLinkElement(PR_FALSE);
+           ssle->SetEnableUpdates(PR_FALSE);
+         }
++      } else if (NS_UNLIKELY(name == nsHtml5Atoms::script && ns == kNameSpaceID_SVG)) {
++        nsCOMPtr<nsIScriptElement> sele = do_QueryInterface(newContent);
++        sele->WillCallDoneAddingChildren();
+       }
+ 
+       if (!attributes) {
+         return rv;
+       }
+ 
+       PRInt32 len = attributes->getLength();
+       for (PRInt32 i = 0; i < len; ++i) {

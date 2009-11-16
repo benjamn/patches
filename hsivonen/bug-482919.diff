@@ -1,0 +1,2355 @@
+diff --git a/parser/html/Makefile.in b/parser/html/Makefile.in
+--- a/parser/html/Makefile.in
++++ b/parser/html/Makefile.in
+@@ -68,16 +68,18 @@ CPPSRCS		= \
+ 		nsHtml5ReleasableAttributeName.cpp \
+ 		nsHtml5ReleasableElementName.cpp \
+ 		nsHtml5MetaScanner.cpp \
+ 		nsHtml5TreeOperation.cpp \
+ 		nsHtml5TreeOpStage.cpp \
+ 		nsHtml5StateSnapshot.cpp \
+ 		nsHtml5TreeOpExecutor.cpp \
+ 		nsHtml5StreamParser.cpp \
++		nsHtml5Speculation.cpp \
++		nsHtml5SpeculativeLoader.cpp \
+ 		$(NULL)
+ 
+ FORCE_STATIC_LIB = 1
+ 
+ include $(topsrcdir)/config/rules.mk
+ 
+ INCLUDES	+= \
+ 		-I$(srcdir)/../../content/base/src \
+diff --git a/parser/html/nsHtml5Parser.cpp b/parser/html/nsHtml5Parser.cpp
+--- a/parser/html/nsHtml5Parser.cpp
++++ b/parser/html/nsHtml5Parser.cpp
+@@ -114,21 +114,17 @@ nsHtml5Parser::nsHtml5Parser()
+   mAtomTable.Init(); // we aren't checking for OOM anyway...
+   mTokenizer->setInterner(&mAtomTable);
+   // There's a zeroing operator new for everything else
+ }
+ 
+ nsHtml5Parser::~nsHtml5Parser()
+ {
+   mTokenizer->end();
+-  while (mFirstBuffer) {
+-     nsHtml5UTF16Buffer* old = mFirstBuffer;
+-     mFirstBuffer = mFirstBuffer->next;
+-     delete old;
+-  }
++  mFirstBuffer = nsnull;
+ }
+ 
+ NS_IMETHODIMP_(void)
+ nsHtml5Parser::SetContentSink(nsIContentSink* aSink)
+ {
+   NS_ASSERTION(aSink == static_cast<nsIContentSink*> (mExecutor), 
+                "Attempt to set a foreign sink.");
+ }
+@@ -156,17 +152,17 @@ nsHtml5Parser::SetCommand(eParserCommand
+ {
+   NS_ASSERTION(aParserCommand == eViewNormal, 
+                "Parser command was not eViewNormal.");
+ }
+ 
+ NS_IMETHODIMP_(void)
+ nsHtml5Parser::SetDocumentCharset(const nsACString& aCharset, PRInt32 aCharsetSource)
+ {
+-  NS_PRECONDITION(mExecutor->GetLifeCycle() == NOT_STARTED,
++  NS_PRECONDITION(!mExecutor->HasStarted(),
+                   "Document charset set too late.");
+   NS_PRECONDITION(mStreamParser, "Tried to set charset on a script-only parser.");
+   mStreamParser->SetDocumentCharset(aCharset, aCharsetSource);
+   mExecutor->SetDocumentCharset((nsACString&)aCharset);
+ }
+ 
+ NS_IMETHODIMP_(void)
+ nsHtml5Parser::SetParserFilter(nsIParserFilter* aFilter)
+@@ -191,16 +187,20 @@ nsHtml5Parser::GetDTD(nsIDTD** aDTD)
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ nsHtml5Parser::GetStreamListener(nsIStreamListener** aListener)
+ {
+   if (!mStreamParser) {
+     mStreamParser = new nsHtml5StreamParser(mExecutor, this);
++    nsIDocument* doc = mExecutor->GetDocument();
++    if (doc) {
++      mStreamParser->SetSpeculativeLoaderWithDocument(doc);
++    }
+   }
+   NS_ADDREF(*aListener = mStreamParser);
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ nsHtml5Parser::ContinueParsing()
+ {
+@@ -257,20 +257,24 @@ nsHtml5Parser::Parse(nsIURI* aURL, // le
+                      nsIRequestObserver* aObserver,
+                      void* aKey,
+                      nsDTDMode aMode) // legacy; ignored
+ {
+   /*
+    * Do NOT cause WillBuildModel to be called synchronously from here!
+    * The document won't be ready for it until OnStartRequest!
+    */
+-  NS_PRECONDITION(mExecutor->GetLifeCycle() == NOT_STARTED, 
++  NS_PRECONDITION(!mExecutor->HasStarted(), 
+                   "Tried to start parse without initializing the parser properly.");
+   if (!mStreamParser) {
+     mStreamParser = new nsHtml5StreamParser(mExecutor, this);
++    nsIDocument* doc = mExecutor->GetDocument();
++    if (doc) {
++      mStreamParser->SetSpeculativeLoaderWithDocument(doc);
++    }
+   }
+   mStreamParser->SetObserver(aObserver);
+   mExecutor->SetStreamParser(mStreamParser);
+   mExecutor->SetParser(this);
+   mRootContextKey = aKey;
+   return NS_OK;
+ }
+ 
+@@ -288,66 +292,61 @@ nsHtml5Parser::Parse(const nsAString& aS
+   nsCOMPtr<nsIParser> kungFuDeathGrip(this);
+   
+   // Gripping the other objects just in case, since the other old grip
+   // required grips to these, too.
+   nsRefPtr<nsHtml5StreamParser> streamKungFuDeathGrip(mStreamParser);
+   nsRefPtr<nsHtml5TreeOpExecutor> treeOpKungFuDeathGrip(mExecutor);
+ 
+   // Return early if the parser has processed EOF
+-  switch (mExecutor->GetLifeCycle()) {
+-    case TERMINATED:
+-      return NS_OK;
+-    case NOT_STARTED:
+-      NS_ASSERTION(!mStreamParser,
+-                   "Had stream parser but document.write started life cycle.");
+-      mExecutor->SetParser(this);
+-      mTreeBuilder->setScriptingEnabled(mExecutor->IsScriptEnabled());
+-      mTokenizer->start();
+-      mExecutor->Start();
+-      /*
+-       * If you move the following line, be very careful not to cause 
+-       * WillBuildModel to be called before the document has had its 
+-       * script global object set.
+-       */
+-      mExecutor->WillBuildModel(eDTDMode_unknown);
+-      break;
+-    default:
+-      break;
++  if (!mExecutor->HasStarted()) {
++    NS_ASSERTION(!mStreamParser,
++                 "Had stream parser but document.write started life cycle.");
++    mExecutor->SetParser(this);
++    mTreeBuilder->setScriptingEnabled(mExecutor->IsScriptEnabled());
++    mTokenizer->start();
++    mExecutor->Start();
++    /*
++     * If you move the following line, be very careful not to cause 
++     * WillBuildModel to be called before the document has had its 
++     * script global object set.
++     */
++    mExecutor->WillBuildModel(eDTDMode_unknown);
+   }
+-
++  if (mExecutor->IsComplete()) {
++    return NS_OK;
++  }
+   if (aLastCall && aSourceBuffer.IsEmpty() && aKey == GetRootContextKey()) {
+     // document.close()
+       NS_ASSERTION(!mStreamParser,
+                    "Had stream parser but got document.close().");
+     mDocumentClosed = PR_TRUE;
+     MaybePostContinueEvent();
+     return NS_OK;
+   }
+ 
+   PRInt32 lineNumberSave = mTokenizer->getLineNumber();
+ 
+   if (!aSourceBuffer.IsEmpty()) {
+-    nsHtml5UTF16Buffer* buffer = new nsHtml5UTF16Buffer(aSourceBuffer.Length());
++    nsRefPtr<nsHtml5UTF16Buffer> buffer = new nsHtml5UTF16Buffer(aSourceBuffer.Length());
+     memcpy(buffer->getBuffer(), aSourceBuffer.BeginReading(), aSourceBuffer.Length() * sizeof(PRUnichar));
+     buffer->setEnd(aSourceBuffer.Length());
+     if (!mBlocked) {
+       // mExecutor->WillResume();
+       while (buffer->hasMore()) {
+         buffer->adjust(mLastWasCR);
+         mLastWasCR = PR_FALSE;
+         if (buffer->hasMore()) {
+           mLastWasCR = mTokenizer->tokenizeBuffer(buffer);
+           if (mTreeBuilder->HasScript()) {
+-            mTreeBuilder->Flush(); // moves ops to executor queue
+-            mExecutor->Flush(); // executes the queue
+-            // Is mBlocked always true here?
++            mTreeBuilder->flushCharacters(); // Flush trailing characters
++            mTreeBuilder->Flush(); // Move ops to the executor
++            mExecutor->Flush(); // run the ops    
+           }
+           if (mBlocked) {
+-            // XXX is the tail insertion and script exec in the wrong order?
+             // mExecutor->WillInterrupt();
+             break;
+           }
+           // Ignore suspension requests
+         }
+       }
+     }
+ 
+@@ -383,26 +382,27 @@ nsHtml5Parser::Parse(const nsAString& aS
+       if (searchBuf == mLastBuffer || !aKey) {
+         // key was not found or we have a first-level write after document.open
+         // we'll insert to the head of the queue
+         nsHtml5UTF16Buffer* keyHolder = new nsHtml5UTF16Buffer(aKey);
+         keyHolder->next = mFirstBuffer;
+         buffer->next = keyHolder;
+         mFirstBuffer = buffer;
+       }
+-      MaybePostContinueEvent();
+-    } else {
+-      delete buffer;
++      if (!mStreamParser) {
++        MaybePostContinueEvent();
++      }
++    } else { // buffer didn't have more
++      // Scripting semantics require a forced tree builder flush here
++      mTreeBuilder->flushCharacters(); // Flush trailing characters
++      mTreeBuilder->Flush(); // Move ops to the executor
++      mExecutor->Flush(); // run the ops    
+     }
+   }
+ 
+-  // Scripting semantics require a forced tree builder flush here
+-  // TODO: Also flush the pending text node from tree builder
+-  mTreeBuilder->Flush();
+-  mExecutor->Flush();
+   mTokenizer->setLineNumber(lineNumberSave);
+   return NS_OK;
+ }
+ 
+ /**
+  * This magic value is passed to the previous method on document.close()
+  */
+ NS_IMETHODIMP_(void *)
+@@ -411,17 +411,17 @@ nsHtml5Parser::GetRootContextKey()
+   return mRootContextKey;
+ }
+ 
+ NS_IMETHODIMP
+ nsHtml5Parser::Terminate(void)
+ {
+   // We should only call DidBuildModel once, so don't do anything if this is
+   // the second time that Terminate has been called.
+-  if (mExecutor->GetLifeCycle() == TERMINATED) {
++  if (mExecutor->IsComplete()) {
+     return NS_OK;
+   }
+   // XXX - [ until we figure out a way to break parser-sink circularity ]
+   // Hack - Hold a reference until we are completely done...
+   nsCOMPtr<nsIParser> kungFuDeathGrip(this);
+   nsRefPtr<nsHtml5StreamParser> streamKungFuDeathGrip(mStreamParser);
+   nsRefPtr<nsHtml5TreeOpExecutor> treeOpKungFuDeathGrip(mExecutor);
+   // CancelParsingEvents must be called to avoid leaking the nsParser object
+@@ -469,17 +469,17 @@ nsHtml5Parser::ParseFragment(const nsASt
+   mExecutor->SetBaseUriFromDocument();
+   mExecutor->SetParser(this);
+   mExecutor->SetNodeInfoManager(target->GetOwnerDoc()->NodeInfoManager());
+ 
+   nsIContent* weakTarget = target;
+   mTreeBuilder->setFragmentContext(aContextLocalName, aContextNamespace, &weakTarget, aQuirks);
+   mFragmentMode = PR_TRUE;
+   
+-  NS_PRECONDITION(mExecutor->GetLifeCycle() == NOT_STARTED, "Tried to start parse without initializing the parser properly.");
++  NS_PRECONDITION(!mExecutor->HasStarted(), "Tried to start parse without initializing the parser properly.");
+   mTreeBuilder->setScriptingEnabled(mExecutor->IsScriptEnabled());
+   mTokenizer->start();
+   mExecutor->Start(); // Don't call WillBuildModel in fragment case
+   if (!aSourceBuffer.IsEmpty()) {
+     PRBool lastWasCR = PR_FALSE;
+     nsHtml5UTF16Buffer buffer(aSourceBuffer.Length());
+     memcpy(buffer.getBuffer(), aSourceBuffer.BeginReading(), aSourceBuffer.Length() * sizeof(PRUnichar));
+     buffer.setEnd(aSourceBuffer.Length());
+@@ -492,17 +492,16 @@ nsHtml5Parser::ParseFragment(const nsASt
+       }
+     }
+   }
+   mTokenizer->eof();
+   mTreeBuilder->StreamEnded();
+   mTreeBuilder->Flush();
+   mExecutor->Flush();
+   mTokenizer->end();
+-  mExecutor->SetLifeCycle(TERMINATED);
+   mExecutor->DropParserAndPerfHint();
+   mAtomTable.Clear();
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ nsHtml5Parser::BuildModel(void)
+ {
+@@ -525,21 +524,17 @@ nsHtml5Parser::Reset()
+   mFragmentMode = PR_FALSE;
+   UnblockParser();
+   mDocumentClosed = PR_FALSE;
+   mStreamParser = nsnull;
+   mRootContextKey = nsnull;
+   mContinueEvent = nsnull;  // weak ref
+   mAtomTable.Clear(); // should be already cleared in the fragment case anyway
+   // Portable parser objects
+-  while (mFirstBuffer->next) {
+-    nsHtml5UTF16Buffer* oldBuf = mFirstBuffer;
+-    mFirstBuffer = mFirstBuffer->next;
+-    delete oldBuf;
+-  }
++  mFirstBuffer->next = nsnull;
+   mFirstBuffer->setStart(0);
+   mFirstBuffer->setEnd(0);
+ }
+ 
+ PRBool
+ nsHtml5Parser::CanInterrupt()
+ {
+   return !mFragmentMode;
+@@ -563,68 +558,61 @@ void
+ nsHtml5Parser::ParseUntilScript()
+ {
+   NS_PRECONDITION(!mFragmentMode, "ParseUntilScript called in fragment mode.");
+ 
+   if (mBlocked) {
+     return;
+   }
+ 
+-  switch (mExecutor->GetLifeCycle()) {
+-    case TERMINATED:
+-      return;
+-    case NOT_STARTED:
+-      NS_NOTREACHED("Bad life cycle!");
+-      break;
+-    default:
+-      break;
++  if (mExecutor->IsComplete()) {
++    return;
+   }
++  NS_ASSERTION(mExecutor->HasStarted(), "Bad life cycle.");
+ 
+   mExecutor->WillResume();
+   for (;;) {
+     if (!mFirstBuffer->hasMore()) {
+       if (mFirstBuffer == mLastBuffer) {
+-        switch (mExecutor->GetLifeCycle()) {
+-          case TERMINATED:
+-            // something like cache manisfests stopped the parse in mid-flight
+-            return;
+-          case PARSING:
+-            if (mDocumentClosed) {
+-              NS_ASSERTION(!mStreamParser,
+-                           "This should only happen with script-created parser.");
+-              mTokenizer->eof();
+-              mTreeBuilder->StreamEnded();
+-              mTreeBuilder->Flush();
+-              mExecutor->Flush();
+-              mTokenizer->end();
+-              return;            
+-            } else {
+-              // never release the last buffer. instead just zero its indeces for refill
+-              mFirstBuffer->setStart(0);
+-              mFirstBuffer->setEnd(0);
+-              if (mStreamParser) {
+-                mStreamParser->ContinueAfterScripts(mTokenizer, 
+-                                                    mTreeBuilder, 
+-                                                    mLastWasCR);
+-              }
+-              return; // no more data for now but expecting more
+-            }
+-          default:
+-            NS_NOTREACHED("It should be impossible to reach this.");
+-            return;
++        if (mExecutor->IsComplete()) {
++          // something like cache manisfests stopped the parse in mid-flight
++          return;
++        }
++        if (mDocumentClosed) {
++          NS_ASSERTION(!mStreamParser,
++                       "This should only happen with script-created parser.");
++          mTokenizer->eof();
++          mTreeBuilder->StreamEnded();
++          mTreeBuilder->Flush();
++          mExecutor->Flush();
++          mTokenizer->end();
++          return;            
++        } else {
++          // never release the last buffer.
++          NS_ASSERTION(!mLastBuffer->getStart(), 
++            "Sentinel buffer had its indeces changed.");
++          NS_ASSERTION(!mLastBuffer->getEnd(), 
++            "Sentinel buffer had its indeces changed.");
++          if (mStreamParser && 
++              mReturnToStreamParserPermitted && 
++              !mExecutor->IsScriptExecuting()) {
++            mReturnToStreamParserPermitted = PR_FALSE;
++            mStreamParser->ContinueAfterScripts(mTokenizer, 
++                                                mTreeBuilder, 
++                                                mLastWasCR);
++          }
++          return; // no more data for now but expecting more
+         }
+       } else {
+-        nsHtml5UTF16Buffer* oldBuf = mFirstBuffer;
+         mFirstBuffer = mFirstBuffer->next;
+-        delete oldBuf;
+         continue;
+       }
+     }
+ 
+-    if (mBlocked || (mExecutor->GetLifeCycle() == TERMINATED)) {
++    if (mBlocked || mExecutor->IsComplete()) {
+       return;
+     }
+ 
+     // now we have a non-empty buffer
+     mFirstBuffer->adjust(mLastWasCR);
+     mLastWasCR = PR_FALSE;
+     if (mFirstBuffer->hasMore()) {
+       mLastWasCR = mTokenizer->tokenizeBuffer(mFirstBuffer);
+@@ -639,17 +627,17 @@ nsHtml5Parser::ParseUntilScript()
+     }
+     continue;
+   }
+ }
+ 
+ void
+ nsHtml5Parser::MaybePostContinueEvent()
+ {
+-  NS_PRECONDITION(mExecutor->GetLifeCycle() != TERMINATED, 
++  NS_PRECONDITION(!mExecutor->IsComplete(), 
+                   "Tried to post continue event when the parser is done.");
+   if (mContinueEvent) {
+     return; // we already have a pending event
+   }
+   // This creates a reference cycle between this and the event that is
+   // broken when the event fires.
+   nsCOMPtr<nsIRunnable> event = new nsHtml5ParserContinueEvent(this);
+   if (NS_FAILED(NS_DispatchToCurrentThread(event))) {
+@@ -660,24 +648,28 @@ nsHtml5Parser::MaybePostContinueEvent()
+ }
+ 
+ nsresult
+ nsHtml5Parser::Initialize(nsIDocument* aDoc,
+                           nsIURI* aURI,
+                           nsISupports* aContainer,
+                           nsIChannel* aChannel)
+ {
++  if (mStreamParser && aDoc) {
++    mStreamParser->SetSpeculativeLoaderWithDocument(aDoc);
++  }
+   return mExecutor->Init(aDoc, aURI, aContainer, aChannel);
+ }
+ 
+ void
+ nsHtml5Parser::StartTokenizer(PRBool aScriptingEnabled) {
+   mTreeBuilder->setScriptingEnabled(aScriptingEnabled);
+   mTokenizer->start();
+ }
+ 
+ void
+ nsHtml5Parser::InitializeDocWriteParserState(nsAHtml5TreeBuilderState* aState)
+ {
+   mTokenizer->resetToDataState();
+   mTreeBuilder->loadState(aState, &mAtomTable);
+   mLastWasCR = PR_FALSE;
++  mReturnToStreamParserPermitted = PR_TRUE;
+ }
+diff --git a/parser/html/nsHtml5Parser.h b/parser/html/nsHtml5Parser.h
+--- a/parser/html/nsHtml5Parser.h
++++ b/parser/html/nsHtml5Parser.h
+@@ -326,17 +326,17 @@ class nsHtml5Parser : public nsIParser {
+     // Gecko integration
+     void*                         mRootContextKey;
+     nsIRunnable*                  mContinueEvent;  // weak ref
+ 
+     // Portable parser objects
+     /**
+      * The first buffer in the pending UTF-16 buffer queue
+      */
+-    nsHtml5UTF16Buffer*           mFirstBuffer; // manually managed strong ref
++    nsRefPtr<nsHtml5UTF16Buffer>  mFirstBuffer;
+ 
+     /**
+      * The last buffer in the pending UTF-16 buffer queue
+      */
+     nsHtml5UTF16Buffer*           mLastBuffer; // weak ref; always points to
+                       // a buffer of the size NS_HTML5_PARSER_READ_BUFFER_SIZE
+ 
+     /**
+@@ -353,16 +353,21 @@ class nsHtml5Parser : public nsIParser {
+      * The HTML5 tokenizer
+      */
+     const nsAutoPtr<nsHtml5Tokenizer>   mTokenizer;
+ 
+     /**
+      * The stream parser.
+      */
+     nsRefPtr<nsHtml5StreamParser>       mStreamParser;
++    
++    /**
++     * Whether it's OK to transfer parsing back to the stream parser
++     */
++    PRBool                              mReturnToStreamParserPermitted;
+ 
+     /**
+      * The scoped atom table
+      */
+     nsHtml5AtomTable                    mAtomTable;
+ 
+ };
+ #endif
+diff --git a/parser/html/nsHtml5Speculation.cpp b/parser/html/nsHtml5Speculation.cpp
+new file mode 100644
+--- /dev/null
++++ b/parser/html/nsHtml5Speculation.cpp
+@@ -0,0 +1,75 @@
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is HTML Parser C++ Translator code.
++ *
++ * The Initial Developer of the Original Code is
++ * Mozilla Foundation.
++ * Portions created by the Initial Developer are Copyright (C) 2009
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *   Henri Sivonen <hsivonen@iki.fi>
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++#include "nsHtml5Speculation.h"
++
++nsHtml5Speculation::nsHtml5Speculation(nsHtml5UTF16Buffer* aBuffer, 
++                                       PRInt32 aStart, 
++                                       nsAHtml5TreeBuilderState* aSnapshot)
++  : mBuffer(aBuffer)
++  , mStart(aStart)
++  , mSnapshot(aSnapshot)
++{
++  MOZ_COUNT_CTOR(nsHtml5Speculation);
++}
++
++nsHtml5Speculation::~nsHtml5Speculation()
++{
++  MOZ_COUNT_DTOR(nsHtml5Speculation);
++}
++
++void
++nsHtml5Speculation::MaybeFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue)
++{
++  // No-op
++}
++
++void
++nsHtml5Speculation::ForcedFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue)
++{
++  if (mOpQueue.IsEmpty()) {
++    mOpQueue.SwapElements(aOpQueue);
++    return;
++  }
++  mOpQueue.MoveElementsFrom(aOpQueue);
++}
++
++void
++nsHtml5Speculation::FlushToSink(nsAHtml5TreeOpSink* aSink)
++{
++  aSink->ForcedFlush(mOpQueue);
++}
+diff --git a/parser/html/nsHtml5Speculation.h b/parser/html/nsHtml5Speculation.h
+new file mode 100644
+--- /dev/null
++++ b/parser/html/nsHtml5Speculation.h
+@@ -0,0 +1,98 @@
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is HTML Parser C++ Translator code.
++ *
++ * The Initial Developer of the Original Code is
++ * Mozilla Foundation.
++ * Portions created by the Initial Developer are Copyright (C) 2009
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *   Henri Sivonen <hsivonen@iki.fi>
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++#ifndef nsHtml5Speculation_h__
++#define nsHtml5Speculation_h__
++
++#include "nsHtml5UTF16Buffer.h"
++#include "nsAHtml5TreeBuilderState.h"
++#include "nsHtml5TreeOperation.h"
++#include "nsAHtml5TreeOpSink.h"
++#include "nsTArray.h"
++#include "nsAutoPtr.h"
++
++class nsHtml5Speculation : public nsAHtml5TreeOpSink
++{
++  public:
++    nsHtml5Speculation(nsHtml5UTF16Buffer* aBuffer, 
++                       PRInt32 aStart, 
++                       nsAHtml5TreeBuilderState* aSnapshot);
++    
++    ~nsHtml5Speculation();
++
++    nsHtml5UTF16Buffer* GetBuffer() {
++      return mBuffer;
++    }
++    
++    PRInt32 GetStart() {
++      return mStart;
++    }
++    
++    nsAHtml5TreeBuilderState* GetSnapshot() {
++      return mSnapshot;
++    }
++
++    /**
++     * No-op.
++     */
++    virtual void MaybeFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue);
++
++    /**
++     * Flush the operations from the tree operations from the argument
++     * queue unconditionally.
++     */
++    virtual void ForcedFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue);
++    
++    void FlushToSink(nsAHtml5TreeOpSink* aSink);
++
++  private:
++    /**
++     * The first buffer in the pending UTF-16 buffer queue
++     */
++    nsRefPtr<nsHtml5UTF16Buffer>        mBuffer;
++    
++    /**
++     * The start index of this speculation in the first buffer
++     */
++    PRInt32                             mStart;
++    
++    nsAutoPtr<nsAHtml5TreeBuilderState> mSnapshot;
++
++    nsTArray<nsHtml5TreeOperation>      mOpQueue;
++};
++
++#endif // nsHtml5Speculation_h__
+\ No newline at end of file
+diff --git a/parser/html/nsHtml5SpeculativeLoader.cpp b/parser/html/nsHtml5SpeculativeLoader.cpp
+new file mode 100644
+--- /dev/null
++++ b/parser/html/nsHtml5SpeculativeLoader.cpp
+@@ -0,0 +1,134 @@
++/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
++/* vim: set sw=2 ts=2 et tw=79: */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is mozilla.org code.
++ *
++ * The Initial Developer of the Original Code is
++ * Netscape Communications Corporation.
++ * Portions created by the Initial Developer are Copyright (C) 1998
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *   Pierre Phaneuf <pp@ludusdesign.com>
++ *   Henri Sivonen <hsivonen@iki.fi>
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either of the GNU General Public License Version 2 or later (the "GPL"),
++ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++#include "nsHtml5SpeculativeLoader.h"
++#include "nsICSSLoader.h"
++#include "nsNetUtil.h"
++#include "nsScriptLoader.h"
++#include "nsICSSLoaderObserver.h"
++
++/**
++ * Used if we need to pass an nsICSSLoaderObserver as parameter,
++ * but don't really need its services
++ */
++class nsHtml5DummyCSSLoaderObserver : public nsICSSLoaderObserver {
++public:
++  NS_IMETHOD
++  StyleSheetLoaded(nsICSSStyleSheet* aSheet, PRBool aWasAlternate, nsresult aStatus) {
++      return NS_OK;
++  }
++  NS_DECL_ISUPPORTS
++};
++
++NS_IMPL_ISUPPORTS1(nsHtml5DummyCSSLoaderObserver, nsICSSLoaderObserver)
++
++nsHtml5SpeculativeLoader::nsHtml5SpeculativeLoader(nsIDocument* aDocument)
++  : mDocument(aDocument)
++{
++  MOZ_COUNT_CTOR(nsHtml5SpeculativeLoader);
++  mPreloadedURLs.Init(23); // Mean # of preloadable resources per page on dmoz
++}
++
++nsHtml5SpeculativeLoader::~nsHtml5SpeculativeLoader()
++{
++  MOZ_COUNT_DTOR(nsHtml5SpeculativeLoader);
++}
++
++NS_IMPL_THREADSAFE_ADDREF(nsHtml5SpeculativeLoader)
++
++NS_IMPL_THREADSAFE_RELEASE(nsHtml5SpeculativeLoader)
++
++already_AddRefed<nsIURI>
++nsHtml5SpeculativeLoader::ConvertIfNotPreloadedYet(const nsAString& aURL)
++{
++  nsIURI* base = mDocument->GetBaseURI();
++  const nsCString& charset = mDocument->GetDocumentCharacterSet();
++  nsCOMPtr<nsIURI> uri;
++  nsresult rv = NS_NewURI(getter_AddRefs(uri), aURL, charset.get(), base);
++  if (NS_FAILED(rv)) {
++    NS_WARNING("Failed to create a URI");
++    return nsnull;
++  }
++  nsCAutoString spec;
++  uri->GetSpec(spec);
++  if (mPreloadedURLs.Contains(spec)) {
++    return nsnull;
++  }
++  mPreloadedURLs.Put(spec);
++  nsIURI* retURI = uri;
++  NS_ADDREF(retURI);
++  return retURI;
++}
++
++void
++nsHtml5SpeculativeLoader::PreloadScript(const nsAString& aURL,
++                                        const nsAString& aCharset,
++                                        const nsAString& aType)
++{
++  nsCOMPtr<nsIURI> uri = ConvertIfNotPreloadedYet(aURL);
++  if (!uri) {
++    return;
++  }
++  mDocument->ScriptLoader()->PreloadURI(uri, aCharset, aType);
++}
++
++void
++nsHtml5SpeculativeLoader::PreloadStyle(const nsAString& aURL,
++                                       const nsAString& aCharset)
++{
++  nsCOMPtr<nsIURI> uri = ConvertIfNotPreloadedYet(aURL);
++  if (!uri) {
++    return;
++  }
++  nsCOMPtr<nsICSSLoaderObserver> obs = new nsHtml5DummyCSSLoaderObserver();
++  mDocument->CSSLoader()->LoadSheet(uri, mDocument->NodePrincipal(),
++                                    NS_LossyConvertUTF16toASCII(aCharset),
++                                    obs);
++}
++
++void
++nsHtml5SpeculativeLoader::PreloadImage(const nsAString& aURL)
++{
++  nsCOMPtr<nsIURI> uri = ConvertIfNotPreloadedYet(aURL);
++  if (!uri) {
++    return;
++  }
++  mDocument->MaybePreLoadImage(uri);
++}
+diff --git a/parser/html/nsHtml5SpeculativeLoader.h b/parser/html/nsHtml5SpeculativeLoader.h
+new file mode 100644
+--- /dev/null
++++ b/parser/html/nsHtml5SpeculativeLoader.h
+@@ -0,0 +1,85 @@
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is HTML Parser C++ Translator code.
++ *
++ * The Initial Developer of the Original Code is
++ * Mozilla Foundation.
++ * Portions created by the Initial Developer are Copyright (C) 2009
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *   Henri Sivonen <hsivonen@iki.fi>
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++#ifndef nsHtml5SpeculativeLoader_h__
++#define nsHtml5SpeculativeLoader_h__
++
++#include "mozilla/Mutex.h"
++#include "nsIURI.h"
++#include "nsString.h"
++#include "nsCOMPtr.h"
++#include "nsIDocument.h"
++#include "nsHashSets.h"
++
++class nsHtml5SpeculativeLoader
++{
++  public:
++    nsHtml5SpeculativeLoader(nsIDocument* aDocument);
++    ~nsHtml5SpeculativeLoader();
++
++    NS_IMETHOD_(nsrefcnt) AddRef(void);
++    NS_IMETHOD_(nsrefcnt) Release(void);
++
++    void PreloadScript(const nsAString& aURL,
++                       const nsAString& aCharset,
++                       const nsAString& aType);
++
++    void PreloadStyle(const nsAString& aURL, const nsAString& aCharset);
++
++    void PreloadImage(const nsAString& aURL);
++
++  private:
++    
++    /**
++     * Get a nsIURI for an nsString if the URL hasn't been preloaded yet.
++     */
++    already_AddRefed<nsIURI> ConvertIfNotPreloadedYet(const nsAString& aURL);
++  
++    nsAutoRefCnt   mRefCnt;
++    
++    /**
++     * The document to use as the context for preloading.
++     */
++    nsCOMPtr<nsIDocument> mDocument;
++    
++    /**
++     * URLs already preloaded/preloading.
++     */
++    nsCStringHashSet mPreloadedURLs;
++};
++
++#endif // nsHtml5SpeculativeLoader_h__
+\ No newline at end of file
+diff --git a/parser/html/nsHtml5StreamParser.cpp b/parser/html/nsHtml5StreamParser.cpp
+--- a/parser/html/nsHtml5StreamParser.cpp
++++ b/parser/html/nsHtml5StreamParser.cpp
+@@ -67,27 +67,36 @@ NS_INTERFACE_MAP_END
+ NS_IMPL_CYCLE_COLLECTION_CLASS(nsHtml5StreamParser)
+ 
+ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsHtml5StreamParser)
+   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mObserver)
+   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mRequest)
+   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mOwner)
+   tmp->mExecutorFlusher = nsnull;
+   tmp->mExecutor = nsnull;
++  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mDocument)
++  tmp->mTreeBuilder->DropSpeculativeLoader();
+ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+ 
+ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsHtml5StreamParser)
+   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mObserver)
+   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mRequest)
+   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mOwner)
+   // hack: count the strongly owned edge wrapped in the runnable
+   if (tmp->mExecutorFlusher) {
+     NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mExecutorFlusher->mExecutor");
+     cb.NoteXPCOMChild(static_cast<nsIContentSink*> (tmp->mExecutor));
+   }
++  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mDocument)  
++  // hack: count the strongly owned edge wrapped in the speculative loader
++  if (tmp->mDocument) {
++    NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, 
++      "mTreeBuilder->mSpeculativeLoader->mDocument");
++    cb.NoteXPCOMChild(tmp->mDocument);    
++  }
+ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+ 
+ class nsHtml5ExecutorFlusher : public nsRunnable
+ {
+   private:
+     nsRefPtr<nsHtml5TreeOpExecutor> mExecutor;
+   public:
+     nsHtml5ExecutorFlusher(nsHtml5TreeOpExecutor* aExecutor)
+@@ -104,16 +113,17 @@ nsHtml5StreamParser::nsHtml5StreamParser
+                                          nsHtml5Parser* aOwner)
+   : mFirstBuffer(new nsHtml5UTF16Buffer(NS_HTML5_STREAM_PARSER_READ_BUFFER_SIZE))
+   , mLastBuffer(mFirstBuffer)
+   , mExecutor(aExecutor)
+   , mTreeBuilder(new nsHtml5TreeBuilder(mExecutor->GetStage()))
+   , mTokenizer(new nsHtml5Tokenizer(mTreeBuilder))
+   , mTokenizerMutex("nsHtml5StreamParser mTokenizerMutex")
+   , mOwner(aOwner)
++  , mSpeculationMutex("nsHtml5StreamParser mSpeculationMutex")
+   , mTerminatedMutex("nsHtml5StreamParser mTerminatedMutex")
+   , mThread(nsHtml5Module::GetStreamParserThread())
+   , mExecutorFlusher(new nsHtml5ExecutorFlusher(aExecutor))
+ {
+   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+   mAtomTable.Init(); // we aren't checking for OOM anyway...
+   #ifdef DEBUG
+     mAtomTable.SetPermittedLookupThread(mThread);
+@@ -127,27 +137,30 @@ nsHtml5StreamParser::~nsHtml5StreamParse
+ {
+   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+   mTokenizer->end();
+   mRequest = nsnull;
+   mObserver = nsnull;
+   mUnicodeDecoder = nsnull;
+   mSniffingBuffer = nsnull;
+   mMetaScanner = nsnull;
+-  while (mFirstBuffer) {
+-     nsHtml5UTF16Buffer* old = mFirstBuffer;
+-     mFirstBuffer = mFirstBuffer->next;
+-     delete old;
+-  }
++  mFirstBuffer = nsnull;
+   mExecutor = nsnull;
+   mTreeBuilder = nsnull;
+   mTokenizer = nsnull;
+   mOwner = nsnull;
+ }
+ 
++void
++nsHtml5StreamParser::SetSpeculativeLoaderWithDocument(nsIDocument* aDocument) {
++  NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
++  mDocument = aDocument;
++  mTreeBuilder->SetSpeculativeLoaderWithDocument(aDocument);
++}
++
+ nsresult
+ nsHtml5StreamParser::GetChannel(nsIChannel** aChannel)
+ {
+   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+   return mRequest ? CallQueryInterface(mRequest, aChannel) :
+                     NS_ERROR_NOT_AVAILABLE;
+ }
+ 
+@@ -439,17 +452,17 @@ nsHtml5StreamParser::WriteStreamBytes(co
+ }
+ 
+ // nsIRequestObserver methods:
+ nsresult
+ nsHtml5StreamParser::OnStartRequest(nsIRequest* aRequest, nsISupports* aContext)
+ {
+   NS_PRECONDITION(STREAM_NOT_STARTED == mStreamState,
+                   "Got OnStartRequest when the stream had already started.");
+-  NS_PRECONDITION(mExecutor->GetLifeCycle() == NOT_STARTED, 
++  NS_PRECONDITION(!mExecutor->HasStarted(), 
+                   "Got OnStartRequest at the wrong stage in the executor life cycle.");
+   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+   if (mObserver) {
+     mObserver->OnStartRequest(aRequest, aContext);
+   }
+   mRequest = aRequest;
+ 
+   mStreamState = STREAM_BEING_READ;
+@@ -498,39 +511,48 @@ nsHtml5StreamParser::OnStartRequest(nsIR
+ }
+ 
+ void
+ nsHtml5StreamParser::DoStopRequest()
+ {
+   NS_ASSERTION(IsParserThread(), "Wrong thread!");
+   NS_PRECONDITION(STREAM_BEING_READ == mStreamState,
+                   "Stream ended without being open.");
++  mTokenizerMutex.AssertCurrentThreadOwns();
++
++  if (IsTerminated()) {
++    return;
++  }
++
+   if (!mUnicodeDecoder) {
+     PRUint32 writeCount;
+     FinalizeSniffing(nsnull, 0, &writeCount, 0);
+     // dropped nsresult here
+   }
+ 
+   mStreamState = STREAM_ENDED;
+-  
+-  if (!mWaitingForScripts) {
+-    ParseUntilScript();
+-  }  
++
++  if (IsTerminatedOrInterrupted()) {
++    return;
++  }
++
++  ParseAvailableData(); 
+ }
+ 
+ class nsHtml5RequestStopper : public nsRunnable
+ {
+   private:
+     nsHtml5RefPtr<nsHtml5StreamParser> mStreamParser;
+   public:
+     nsHtml5RequestStopper(nsHtml5StreamParser* aStreamParser)
+       : mStreamParser(aStreamParser)
+     {}
+     NS_IMETHODIMP Run()
+     {
++      mozilla::MutexAutoLock autoLock(mStreamParser->mTokenizerMutex);
+       mStreamParser->DoStopRequest();
+       return NS_OK;
+     }
+ };
+ 
+ nsresult
+ nsHtml5StreamParser::OnStopRequest(nsIRequest* aRequest,
+                              nsISupports* aContext,
+@@ -549,24 +571,33 @@ nsHtml5StreamParser::OnStopRequest(nsIRe
+ }
+ 
+ void
+ nsHtml5StreamParser::DoDataAvailable(PRUint8* aBuffer, PRUint32 aLength)
+ {
+   NS_ASSERTION(IsParserThread(), "Wrong thread!");
+   NS_PRECONDITION(STREAM_BEING_READ == mStreamState,
+                   "DoDataAvailable called when stream not open.");
++  mTokenizerMutex.AssertCurrentThreadOwns();
++
++  if (IsTerminated()) {
++    return;
++  }
++
+   PRUint32 writeCount;
+   HasDecoder() ? WriteStreamBytes(aBuffer, aLength, &writeCount) :
+                  SniffStreamBytes(aBuffer, aLength, &writeCount);
+   // dropping nsresult here
+   NS_ASSERTION(writeCount == aLength, "Wrong number of stream bytes written/sniffed.");
+-  if (!mWaitingForScripts) {
+-    ParseUntilScript();
++
++  if (IsTerminatedOrInterrupted()) {
++    return;
+   }
++
++  ParseAvailableData();
+ }
+ 
+ class nsHtml5DataAvailable : public nsRunnable
+ {
+   private:
+     nsHtml5RefPtr<nsHtml5StreamParser> mStreamParser;
+     nsAutoArrayPtr<PRUint8>            mData;
+     PRUint32                           mLength;
+@@ -575,16 +606,17 @@ class nsHtml5DataAvailable : public nsRu
+                          PRUint8*             aData,
+                          PRUint32             aLength)
+       : mStreamParser(aStreamParser)
+       , mData(aData)
+       , mLength(aLength)
+     {}
+     NS_IMETHODIMP Run()
+     {
++      mozilla::MutexAutoLock autoLock(mStreamParser->mTokenizerMutex);
+       mStreamParser->DoDataAvailable(mData, mLength);
+       return NS_OK;
+     }
+ };
+ 
+ // nsIStreamListener method:
+ nsresult
+ nsHtml5StreamParser::OnDataAvailable(nsIRequest* aRequest,
+@@ -643,140 +675,206 @@ nsHtml5StreamParser::internalEncodingDec
+   // we still want to reparse
+   mTreeBuilder->NeedsCharsetSwitchTo(newEncoding);
+   mTreeBuilder->Flush();
+   // the tree op executor will cause the stream parser to terminate
+   // if the charset switch request is accepted
+ }
+ 
+ void
+-nsHtml5StreamParser::ParseUntilScript()
++nsHtml5StreamParser::ParseAvailableData()
+ {
+   NS_ASSERTION(IsParserThread(), "Wrong thread!");
+-  if (IsTerminated()) {
++  mTokenizerMutex.AssertCurrentThreadOwns();
++
++  if (IsTerminatedOrInterrupted()) {
+     return;
+   }
+-
+-  // TODO: Relax this mutex so that the parser doesn't speculate to
+-  // completion when it's already known that the speculation will fail.
+-  // Maybe have another boolean and mutex for checking IsSpeculationFailing()
+-  // or something like that instead of trying to be fancy with this mutex.
+-  mozilla::MutexAutoLock autoLock(mTokenizerMutex);
+-
+-  mWaitingForScripts = PR_FALSE;
+-
++  
+   for (;;) {
+     if (!mFirstBuffer->hasMore()) {
+       if (mFirstBuffer == mLastBuffer) {
+         switch (mStreamState) {
+           case STREAM_BEING_READ:
+-            // never release the last buffer. instead just zero its indeces for refill
+-            mFirstBuffer->setStart(0);
+-            mFirstBuffer->setEnd(0);
++            // never release the last buffer.
++            if (!mSpeculating) {
++              // reuse buffer space if not speculating
++              mFirstBuffer->setStart(0);
++              mFirstBuffer->setEnd(0);
++            }
+             mTreeBuilder->Flush();
+             return; // no more data for now but expecting more
+           case STREAM_ENDED:
+-            Terminate(); // TODO Don't terminate if this is a speculation
++            if (mAtEOF) {
++                return;
++            }
++            mAtEOF = PR_TRUE;
+             mTokenizer->eof();
+             mTreeBuilder->StreamEnded();
+             mTreeBuilder->Flush();
+             if (NS_FAILED(NS_DispatchToMainThread(mExecutorFlusher))) {
+               NS_WARNING("failed to dispatch executor flush event");
+-            }  
++            }
+             return; // no more data and not expecting more
+           default:
+             NS_NOTREACHED("It should be impossible to reach this.");
+             return;
+         }
+       } else {
+-        nsHtml5UTF16Buffer* oldBuf = mFirstBuffer;
+         mFirstBuffer = mFirstBuffer->next;
+-        delete oldBuf;
+         continue;
+       }
+     }
+ 
+     // now we have a non-empty buffer
+     mFirstBuffer->adjust(mLastWasCR);
+     mLastWasCR = PR_FALSE;
+     if (mFirstBuffer->hasMore()) {
+       mLastWasCR = mTokenizer->tokenizeBuffer(mFirstBuffer);
+       // At this point, internalEncodingDeclaration() may have called 
+       // Terminate, but that never happens together with script.
+       // Can't assert that here, though, because it's possible that the main
+       // thread has called Terminate() while this thread was parsing.
+-      if (IsTerminated()) {
+-        return;
+-      }
+       if (mTreeBuilder->HasScript()) {
+-        mTreeBuilder->AddSnapshotToScript(mTreeBuilder->newSnapshot());
++        mozilla::MutexAutoLock speculationAutoLock(mSpeculationMutex);
++        nsHtml5Speculation* speculation = 
++          new nsHtml5Speculation(mFirstBuffer,
++                                 mFirstBuffer->getStart(),
++                                 mTreeBuilder->newSnapshot());
++        mTreeBuilder->AddSnapshotToScript(speculation->GetSnapshot());
+         mTreeBuilder->Flush();
+         if (NS_FAILED(NS_DispatchToMainThread(mExecutorFlusher))) {
+           NS_WARNING("failed to dispatch executor flush event");
+-        }  
+-        // XXX start speculation
+-        mWaitingForScripts = PR_TRUE;
+-        return; // ContinueAfterScripts() will re-enable this parser
++        }
++        mTreeBuilder->SetOpSink(speculation);
++        mSpeculations.AppendElement(speculation); // adopts the pointer
++        mSpeculating = PR_TRUE;
++      }
++      if (IsTerminatedOrInterrupted()) {
++        return;
+       }
+       mTreeBuilder->MaybeFlush();
+     }
+     continue;
+   }
+ }
+ 
+-class nsHtml5ContinueAfterScript : public nsRunnable
++class nsHtml5StreamParserContinuation : public nsRunnable
+ {
+ private:
+   nsHtml5RefPtr<nsHtml5StreamParser> mStreamParser;
+ public:
+-  nsHtml5ContinueAfterScript(nsHtml5StreamParser* aStreamParser)
++  nsHtml5StreamParserContinuation(nsHtml5StreamParser* aStreamParser)
+     : mStreamParser(aStreamParser)
+   {}
+   NS_IMETHODIMP Run()
+   {
+-    mStreamParser->ParseUntilScript();
++    mozilla::MutexAutoLock autoLock(mStreamParser->mTokenizerMutex);
++    mStreamParser->ParseAvailableData();
+     return NS_OK;
+   }
+ };
+ 
+ void
+ nsHtml5StreamParser::ContinueAfterScripts(nsHtml5Tokenizer* aTokenizer, 
+                                           nsHtml5TreeBuilder* aTreeBuilder,
+                                           PRBool aLastWasCR)
+ {
+   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+-  mExecutor->StartReadingFromStage();
+-  // TODO:
+-  // test if the state of the argument tokenizer and tree builder match
+-  // the earliest speculation.
+-  // If not, rendez-vous at barrier, zaps all speculations, rewind the stream 
+-  // and copy over the state.
+-  // If yes:
+-  // If there are multiple speculations or the stream parser has terminated.
+-  // load the tree op queue from the earliest speculation into the tree op 
+-  // executor and discard the stream data for that speculation. Return.
+-  // Otherwise, rendez-vous at barrier, load the tree op queue from the 
+-  // speculation into the tree op executor, set the tree op executor to read 
+-  // from the stage, set the stream parser tree builder to write to stage,
+-  // discard the stream data for the speculation.
+-  
++  #ifdef DEBUG
++    mExecutor->AssertStageEmpty();
++  #endif
++  PRBool speculationFailed = PR_FALSE;
+   {
+-    mozilla::MutexAutoLock autoLock(mTokenizerMutex); 
++    mozilla::MutexAutoLock speculationAutoLock(mSpeculationMutex);
++    if (mSpeculations.IsEmpty()) {
++      // Not quite sure how exactly this happens...
++      // Maybe an artifact of defer scripts?
++      return;
++    }
++    nsHtml5Speculation* speculation = mSpeculations.ElementAt(0);
++    if (aLastWasCR || 
++        !aTokenizer->isInDataState() || 
++        !aTreeBuilder->snapshotMatches(speculation->GetSnapshot())) {
++      speculationFailed = PR_TRUE;
++      // We've got a failed speculation :-(
++      Interrupt(); // Make the parser thread release the tokenizer mutex sooner
++      // now fall out of the speculationAutoLock into the tokenizerAutoLock block
++    } else {
++      // We've got a successful speculation!
++      if (mSpeculations.Length() > 1) {
++        // the first speculation isn't the current speculation, so there's 
++        // no need to bother the parser thread.
++        speculation->FlushToSink(mExecutor);
++        if (NS_FAILED(NS_DispatchToMainThread(mExecutorFlusher))) {
++          NS_WARNING("failed to dispatch executor flush event");
++        }
++        mSpeculations.RemoveElementAt(0);
++        return;
++      }
++      // else
++      Interrupt(); // Make the parser thread release the tokenizer mutex sooner
++      
++      // now fall through
++      // the first speculation is the current speculation. Need to 
++      // release the the speculation mutex and acquire the tokenizer 
++      // mutex. (Just acquiring the other mutex here would deadlock)
++    }
++  }
++  {
++    mozilla::MutexAutoLock tokenizerAutoLock(mTokenizerMutex);
+     #ifdef DEBUG
+       nsCOMPtr<nsIThread> mainThread;
+       NS_GetMainThread(getter_AddRefs(mainThread));
+       mAtomTable.SetPermittedLookupThread(mainThread);
+     #endif
+-
+-    // Approximation: Copy state over for now unconditionally.
+-    mLastWasCR = aLastWasCR;
+-    mTokenizer->loadState(aTokenizer);
+-    mTreeBuilder->loadState(aTreeBuilder, &mAtomTable);
+-    
++    // In principle, the speculation mutex should be acquired here,
++    // but there's no point, because the parser thread only acquires it
++    // when it has also acquired the tokenizer mutex and we are already
++    // holding the tokenizer mutex.
++    if (speculationFailed) {
++      // Rewind the stream
++      mAtEOF = PR_FALSE;
++      nsHtml5Speculation* speculation = mSpeculations.ElementAt(0);
++      mFirstBuffer = speculation->GetBuffer();
++      mFirstBuffer->setStart(speculation->GetStart());
++      nsHtml5UTF16Buffer* buffer = mFirstBuffer->next;
++      while (buffer) {
++        buffer->setStart(0);
++        buffer = buffer->next;
++      }
++      
++      mSpeculations.Clear(); // potentially a huge number of destructors 
++                             // run here synchronously on the main thread...
++      
++      mTreeBuilder->SetOpSink(mExecutor->GetStage());
++      mExecutor->StartReadingFromStage();
++      mSpeculating = PR_FALSE;
++      // Copy state over
++      mLastWasCR = aLastWasCR;
++      mTokenizer->loadState(aTokenizer);
++      mTreeBuilder->loadState(aTreeBuilder, &mAtomTable);
++    } else {    
++      // We've got a successful speculation and at least a moment ago it was
++      // the current speculation
++      mSpeculations.ElementAt(0)->FlushToSink(mExecutor);
++      if (NS_FAILED(NS_DispatchToMainThread(mExecutorFlusher))) {
++        NS_WARNING("failed to dispatch executor flush event");
++      }
++      mSpeculations.RemoveElementAt(0);
++      if (mSpeculations.IsEmpty()) {
++        // yes, it was still the only speculation. Now stop speculating
++        mTreeBuilder->SetOpSink(mExecutor->GetStage());
++        mExecutor->StartReadingFromStage();
++        mSpeculating = PR_FALSE;
++      }
++    }
++    Uninterrupt();
++    nsCOMPtr<nsIRunnable> event = new nsHtml5StreamParserContinuation(this);
++    if (NS_FAILED(mThread->Dispatch(event, nsIThread::DISPATCH_NORMAL))) {
++      NS_WARNING("Failed to dispatch ParseAvailableData event");
++    }
++    // A stream event might run before this event runs, but that's harmless.
+     #ifdef DEBUG
+       mAtomTable.SetPermittedLookupThread(mThread);
+     #endif
+   }
+-  nsCOMPtr<nsIRunnable> event = new nsHtml5ContinueAfterScript(this);
+-  if (NS_FAILED(mThread->Dispatch(event, nsIThread::DISPATCH_NORMAL))) {
+-    NS_WARNING("Failed to dispatch ParseUntilScript event");
+-  }
+ }
+diff --git a/parser/html/nsHtml5StreamParser.h b/parser/html/nsHtml5StreamParser.h
+--- a/parser/html/nsHtml5StreamParser.h
++++ b/parser/html/nsHtml5StreamParser.h
+@@ -46,16 +46,17 @@
+ #include "nsHtml5MetaScanner.h"
+ #include "nsIUnicodeDecoder.h"
+ #include "nsHtml5TreeOpExecutor.h"
+ #include "nsHtml5UTF16Buffer.h"
+ #include "nsIInputStream.h"
+ #include "nsICharsetAlias.h"
+ #include "mozilla/Mutex.h"
+ #include "nsHtml5AtomTable.h"
++#include "nsHtml5Speculation.h"
+ 
+ class nsHtml5Parser;
+ 
+ #define NS_HTML5_STREAM_PARSER_READ_BUFFER_SIZE 1024
+ #define NS_HTML5_STREAM_PARSER_SNIFFING_BUFFER_SIZE 512
+ 
+ enum eBomState {
+   /**
+@@ -99,17 +100,17 @@ enum eHtml5StreamState {
+   STREAM_ENDED = 2
+ };
+ 
+ class nsHtml5StreamParser : public nsIStreamListener,
+                             public nsICharsetDetectionObserver {
+ 
+   friend class nsHtml5RequestStopper;
+   friend class nsHtml5DataAvailable;
+-  friend class nsHtml5ContinueAfterScript;
++  friend class nsHtml5StreamParserContinuation;
+ 
+   public:
+     NS_DECL_AND_IMPL_ZEROING_OPERATOR_NEW
+     NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+     NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsHtml5StreamParser, nsIStreamListener)
+ 
+     nsHtml5StreamParser(nsHtml5TreeOpExecutor* aExecutor,
+                         nsHtml5Parser* aOwner);
+@@ -149,54 +150,73 @@ class nsHtml5StreamParser : public nsISt
+       mCharset = aCharset;
+       mCharsetSource = aSource;
+     }
+     
+     inline void SetObserver(nsIRequestObserver* aObserver) {
+       NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+       mObserver = aObserver;
+     }
+-    
++
++    void SetSpeculativeLoaderWithDocument(nsIDocument* aDocument);
++
+     nsresult GetChannel(nsIChannel** aChannel);
+ 
+     /**
+      * The owner parser must call this after script execution
+      * when no scripts are executing and the document.written 
+      * buffer has been exhausted.
+      */
+     void ContinueAfterScripts(nsHtml5Tokenizer* aTokenizer, 
+                               nsHtml5TreeBuilder* aTreeBuilder,
+                               PRBool aLastWasCR);
+ 
+     void Terminate() {
+       mozilla::MutexAutoLock autoLock(mTerminatedMutex);
+       mTerminated = PR_TRUE;
+-      // TODO: Make sure this object stays alive as long as there are 
+-      // in-flight runnables coming this way
+     }
+     
+   private:
+ 
+ #ifdef DEBUG
+     PRBool IsParserThread() {
+       PRBool ret;
+       mThread->IsOnCurrentThread(&ret);
+       return ret;
+     }
+ #endif
+ 
+-    void ParseUntilScript();
++    void Interrupt() {
++      NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
++      mozilla::MutexAutoLock autoLock(mTerminatedMutex);
++      mInterrupted = PR_TRUE;
++    }
++
++    void Uninterrupt() {
++      NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
++      mTokenizerMutex.AssertCurrentThreadOwns();
++      // Not acquiring mTerminatedMutex because mTokenizerMutex is already
++      // held at this point and is already stronger.
++      mInterrupted = PR_FALSE;      
++    }
++
++    void ParseAvailableData();
+     
+     void DoStopRequest();
+     
+     void DoDataAvailable(PRUint8* aBuffer, PRUint32 aLength);
+ 
++    PRBool IsTerminatedOrInterrupted() {
++      mozilla::MutexAutoLock autoLock(mTerminatedMutex);
++      return mTerminated || mInterrupted;
++    }
++
+     PRBool IsTerminated() {
+       mozilla::MutexAutoLock autoLock(mTerminatedMutex);
+-      return mTerminated;    
++      return mTerminated;
+     }
+ 
+     /**
+      * True when there is a Unicode decoder already
+      */
+     inline PRBool HasDecoder() {
+       return !!mUnicodeDecoder;
+     }
+@@ -319,17 +339,17 @@ class nsHtml5StreamParser : public nsISt
+      * Whether reparse is forbidden
+      */
+     PRBool                        mReparseForbidden;
+ 
+     // Portable parser objects
+     /**
+      * The first buffer in the pending UTF-16 buffer queue
+      */
+-    nsHtml5UTF16Buffer*           mFirstBuffer; // manually managed strong ref
++    nsRefPtr<nsHtml5UTF16Buffer>  mFirstBuffer;
+ 
+     /**
+      * The last buffer in the pending UTF-16 buffer queue
+      */
+     nsHtml5UTF16Buffer*           mLastBuffer; // weak ref; always points to
+                       // a buffer of the size NS_HTML5_STREAM_PARSER_READ_BUFFER_SIZE
+ 
+     /**
+@@ -344,17 +364,17 @@ class nsHtml5StreamParser : public nsISt
+ 
+     /**
+      * The HTML5 tokenizer
+      */
+     nsAutoPtr<nsHtml5Tokenizer>   mTokenizer;
+ 
+     /**
+      * Makes sure the main thread can't mess the tokenizer state while it's
+-     * tokenizing
++     * tokenizing. This mutex also protects the current speculation.
+      */
+     mozilla::Mutex                mTokenizerMutex;
+ 
+     /**
+      * The scoped atom table
+      */
+     nsHtml5AtomTable              mAtomTable;
+ 
+@@ -369,27 +389,47 @@ class nsHtml5StreamParser : public nsISt
+     PRBool                        mLastWasCR;
+ 
+     /**
+      * For tracking stream life cycle
+      */
+     eHtml5StreamState             mStreamState;
+     
+     /**
+-     * Whether we are waiting for scripts to be done.
++     * Whether we are speculating.
+      */
+-    PRBool                        mWaitingForScripts;
++    PRBool                        mSpeculating;
++
++    /**
++     * Whether the tokenizer has reached EOF. (Reset when stream rewinded.)
++     */
++    PRBool                        mAtEOF;
++
++    /**
++     * The speculations. The mutex protects the nsTArray itself.
++     * To access the queue of current speculation, mTokenizerMutex must be 
++     * obtained.
++     * The current speculation is the last element
++     */
++    nsTArray<nsAutoPtr<nsHtml5Speculation> >  mSpeculations;
++    mozilla::Mutex                            mSpeculationMutex;
+ 
+     /**
+      * True to terminate early; protected by mTerminatedMutex
+      */
+     PRBool                        mTerminated;
++    PRBool                        mInterrupted;
+     mozilla::Mutex                mTerminatedMutex;
+     
+     /**
+      * The thread this stream parser runs on.
+      */
+     nsCOMPtr<nsIThread>           mThread;
+     
+     nsCOMPtr<nsIRunnable>         mExecutorFlusher;
++    
++    /**
++     * The document wrapped by the speculative loader.
++     */
++    nsCOMPtr<nsIDocument>         mDocument;
+ };
+ 
+ #endif // nsHtml5StreamParser_h__
+diff --git a/parser/html/nsHtml5Tokenizer.cpp b/parser/html/nsHtml5Tokenizer.cpp
+--- a/parser/html/nsHtml5Tokenizer.cpp
++++ b/parser/html/nsHtml5Tokenizer.cpp
+@@ -3484,16 +3484,17 @@ nsHtml5Tokenizer::loadState(nsHtml5Token
+ }
+ 
+ void 
+ nsHtml5Tokenizer::initializeWithoutStarting()
+ {
+   confident = PR_FALSE;
+   strBuf = jArray<PRUnichar,PRInt32>(64);
+   longStrBuf = jArray<PRUnichar,PRInt32>(1024);
++  line = 1;
+   resetToDataState();
+ }
+ 
+ void 
+ nsHtml5Tokenizer::setEncodingDeclarationHandler(nsHtml5StreamParser* encodingDeclarationHandler)
+ {
+   this->encodingDeclarationHandler = encodingDeclarationHandler;
+ }
+diff --git a/parser/html/nsHtml5TreeBuilderCppSupplement.h b/parser/html/nsHtml5TreeBuilderCppSupplement.h
+--- a/parser/html/nsHtml5TreeBuilderCppSupplement.h
++++ b/parser/html/nsHtml5TreeBuilderCppSupplement.h
+@@ -41,16 +41,17 @@
+ #include "nsContentErrors.h"
+ #include "nsIPresShell.h"
+ #include "nsPresContext.h"
+ #include "nsEvent.h"
+ #include "nsGUIEvent.h"
+ #include "nsEventDispatcher.h"
+ #include "nsContentUtils.h"
+ #include "nsNodeUtils.h"
++#include "nsHtml5SpeculativeLoader.h"
+ 
+ // this really should be autogenerated...
+ jArray<PRUnichar,PRInt32> nsHtml5TreeBuilder::ISINDEX_PROMPT = jArray<PRUnichar,PRInt32>();
+ nsHtml5TreeBuilder::nsHtml5TreeBuilder(nsAHtml5TreeOpSink* aOpSink)
+   : scriptingEnabled(PR_FALSE)
+   , fragment(PR_FALSE)
+   , contextNode(nsnull)
+   , formPointer(nsnull)
+@@ -67,19 +68,153 @@ nsHtml5TreeBuilder::nsHtml5TreeBuilder(n
+ 
+ nsHtml5TreeBuilder::~nsHtml5TreeBuilder()
+ {
+   MOZ_COUNT_DTOR(nsHtml5TreeBuilder);
+   NS_ASSERTION(!mActive, "nsHtml5TreeBuilder deleted without ever calling end() on it!");
+   mOpQueue.Clear();
+ }
+ 
++class nsHtml5SpeculativeScript : public nsRunnable
++{
++private:
++  nsRefPtr<nsHtml5SpeculativeLoader> mSpeculativeLoader;
++  nsString                           mURL;
++  nsString                           mCharset;
++  nsString                           mType;
++public:
++  nsHtml5SpeculativeScript(nsHtml5SpeculativeLoader* aSpeculativeLoader,
++                           const nsAString& aURL,
++                           const nsAString& aCharset,
++                           const nsAString& aType)
++    : mSpeculativeLoader(aSpeculativeLoader)
++    , mURL(aURL)
++    , mCharset(aCharset)
++    , mType(aType)
++  {}
++  NS_IMETHODIMP Run()
++  {
++    mSpeculativeLoader->PreloadScript(mURL, mCharset, mType);
++    return NS_OK;
++  }
++};
++
++class nsHtml5SpeculativeStyle : public nsRunnable
++{
++private:
++  nsRefPtr<nsHtml5SpeculativeLoader> mSpeculativeLoader;
++  nsString                           mURL;
++  nsString                           mCharset;
++public:
++  nsHtml5SpeculativeStyle(nsHtml5SpeculativeLoader* aSpeculativeLoader,
++                          const nsAString& aURL,
++                          const nsAString& aCharset)
++    : mSpeculativeLoader(aSpeculativeLoader)
++    , mURL(aURL)
++    , mCharset(aCharset)
++  {}
++  NS_IMETHODIMP Run()
++  {
++    mSpeculativeLoader->PreloadStyle(mURL, mCharset);
++    return NS_OK;
++  }
++};
++
++class nsHtml5SpeculativeImage : public nsRunnable
++{
++private:
++  nsRefPtr<nsHtml5SpeculativeLoader> mSpeculativeLoader;
++  nsString                           mURL;
++public:
++  nsHtml5SpeculativeImage(nsHtml5SpeculativeLoader* aSpeculativeLoader,
++                          const nsAString& aURL)
++    : mSpeculativeLoader(aSpeculativeLoader)
++    , mURL(aURL)
++  {}
++  NS_IMETHODIMP Run()
++  {
++    mSpeculativeLoader->PreloadImage(mURL);
++    return NS_OK;
++  }
++};
++
+ nsIContent**
+ nsHtml5TreeBuilder::createElement(PRInt32 aNamespace, nsIAtom* aName, nsHtml5HtmlAttributes* aAttributes)
+ {
++  NS_PRECONDITION(aAttributes, "Got null attributes.");
++  
++  // Start wall of code for speculative loading
++  
++  if (mSpeculativeLoader) {
++    switch (aNamespace) {
++      case kNameSpaceID_XHTML:
++        if (nsHtml5Atoms::img == aName) {
++          nsString* url = aAttributes->getValue(nsHtml5AttributeName::ATTR_SRC);
++          if (url) {
++            Dispatch(new nsHtml5SpeculativeImage(mSpeculativeLoader, *url));
++          }
++        } else if (nsHtml5Atoms::script == aName) {
++          nsString* url = aAttributes->getValue(nsHtml5AttributeName::ATTR_SRC);
++          if (url) {
++            nsString* charset = aAttributes->getValue(nsHtml5AttributeName::ATTR_CHARSET);
++            nsString* type = aAttributes->getValue(nsHtml5AttributeName::ATTR_TYPE);
++            Dispatch(new nsHtml5SpeculativeScript(mSpeculativeLoader, 
++                                                  *url,
++                                                  (charset) ? *charset : EmptyString(),
++                                                  (type) ? *type : EmptyString()));
++          }
++        } else if (nsHtml5Atoms::link == aName) {
++          nsString* rel = aAttributes->getValue(nsHtml5AttributeName::ATTR_REL);
++          // Not splitting on space here is bogus but the old parser didn't even
++          // do a case-insensitive check.
++          if (rel && rel->LowerCaseEqualsASCII("stylesheet")) {
++            nsString* url = aAttributes->getValue(nsHtml5AttributeName::ATTR_HREF);
++            if (url) {
++              nsString* charset = aAttributes->getValue(nsHtml5AttributeName::ATTR_CHARSET);
++              Dispatch(new nsHtml5SpeculativeStyle(mSpeculativeLoader, 
++                                                   *url,
++                                                   (charset) ? *charset : EmptyString()));
++            }
++          }
++        } else if (nsHtml5Atoms::video == aName) {
++          nsString* url = aAttributes->getValue(nsHtml5AttributeName::ATTR_POSTER);
++          if (url) {
++            Dispatch(new nsHtml5SpeculativeImage(mSpeculativeLoader, *url));
++          }
++        }
++        break;
++      case kNameSpaceID_SVG:
++        if (nsHtml5Atoms::image == aName) {
++          nsString* url = aAttributes->getValue(nsHtml5AttributeName::ATTR_XLINK_HREF);
++          if (url) {
++            Dispatch(new nsHtml5SpeculativeImage(mSpeculativeLoader, *url));
++          }
++        } else if (nsHtml5Atoms::script == aName) {
++          nsString* url = aAttributes->getValue(nsHtml5AttributeName::ATTR_XLINK_HREF);
++          if (url) {
++            nsString* type = aAttributes->getValue(nsHtml5AttributeName::ATTR_TYPE);
++            Dispatch(new nsHtml5SpeculativeScript(mSpeculativeLoader, 
++                                                  *url,
++                                                  EmptyString(),
++                                                  (type) ? *type : EmptyString()));
++          }
++        } else if (nsHtml5Atoms::style == aName) {
++          nsString* url = aAttributes->getValue(nsHtml5AttributeName::ATTR_XLINK_HREF);
++          if (url) {
++            Dispatch(new nsHtml5SpeculativeStyle(mSpeculativeLoader, 
++                                                 *url,
++                                                 EmptyString()));
++          }
++        }        
++        break;
++    }
++  }
++
++  // End wall of code for speculative loading
++  
+   nsIContent** content = AllocateContentHandle();
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   // XXX if null, OOM!
+   treeOp->Init(aNamespace, aName, aAttributes, content);
+   return content;
+ }
+ 
+ nsIContent**
+@@ -287,17 +422,17 @@ nsHtml5TreeBuilder::elementPopped(PRInt3
+   if (aNamespace == kNameSpaceID_MathML) {
+     return;
+   }
+   // we now have only SVG and HTML
+   if (aName == nsHtml5Atoms::script) {
+     requestSuspension();
+     nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+     // XXX if null, OOM!
+-    treeOp->Init(eTreeOpRunScript, aElement, nsnull);
++    treeOp->InitScript(aElement);
+     return;
+   }
+   if (aName == nsHtml5Atoms::title) {
+     nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+     // XXX if null, OOM!
+     treeOp->Init(eTreeOpDoneAddingChildren, aElement);
+     return;
+   }
+@@ -421,17 +556,17 @@ nsHtml5TreeBuilder::SetDocumentCharset(n
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   // XXX if null, OOM!
+   treeOp->Init(eTreeOpSetDocumentCharset, aCharset);  
+ }
+ 
+ void
+ nsHtml5TreeBuilder::StreamEnded()
+ {
+-  // The fragement mode calls DidBuildModel from nsHtml5Parser. 
++  // The fragment mode calls DidBuildModel from nsHtml5Parser. 
+   // Letting DidBuildModel be called from the executor in the fragment case
+   // confuses the EndLoad logic of nsHTMLDocument, since nsHTMLDocument
+   // thinks it is dealing with document.written content as opposed to 
+   // innerHTML content.
+   if (!fragment) {
+     nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+     // XXX if null, OOM!
+     treeOp->Init(eTreeOpStreamEnded);
+@@ -445,19 +580,31 @@ nsHtml5TreeBuilder::NeedsCharsetSwitchTo
+   // XXX if null, OOM!
+   treeOp->Init(eTreeOpNeedsCharsetSwitchTo, aCharset);  
+ }
+ 
+ void
+ nsHtml5TreeBuilder::AddSnapshotToScript(nsAHtml5TreeBuilderState* aSnapshot)
+ {
+   NS_PRECONDITION(HasScript(), "No script to add a snapshot to!");
++  NS_PRECONDITION(aSnapshot, "Got null snapshot.");
+   mOpQueue.ElementAt(mOpQueue.Length() - 1).SetSnapshot(aSnapshot);
+ }
+ 
++void
++nsHtml5TreeBuilder::SetSpeculativeLoaderWithDocument(nsIDocument* aDocument) {
++  NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
++  mSpeculativeLoader = new nsHtml5SpeculativeLoader(aDocument);
++}
++
++void
++nsHtml5TreeBuilder::DropSpeculativeLoader() {
++  mSpeculativeLoader = nsnull;
++}
++
+ // DocumentModeHandler
+ void
+ nsHtml5TreeBuilder::documentMode(nsHtml5DocumentMode m)
+ {
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   // XXX if null, OOM!
+   treeOp->Init(m);
+ }
+diff --git a/parser/html/nsHtml5TreeBuilderHSupplement.h b/parser/html/nsHtml5TreeBuilderHSupplement.h
+--- a/parser/html/nsHtml5TreeBuilderHSupplement.h
++++ b/parser/html/nsHtml5TreeBuilderHSupplement.h
+@@ -38,17 +38,18 @@
+ #define NS_HTML5_TREE_BUILDER_HANDLE_ARRAY_LENGTH 512
+ 
+   private:
+ 
+     nsTArray<nsHtml5TreeOperation>         mOpQueue;
+     nsAHtml5TreeOpSink*                    mOpSink;
+     nsAutoArrayPtr<nsIContent*>            mHandles;
+     PRInt32                                mHandlesUsed;
+-    nsTArray<nsAutoArrayPtr<nsIContent*> > mOldHandles;              
++    nsTArray<nsAutoArrayPtr<nsIContent*> > mOldHandles;
++    nsRefPtr<nsHtml5SpeculativeLoader>     mSpeculativeLoader;
+ #ifdef DEBUG
+     PRBool                                 mActive;
+ #endif
+ 
+     // DocumentModeHandler
+     /**
+      * Tree builder uses this to report quirkiness of the document
+      */
+@@ -63,19 +64,29 @@
+     ~nsHtml5TreeBuilder();
+     
+     PRBool HasScript();
+     
+     void SetOpSink(nsAHtml5TreeOpSink* aOpSink) {
+       mOpSink = aOpSink;
+     }
+     
++    void SetSpeculativeLoaderWithDocument(nsIDocument* aDocument);
++
++    void DropSpeculativeLoader();
++
+     void Flush();
+     
+     void MaybeFlush();
+     
+     void SetDocumentCharset(nsACString& aCharset);
+ 
+     void StreamEnded();
+ 
+     void NeedsCharsetSwitchTo(const nsACString& aEncoding);
+ 
+     void AddSnapshotToScript(nsAHtml5TreeBuilderState* aSnapshot);
++
++    inline void Dispatch(nsIRunnable* aEvent) {
++      if (NS_FAILED(NS_DispatchToMainThread(aEvent))) {
++        NS_WARNING("Failed to dispatch speculative load runnable.");
++      }
++    }
+diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpExecutor.cpp
+--- a/parser/html/nsHtml5TreeOpExecutor.cpp
++++ b/parser/html/nsHtml5TreeOpExecutor.cpp
+@@ -86,20 +86,19 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_IN
+   }
+   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mFlushTimer)
+   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mScriptElement)
+   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMARRAY(mOwnedElements)
+   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMARRAY(mOwnedNonElements)
+ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+ 
+ nsHtml5TreeOpExecutor::nsHtml5TreeOpExecutor()
+-  : mHasProcessedBase(PR_FALSE)
+-  , mReadingFromStage(PR_FALSE)
+-  , mFlushTimer(do_CreateInstance("@mozilla.org/timer;1"))
++  : mFlushTimer(do_CreateInstance("@mozilla.org/timer;1"))
+ {
++  // zeroing operator new for everything else
+ }
+ 
+ nsHtml5TreeOpExecutor::~nsHtml5TreeOpExecutor()
+ {
+   NS_ASSERTION(mOpQueue.IsEmpty(), "Somehow there's stuff in the op queue.");
+   if (mFlushTimer) {
+     mFlushTimer->Cancel(); // XXX why is this even necessary? it is, though.
+   }
+@@ -119,19 +118,18 @@ nsHtml5TreeOpExecutor::WillParse()
+   NS_NOTREACHED("No one should call this");
+   return NS_ERROR_NOT_IMPLEMENTED;
+ }
+ 
+ // This is called when the tree construction has ended
+ NS_IMETHODIMP
+ nsHtml5TreeOpExecutor::DidBuildModel(PRBool aTerminated)
+ {
+-  NS_PRECONDITION(mLifeCycle == PARSING, 
++  NS_PRECONDITION(mStarted && mParser, 
+                   "Bad life cycle.");
+-  mLifeCycle = TERMINATED;
+   // This is comes from nsXMLContentSink
+   DidBuildModelImpl(aTerminated);
+   mDocument->ScriptLoader()->RemoveObserver(this);
+   nsContentSink::StartLayout(PR_FALSE);
+   ScrollToRef();
+   mDocument->RemoveObserver(this);
+   mDocument->EndLoad();
+   static_cast<nsHtml5Parser*> (mParser.get())->DropStreamParser();
+@@ -261,25 +259,23 @@ nsHtml5TreeOpExecutor::UpdateStyleSheet(
+       mScriptLoader->AddExecuteBlocker();
+     }
+   }
+ }
+ 
+ void
+ nsHtml5TreeOpExecutor::Flush()
+ {
+-  nsRefPtr<nsHtml5TreeOpExecutor> kungFuDeathGrip(this); // avoid crashing near EOF
+-  nsCOMPtr<nsIParser> parserKungFuDeathGrip(mParser);
+-
+-  if (mLifeCycle == TERMINATED) {
++  if (!mParser) {
+     mFlushTimer->Cancel();
+     return;
+   }
+ 
+-  NS_ASSERTION(mParser, "mParser was nulled out but life cycle wasn't terminated.");
++  nsRefPtr<nsHtml5TreeOpExecutor> kungFuDeathGrip(this); // avoid crashing near EOF
++  nsCOMPtr<nsIParser> parserKungFuDeathGrip(mParser);
+ 
+   if (mReadingFromStage) {
+     mStage.RetrieveOperations(mOpQueue);
+   }
+   
+   { // scope for the auto update so that it ends before we try to run the 
+     // script
+     MOZ_AUTO_DOC_UPDATE(GetDocument(), UPDATE_CONTENT_MODEL, PR_TRUE);
+@@ -415,17 +411,17 @@ nsHtml5TreeOpExecutor::DocumentMode(nsHt
+  */
+ void
+ nsHtml5TreeOpExecutor::ExecuteScript()
+ {
+   mReadingFromStage = PR_FALSE;
+   NS_ASSERTION(mScriptElement, "No script to run");
+ 
+   nsCOMPtr<nsIScriptElement> sele = do_QueryInterface(mScriptElement);
+-  if (mLifeCycle == TERMINATED) {
++  if (!mParser) {
+     NS_ASSERTION(sele->IsMalformed(), "Script wasn't marked as malformed.");
+     // We got here not because of an end tag but because the tree builder
+     // popped an incomplete script element on EOF. Returning here to avoid
+     // calling back into mParser anymore. mParser has been nulled out by now.
+     return;
+   }
+   // Notify our document that we're loading this script.
+   nsCOMPtr<nsIHTMLDocument> htmlDocument = do_QueryInterface(mDocument);
+@@ -437,21 +433,22 @@ nsHtml5TreeOpExecutor::ExecuteScript()
+   // need executing.
+   nsresult rv = mScriptElement->DoneAddingChildren(PR_TRUE);
+   mScriptElement = nsnull;
+   // If the act of insertion evaluated the script, we're fine.
+   // Else, block the parser till the script has loaded.
+   if (rv == NS_ERROR_HTMLPARSER_BLOCK) {
+     mScriptElements.AppendObject(sele);
+     mParser->BlockParser();
+-  } else if (mLifeCycle != TERMINATED) {
++  } else {
+     // This may have already happened if the script executed, but in case
+     // it didn't then remove the element so that it doesn't get stuck forever.
+     htmlDocument->ScriptExecuted(sele);
+-    static_cast<nsHtml5Parser*> (mParser.get())->MaybePostContinueEvent();
++    // mParser may have been nulled out by now, but nsContentSink deals
++    ContinueInterruptedParsingAsync();
+   }
+ }
+ 
+ nsresult
+ nsHtml5TreeOpExecutor::Init(nsIDocument* aDoc,
+                             nsIURI* aURI,
+                             nsISupports* aContainer,
+                             nsIChannel* aChannel)
+@@ -461,18 +458,18 @@ nsHtml5TreeOpExecutor::Init(nsIDocument*
+   mCanInterruptParser = PR_FALSE; // without this, nsContentSink calls
+                                   // UnblockOnload from DropParserAndPerfHint
+   return rv;
+ }
+ 
+ void
+ nsHtml5TreeOpExecutor::Start()
+ {
+-  NS_PRECONDITION(mLifeCycle == NOT_STARTED, "Tried to start when already started.");
+-  mLifeCycle = PARSING;
++  NS_PRECONDITION(!mStarted, "Tried to start when already started.");
++  mStarted = PR_TRUE;
+   mScriptElement = nsnull;
+   ScheduleTimer();
+ }
+ 
+ void
+ nsHtml5TreeOpExecutor::NeedsCharsetSwitchTo(const char* aEncoding)
+ {
+   nsresult rv = NS_OK;
+@@ -500,17 +497,17 @@ nsHtml5TreeOpExecutor::GetTokenizer()
+   return (static_cast<nsHtml5Parser*> (mParser.get()))->GetTokenizer();
+ }
+ 
+ void
+ nsHtml5TreeOpExecutor::Reset() {
+   mHasProcessedBase = PR_FALSE;
+   mReadingFromStage = PR_FALSE;
+   mOpQueue.Clear();
+-  mLifeCycle = NOT_STARTED;
++  mStarted = PR_FALSE;
+   mScriptElement = nsnull;
+   mCallDidBuildModel = PR_FALSE;
+ }
+ 
+ void
+ nsHtml5TreeOpExecutor::MaybeFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue)
+ {
+   // no-op
+diff --git a/parser/html/nsHtml5TreeOpExecutor.h b/parser/html/nsHtml5TreeOpExecutor.h
+--- a/parser/html/nsHtml5TreeOpExecutor.h
++++ b/parser/html/nsHtml5TreeOpExecutor.h
+@@ -56,34 +56,16 @@
+ #include "nsCOMArray.h"
+ #include "nsAHtml5TreeOpSink.h"
+ #include "nsHtml5TreeOpStage.h"
+ 
+ class nsHtml5TreeBuilder;
+ class nsHtml5Tokenizer;
+ class nsHtml5StreamParser;
+ 
+-enum eHtml5ParserLifecycle {
+-  /**
+-   * The parser has told the tokenizer to start yet.
+-   */
+-  NOT_STARTED = 0,
+-
+-  /**
+-   * The parser has started the tokenizer and as far as the executor is
+-   * aware, the stream hasn't ended.
+-   */
+-  PARSING = 1,
+-
+-  /**
+-   * The parse has ended.
+-   */
+-  TERMINATED = 2
+-};
+-
+ typedef nsIContent* nsIContentPtr;
+ 
+ class nsHtml5TreeOpExecutor : public nsContentSink,
+                               public nsIContentSink,
+                               public nsAHtml5TreeOpSink
+ {
+   public:
+     NS_DECL_AND_IMPL_ZEROING_OPERATOR_NEW
+@@ -114,19 +96,19 @@ class nsHtml5TreeOpExecutor : public nsC
+     nsCOMArray<nsIContent>               mOwnedElements;
+     
+     // This could be optimized away by introducing more tree ops so that 
+     // non-elements wouldn't use the handle setup but the text node / comment
+     // / doctype operand would be remembered by the tree op executor.
+     nsCOMArray<nsIContent>               mOwnedNonElements;
+   
+     /**
+-     * The current point on parser life cycle
++     * Whether the parser has started
+      */
+-    eHtml5ParserLifecycle         mLifeCycle;
++    PRBool                        mStarted;
+ 
+     /**
+      * Script to run ASAP
+      */
+     nsCOMPtr<nsIContent>          mScriptElement;
+     
+     nsHtml5TreeOpStage            mStage;
+     
+@@ -321,25 +303,21 @@ class nsHtml5TreeOpExecutor : public nsC
+     
+ #ifdef DEBUG
+     PRBool HasScriptElement() {
+       return !!mScriptElement;
+     }
+ #endif
+ 
+     PRBool IsComplete() {
+-      return (mLifeCycle == TERMINATED);
++      return !mParser;
+     }
+     
+-    eHtml5ParserLifecycle GetLifeCycle() {
+-      return mLifeCycle;
+-    }
+-    
+-    void SetLifeCycle(eHtml5ParserLifecycle aLifeCycle) {
+-      mLifeCycle = aLifeCycle;
++    PRBool HasStarted() {
++      return mStarted;
+     }
+     
+     void ExecuteScript();
+     
+     void MaybePreventExecution() {
+       if (mScriptElement) {
+         nsCOMPtr<nsIScriptElement> script = do_QueryInterface(mScriptElement);
+         NS_ASSERTION(script, "mScriptElement didn't QI to nsIScriptElement!");
+@@ -378,15 +356,21 @@ class nsHtml5TreeOpExecutor : public nsC
+     void StartReadingFromStage() {
+       mReadingFromStage = PR_TRUE;
+     }
+ 
+     void StreamEnded();
+     
+     void ScheduleTimer();
+ 
++#ifdef DEBUG
++    void AssertStageEmpty() {
++      mStage.AssertEmpty();
++    }
++#endif
++
+   private:
+ 
+     nsHtml5Tokenizer* GetTokenizer();
+         
+ };
+ 
+ #endif // nsHtml5TreeOpExecutor_h__
+diff --git a/parser/html/nsHtml5TreeOpStage.cpp b/parser/html/nsHtml5TreeOpStage.cpp
+--- a/parser/html/nsHtml5TreeOpStage.cpp
++++ b/parser/html/nsHtml5TreeOpStage.cpp
+@@ -71,8 +71,18 @@ nsHtml5TreeOpStage::RetrieveOperations(n
+ {
+   mozilla::MutexAutoLock autoLock(mMutex);
+   if (aOpQueue.IsEmpty()) {
+     mOpQueue.SwapElements(aOpQueue);
+     return;
+   }
+   aOpQueue.MoveElementsFrom(mOpQueue);
+ }
++
++#ifdef DEBUG
++void
++nsHtml5TreeOpStage::AssertEmpty()
++{
++  mozilla::MutexAutoLock autoLock(mMutex);
++  // This shouldn't really need the mutex
++  NS_ASSERTION(mOpQueue.IsEmpty(), "The stage was supposed to be empty.");
++}
++#endif
+diff --git a/parser/html/nsHtml5TreeOpStage.h b/parser/html/nsHtml5TreeOpStage.h
+--- a/parser/html/nsHtml5TreeOpStage.h
++++ b/parser/html/nsHtml5TreeOpStage.h
+@@ -62,15 +62,19 @@ class nsHtml5TreeOpStage : public nsAHtm
+      */
+     virtual void ForcedFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue);
+     
+     /**
+      * Retrieve the staged operations into the argument.
+      */
+     void RetrieveOperations(nsTArray<nsHtml5TreeOperation>& aOpQueue);
+ 
++#ifdef DEBUG
++    void AssertEmpty();
++#endif
++
+   private:
+     nsTArray<nsHtml5TreeOperation> mOpQueue;
+     mozilla::Mutex                 mMutex;
+     
+ };
+ 
+ #endif /* nsHtml5TreeOpStage_h___ */
+diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOperation.cpp
+--- a/parser/html/nsHtml5TreeOperation.cpp
++++ b/parser/html/nsHtml5TreeOperation.cpp
+@@ -83,19 +83,16 @@ nsHtml5TreeOperation::~nsHtml5TreeOperat
+     case eTreeOpCreateTextNode:
+     case eTreeOpCreateComment:
+       delete[] mTwo.unicharPtr;
+       break;
+     case eTreeOpSetDocumentCharset:
+     case eTreeOpNeedsCharsetSwitchTo:
+       delete[] mOne.charPtr;
+       break;
+-    case eTreeOpRunScript:
+-      delete mTwo.state;
+-      break;
+     default: // keep the compiler happy
+       break;
+   }
+ }
+ 
+ nsresult
+ nsHtml5TreeOperation::Perform(nsHtml5TreeOpExecutor* aBuilder)
+ {
+diff --git a/parser/html/nsHtml5TreeOperation.h b/parser/html/nsHtml5TreeOperation.h
+--- a/parser/html/nsHtml5TreeOperation.h
++++ b/parser/html/nsHtml5TreeOperation.h
+@@ -143,16 +143,24 @@ class nsHtml5TreeOperation {
+ 
+     inline void Init(nsHtml5DocumentMode aMode) {
+       NS_PRECONDITION(mOpCode == eTreeOpUninitialized,
+         "Op code must be uninitialized when initializing.");
+       mOpCode = eTreeOpDocumentMode;
+       mOne.mode = aMode;
+     }
+     
++    inline void InitScript(nsIContent** aNode) {
++      NS_PRECONDITION(mOpCode == eTreeOpUninitialized,
++        "Op code must be uninitialized when initializing.");
++      mOpCode = eTreeOpRunScript;
++      mOne.node = aNode;
++      mTwo.state = nsnull;
++    }
++    
+     inline void Init(PRInt32 aNamespace, 
+                      nsIAtom* aName, 
+                      nsHtml5HtmlAttributes* aAttributes,
+                      nsIContent** aTarget) {
+       NS_PRECONDITION(mOpCode == eTreeOpUninitialized,
+         "Op code must be uninitialized when initializing.");
+       mOpCode = eTreeOpCreateElement;
+       mInt = aNamespace;
+diff --git a/parser/html/nsHtml5UTF16BufferCppSupplement.h b/parser/html/nsHtml5UTF16BufferCppSupplement.h
+--- a/parser/html/nsHtml5UTF16BufferCppSupplement.h
++++ b/parser/html/nsHtml5UTF16BufferCppSupplement.h
+@@ -57,8 +57,34 @@ nsHtml5UTF16Buffer::nsHtml5UTF16Buffer(v
+   MOZ_COUNT_CTOR(nsHtml5UTF16Buffer);
+ }
+ 
+ nsHtml5UTF16Buffer::~nsHtml5UTF16Buffer()
+ {
+   MOZ_COUNT_DTOR(nsHtml5UTF16Buffer);
+   delete[] buffer;
+ }
++
++// Not using macros for AddRef and Release in order to be able to refcount on
++// and create on different threads.
++
++nsrefcnt
++nsHtml5UTF16Buffer::AddRef()
++{
++  NS_PRECONDITION(PRInt32(mRefCnt) >= 0, "Illegal refcount.");
++  ++mRefCnt;
++  NS_LOG_ADDREF(this, mRefCnt, "nsHtml5UTF16Buffer", sizeof(*this));
++  return mRefCnt;
++}
++
++nsrefcnt
++nsHtml5UTF16Buffer::Release()
++{
++  NS_PRECONDITION(0 != mRefCnt, "Release without AddRef.");
++  --mRefCnt;
++  NS_LOG_RELEASE(this, mRefCnt, "nsHtml5UTF16Buffer");
++  if (mRefCnt == 0) {
++    mRefCnt = 1; /* stabilize */
++    delete this;
++    return 0;
++  }
++  return mRefCnt;                              
++}
+diff --git a/parser/html/nsHtml5UTF16BufferHSupplement.h b/parser/html/nsHtml5UTF16BufferHSupplement.h
+--- a/parser/html/nsHtml5UTF16BufferHSupplement.h
++++ b/parser/html/nsHtml5UTF16BufferHSupplement.h
+@@ -34,10 +34,15 @@
+  * the terms of any one of the MPL, the GPL or the LGPL.
+  *
+  * ***** END LICENSE BLOCK ***** */
+ 
+   public:
+     nsHtml5UTF16Buffer(PRInt32 size);
+     nsHtml5UTF16Buffer(void* key);
+     ~nsHtml5UTF16Buffer();
+-    nsHtml5UTF16Buffer* next;
++    nsRefPtr<nsHtml5UTF16Buffer> next;
+     void* key;
++    nsrefcnt AddRef();
++    nsrefcnt Release();
++  private:
++    nsAutoRefCnt mRefCnt;
++

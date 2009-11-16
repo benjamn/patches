@@ -1,0 +1,1725 @@
+diff --git a/intl/uconv/src/nsCharsetAlias.h b/intl/uconv/src/nsCharsetAlias.h
+--- a/intl/uconv/src/nsCharsetAlias.h
++++ b/intl/uconv/src/nsCharsetAlias.h
+@@ -34,16 +34,17 @@
+  * the terms of any one of the MPL, the GPL or the LGPL.
+  *
+  * ***** END LICENSE BLOCK ***** */
+ #ifndef nsCharsetAlias_h__
+ #define nsCharsetAlias_h__
+ 
+ #include "nsICharsetAlias.h"
+ #include "nsGREResProperties.h"
++#include "mozilla/Mutex.h"
+ 
+ //==============================================================
+ class nsCharsetAlias2 : public nsICharsetAlias
+ {
+   NS_DECL_ISUPPORTS
+ 
+ public:
+ 
+@@ -51,13 +52,14 @@ public:
+   virtual ~nsCharsetAlias2();
+ 
+   NS_IMETHOD GetPreferred(const nsACString& aAlias, nsACString& aResult);
+ 
+   NS_IMETHOD Equals(const nsACString& aCharset1, const nsACString& aCharset2, PRBool* oResult) ;
+   
+ private:
+   nsGREResProperties* mDelegate;
++  mozilla::Mutex      mDelegateMutex;
+ };
+ 
+ #endif // nsCharsetAlias_h__
+ 
+ 
+diff --git a/intl/uconv/src/nsCharsetAliasImp.cpp b/intl/uconv/src/nsCharsetAliasImp.cpp
+--- a/intl/uconv/src/nsCharsetAliasImp.cpp
++++ b/intl/uconv/src/nsCharsetAliasImp.cpp
+@@ -45,22 +45,23 @@
+ #include "nsUConvDll.h"
+ #include "nsReadableUtils.h"
+ #include "nsUnicharUtils.h"
+ #include "nsGREResProperties.h"
+ #include "nsITimelineService.h"
+ #include "nsCharsetAlias.h"
+ 
+ //--------------------------------------------------------------
+-NS_IMPL_ISUPPORTS1(nsCharsetAlias2, nsICharsetAlias)
++NS_IMPL_THREADSAFE_ISUPPORTS1(nsCharsetAlias2, nsICharsetAlias)
+ 
+ //--------------------------------------------------------------
+ nsCharsetAlias2::nsCharsetAlias2()
++  : mDelegate(nsnull)
++  , mDelegateMutex("nsCharsetAlias2 mDelegateMutex")
+ {
+-  mDelegate = nsnull; // delay the load of mDelegate untill we need it.
+ }
+ //--------------------------------------------------------------
+ nsCharsetAlias2::~nsCharsetAlias2()
+ {
+   if(mDelegate)
+      delete mDelegate;
+ }
+ 
+@@ -73,19 +74,19 @@ static const char* kAliases[][3] = {
+   { "shift_jis",  "Shift_JIS",  (const char*)NS_INT32_TO_PTR(9)  }
+ };
+ 
+ //--------------------------------------------------------------
+ NS_IMETHODIMP nsCharsetAlias2::GetPreferred(const nsACString& aAlias,
+                                             nsACString& oResult)
+ {
+    if (aAlias.IsEmpty()) return NS_ERROR_NULL_POINTER;
++
+    NS_TIMELINE_START_TIMER("nsCharsetAlias2:GetPreferred");
+ 
+-
+    // Delay loading charsetalias.properties by hardcoding the most
+    // frequent aliases.  Note that it's possible to recur in to this
+    // function *while loading* charsetalias.properties (see bug 190951),
+    // so we might have an |mDelegate| already that isn't valid yet, but
+    // the load is guaranteed to be "UTF-8" so things will be OK.
+    for (PRUint32 index = 0; index < NS_ARRAY_LENGTH(kAliases); index++) {
+      if (aAlias.LowerCaseEqualsASCII(kAliases[index][0])) {
+        oResult.Assign(nsDependentCString(kAliases[index][1],
+@@ -93,23 +94,23 @@ NS_IMETHODIMP nsCharsetAlias2::GetPrefer
+        NS_TIMELINE_STOP_TIMER("nsCharsetAlias2:GetPreferred");
+        return NS_OK;
+      }
+    }
+ 
+    oResult.Truncate();
+ 
+    if(!mDelegate) {
+-     //load charsetalias.properties string bundle with all remaining aliases
+-     // we may need to protect the following section with a lock so we won't call the
+-     // 'new nsGREResProperties' from two different threads
+-     mDelegate = new nsGREResProperties( NS_LITERAL_CSTRING("charsetalias.properties") );
+-     NS_ASSERTION(mDelegate, "cannot create nsGREResProperties");
+-     if(nsnull == mDelegate)
+-       return NS_ERROR_OUT_OF_MEMORY;
++     mozilla::MutexAutoLock autoLock(mDelegateMutex);
++     if (!mDelegate) {
++       mDelegate = new nsGREResProperties( NS_LITERAL_CSTRING("charsetalias.properties") );
++       NS_ASSERTION(mDelegate, "cannot create nsGREResProperties");
++       if(nsnull == mDelegate)
++         return NS_ERROR_OUT_OF_MEMORY;
++     }
+    }
+ 
+    NS_TIMELINE_STOP_TIMER("nsCharsetAlias2:GetPreferred");
+    NS_TIMELINE_MARK_TIMER("nsCharsetAlias2:GetPreferred");
+ 
+    nsCAutoString key(aAlias);
+    ToLowerCase(key);
+ 
+diff --git a/intl/uconv/src/nsCharsetConverterManager.cpp b/intl/uconv/src/nsCharsetConverterManager.cpp
+--- a/intl/uconv/src/nsCharsetConverterManager.cpp
++++ b/intl/uconv/src/nsCharsetConverterManager.cpp
+@@ -47,17 +47,16 @@
+ #include "nsEncoderDecoderUtils.h"
+ #include "nsIStringBundle.h"
+ #include "nsUConvDll.h"
+ #include "prmem.h"
+ #include "nsCRT.h"
+ #include "nsTArray.h"
+ #include "nsStringEnumerator.h"
+ #include "nsThreadUtils.h"
+-#include "nsIProxyObjectManager.h"
+ 
+ #include "nsXPCOM.h"
+ #include "nsISupportsPrimitives.h"
+ 
+ // just for CONTRACTIDs
+ #include "nsCharsetConverterManager.h"
+ 
+ #ifdef MOZ_USE_NATIVE_UCONV
+@@ -69,17 +68,19 @@
+ #define NS_1BYTE_CODER_PATTERN_LEN 8
+ 
+ // Class nsCharsetConverterManager [implementation]
+ 
+ NS_IMPL_THREADSAFE_ISUPPORTS1(nsCharsetConverterManager,
+                               nsICharsetConverterManager)
+ 
+ nsCharsetConverterManager::nsCharsetConverterManager() 
+-  :mDataBundle(NULL), mTitleBundle(NULL)
++  : mDataBundle(NULL)
++  , mTitleBundle(NULL)
++  , mDecoderHashMutex("nsCharsetConverterManager mDecoderHashMutex")
+ {
+ #ifdef MOZ_USE_NATIVE_UCONV
+   mNativeUC = do_GetService(NS_NATIVE_UCONV_SERVICE_CONTRACT_ID);
+ #endif
+ }
+ 
+ nsCharsetConverterManager::~nsCharsetConverterManager() 
+ {
+@@ -261,16 +262,17 @@ nsCharsetConverterManager::GetUnicodeDec
+ #endif
+   nsresult rv = NS_OK;
+ 
+   NS_NAMED_LITERAL_CSTRING(contractbase, NS_UNICODEDECODER_CONTRACTID_BASE);
+   nsDependentCString src(aSrc);
+   
+   if (!strncmp(aSrc, NS_1BYTE_CODER_PATTERN, NS_1BYTE_CODER_PATTERN_LEN))
+   {
++    mozilla::MutexAutoLock autoLock(mDecoderHashMutex);
+     // Single byte decoders don't hold state. Optimize by using a service, and
+     // cache it in our hash to avoid repeated trips through the service manager.
+     if (!mDecoderHash.Get(aSrc, getter_AddRefs(decoder))) {
+       decoder = do_GetService(PromiseFlatCString(contractbase + src).get(),
+                               &rv);
+       if (NS_SUCCEEDED(rv))
+         mDecoderHash.Put(aSrc, decoder);
+     }
+@@ -366,28 +368,16 @@ nsCharsetConverterManager::GetCharsetDet
+ NS_IMETHODIMP
+ nsCharsetConverterManager::GetCharsetAlias(const char * aCharset, 
+                                            nsACString& aResult)
+ {
+   NS_PRECONDITION(aCharset, "null param");
+   if (!aCharset)
+     return NS_ERROR_NULL_POINTER;
+ 
+-  // We must not use the charset alias from a background thread
+-  if (!NS_IsMainThread()) {
+-    nsCOMPtr<nsICharsetConverterManager> self;
+-    nsresult rv =
+-    NS_GetProxyForObject(NS_PROXY_TO_MAIN_THREAD,
+-                         NS_GET_IID(nsICharsetConverterManager),
+-                         this, NS_PROXY_SYNC | NS_PROXY_ALWAYS,
+-                         getter_AddRefs(self));
+-    NS_ENSURE_SUCCESS(rv, rv);
+-    return self->GetCharsetAlias(aCharset, aResult);
+-  }
+-
+   // We try to obtain the preferred name for this charset from the charset 
+   // aliases. If we don't get it from there, we just use the original string
+   nsDependentCString charset(aCharset);
+   nsCOMPtr<nsICharsetAlias> csAlias(do_GetService(NS_CHARSETALIAS_CONTRACTID));
+   NS_ASSERTION(csAlias, "failed to get the CharsetAlias service");
+   if (csAlias) {
+     nsAutoString pref;
+     nsresult rv = csAlias->GetPreferred(charset, aResult);
+diff --git a/intl/uconv/src/nsCharsetConverterManager.h b/intl/uconv/src/nsCharsetConverterManager.h
+--- a/intl/uconv/src/nsCharsetConverterManager.h
++++ b/intl/uconv/src/nsCharsetConverterManager.h
+@@ -36,16 +36,17 @@
+  * ***** END LICENSE BLOCK ***** */
+ #ifndef nsCharsetConverterManager_h__
+ #define nsCharsetConverterManager_h__
+ 
+ #include "nsISupports.h"
+ #include "nsICharsetConverterManager.h"
+ #include "nsIStringBundle.h"
+ #include "nsInterfaceHashtable.h"
++#include "mozilla/Mutex.h"
+ 
+ #ifdef MOZ_USE_NATIVE_UCONV
+ #include "nsINativeUConvService.h"
+ #endif
+ 
+ class nsCharsetConverterManager : public nsICharsetConverterManager
+ {
+   NS_DECL_ISUPPORTS
+@@ -63,16 +64,17 @@ private:
+   nsIStringBundle * mDataBundle;
+   nsIStringBundle * mTitleBundle;
+ 
+ #ifdef MOZ_USE_NATIVE_UCONV
+   nsCOMPtr<nsINativeUConvService> mNativeUC;
+ #endif
+ 
+   nsInterfaceHashtable<nsCharPtrHashKey, nsIUnicodeDecoder> mDecoderHash;
++  mozilla::Mutex                                            mDecoderHashMutex;
+ 
+   nsresult LoadExtensibleBundle(const char * aRegistryKey, 
+       nsIStringBundle ** aResult);
+ 
+   static nsresult RegisterConverterCategory(nsICategoryManager*,
+                                             const char* aCategory,
+                                             const char* aURL);
+ 
+diff --git a/intl/uconv/util/nsUCSupport.cpp b/intl/uconv/util/nsUCSupport.cpp
+--- a/intl/uconv/util/nsUCSupport.cpp
++++ b/intl/uconv/util/nsUCSupport.cpp
+@@ -57,22 +57,22 @@ nsBasicDecoderSupport::nsBasicDecoderSup
+ 
+ nsBasicDecoderSupport::~nsBasicDecoderSupport() 
+ {
+ }
+ 
+ //----------------------------------------------------------------------
+ // Interface nsISupports [implementation]
+ 
+-NS_IMPL_ADDREF(nsBasicDecoderSupport)
+-NS_IMPL_RELEASE(nsBasicDecoderSupport)
+ #ifdef NS_DEBUG
+-NS_IMPL_QUERY_INTERFACE2(nsBasicDecoderSupport, nsIUnicodeDecoder, nsIBasicDecoder)
++NS_IMPL_THREADSAFE_ISUPPORTS2(nsBasicDecoderSupport, 
++                              nsIUnicodeDecoder, 
++                              nsIBasicDecoder)
+ #else
+-NS_IMPL_QUERY_INTERFACE1(nsBasicDecoderSupport, nsIUnicodeDecoder)
++NS_IMPL_THREADSAFE_ISUPPORTS1(nsBasicDecoderSupport, nsIUnicodeDecoder)
+ #endif
+ 
+ //----------------------------------------------------------------------
+ // Interface nsIUnicodeDecoder [implementation]
+ 
+ void
+ nsBasicDecoderSupport::SetInputErrorBehavior(PRInt32 aBehavior)
+ {
+@@ -298,39 +298,44 @@ NS_IMETHODIMP nsMultiTableDecoderSupport
+                                                     mErrBehavior == kOnError_Signal);
+ }
+ 
+ //----------------------------------------------------------------------
+ // Class nsOneByteDecoderSupport [implementation]
+ 
+ nsOneByteDecoderSupport::nsOneByteDecoderSupport(
+                          uMappingTable  * aMappingTable) 
+-: nsBasicDecoderSupport()
++  : nsBasicDecoderSupport()
++  , mMappingTable(aMappingTable)
++  , mFastTableCreated(PR_FALSE)
++  , mFastTableMutex("nsOneByteDecoderSupport mFastTableMutex")
+ {
+-  mMappingTable = aMappingTable;
+-  mFastTableCreated = PR_FALSE;
+ }
+ 
+ nsOneByteDecoderSupport::~nsOneByteDecoderSupport() 
+ {
+ }
+ 
+ //----------------------------------------------------------------------
+ // Subclassing of nsBasicDecoderSupport class [implementation]
+ 
+ NS_IMETHODIMP nsOneByteDecoderSupport::Convert(const char * aSrc, 
+                                               PRInt32 * aSrcLength, 
+                                               PRUnichar * aDest, 
+                                               PRInt32 * aDestLength)
+ {
+   if (!mFastTableCreated) {
+-    nsresult res = nsUnicodeDecodeHelper::CreateFastTable(
+-                       mMappingTable, mFastTable, ONE_BYTE_TABLE_SIZE);
+-    if (NS_FAILED(res)) return res;
+-    mFastTableCreated = PR_TRUE;
++    // Probably better to make this non-lazy and get rid of the mutex
++    mozilla::MutexAutoLock autoLock(mFastTableMutex);
++    if (!mFastTableCreated) {
++      nsresult res = nsUnicodeDecodeHelper::CreateFastTable(
++                         mMappingTable, mFastTable, ONE_BYTE_TABLE_SIZE);
++      if (NS_FAILED(res)) return res;
++      mFastTableCreated = PR_TRUE;
++    }
+   }
+ 
+   return nsUnicodeDecodeHelper::ConvertByFastTable(aSrc, aSrcLength, 
+                                                    aDest, aDestLength, 
+                                                    mFastTable,
+                                                    ONE_BYTE_TABLE_SIZE,
+                                                    mErrBehavior == kOnError_Signal);
+ }
+diff --git a/intl/uconv/util/nsUCSupport.h b/intl/uconv/util/nsUCSupport.h
+--- a/intl/uconv/util/nsUCSupport.h
++++ b/intl/uconv/util/nsUCSupport.h
+@@ -38,16 +38,17 @@
+ #ifndef nsUCvJaSupport_h___
+ #define nsUCvJaSupport_h___
+ 
+ #include "nsCOMPtr.h"
+ #include "nsIUnicodeEncoder.h"
+ #include "nsIUnicodeDecoder.h"
+ #include "nsICharRepresentable.h"
+ #include "uconvutil.h"
++#include "mozilla/Mutex.h"
+ 
+ #define ONE_BYTE_TABLE_SIZE 256
+ 
+ #ifdef NS_DEBUG
+ // {7AFC9F0A-CFE1-44ea-A755-E3B86AB1226E}
+ #define NS_IBASICDECODER_IID \
+ { 0x7afc9f0a, 0xcfe1, 0x44ea, { 0xa7, 0x55, 0xe3, 0xb8, 0x6a, 0xb1, 0x22, 0x6e } }
+ 
+@@ -275,16 +276,17 @@ public:
+    */
+   virtual ~nsOneByteDecoderSupport();
+ 
+ protected:
+ 
+   uMappingTable             * mMappingTable;
+   PRUnichar                 mFastTable[ONE_BYTE_TABLE_SIZE];
+   PRBool                    mFastTableCreated;
++  mozilla::Mutex            mFastTableMutex;
+ 
+   //--------------------------------------------------------------------
+   // Subclassing of nsBasicDecoderSupport class [declaration]
+ 
+   NS_IMETHOD Convert(const char * aSrc, PRInt32 * aSrcLength, 
+       PRUnichar * aDest, PRInt32 * aDestLength);
+   NS_IMETHOD GetMaxLength(const char * aSrc, PRInt32 aSrcLength, 
+       PRInt32 * aDestLength);
+diff --git a/modules/libpref/src/init/all.js b/modules/libpref/src/init/all.js
+--- a/modules/libpref/src/init/all.js
++++ b/modules/libpref/src/init/all.js
+@@ -2803,8 +2803,10 @@ pref("mozilla.widget.disable-native-them
+ pref("gfx.color_management.mode", 0);
+ #endif
+ 
+ // Enable/Disable the geolocation API for content
+ pref("geo.enabled", true);
+ 
+ // Enable/Disable HTML5 parser
+ pref("html5.enable", false);
++// Toggle which thread the HTML5 parser uses for streama parsing
++pref("html5.offmainthread", true);
+diff --git a/parser/html/nsHtml5Module.cpp b/parser/html/nsHtml5Module.cpp
+--- a/parser/html/nsHtml5Module.cpp
++++ b/parser/html/nsHtml5Module.cpp
+@@ -44,22 +44,28 @@
+ #include "nsHtml5StackNode.h"
+ #include "nsHtml5Tokenizer.h"
+ #include "nsHtml5TreeBuilder.h"
+ #include "nsHtml5UTF16Buffer.h"
+ #include "nsHtml5Module.h"
+ 
+ // static
+ PRBool nsHtml5Module::sEnabled = PR_FALSE;
++PRBool nsHtml5Module::sOffMainThread = PR_TRUE;
++nsIThread* nsHtml5Module::sStreamParserThread = nsnull;
++nsIThread* nsHtml5Module::sMainThread = nsnull;
+ 
+ // static
+ void
+ nsHtml5Module::InitializeStatics()
+ {
+   nsContentUtils::AddBoolPrefVarCache("html5.enable", &sEnabled);
++  nsContentUtils::AddBoolPrefVarCache("html5.offmainthread", &sOffMainThread);
++  NS_NewThread(&sStreamParserThread);
++  NS_GetMainThread(&sMainThread);
+   nsHtml5Atoms::AddRefAtoms();
+   nsHtml5AttributeName::initializeStatics();
+   nsHtml5ElementName::initializeStatics();
+   nsHtml5HtmlAttributes::initializeStatics();
+   nsHtml5NamedCharacters::initializeStatics();
+   nsHtml5Portability::initializeStatics();
+   nsHtml5StackNode::initializeStatics();
+   nsHtml5Tokenizer::initializeStatics();
+@@ -81,16 +87,19 @@ nsHtml5Module::ReleaseStatics()
+   nsHtml5ElementName::releaseStatics();
+   nsHtml5HtmlAttributes::releaseStatics();
+   nsHtml5NamedCharacters::releaseStatics();
+   nsHtml5Portability::releaseStatics();
+   nsHtml5StackNode::releaseStatics();
+   nsHtml5Tokenizer::releaseStatics();
+   nsHtml5TreeBuilder::releaseStatics();
+   nsHtml5UTF16Buffer::releaseStatics();
++  sStreamParserThread->Shutdown();
++  NS_IF_RELEASE(sStreamParserThread);
++  NS_IF_RELEASE(sMainThread);
+ }
+ 
+ // static
+ already_AddRefed<nsIParser>
+ nsHtml5Module::NewHtml5Parser()
+ {
+   NS_ABORT_IF_FALSE(sNsHtml5ModuleInitialized, "nsHtml5Module not initialized.");
+   nsIParser* rv = static_cast<nsIParser*> (new nsHtml5Parser());
+@@ -102,11 +111,18 @@ nsHtml5Module::NewHtml5Parser()
+ nsresult
+ nsHtml5Module::Initialize(nsIParser* aParser, nsIDocument* aDoc, nsIURI* aURI, nsISupports* aContainer, nsIChannel* aChannel)
+ {
+   NS_ABORT_IF_FALSE(sNsHtml5ModuleInitialized, "nsHtml5Module not initialized.");
+   nsHtml5Parser* parser = static_cast<nsHtml5Parser*> (aParser);
+   return parser->Initialize(aDoc, aURI, aContainer, aChannel);
+ }
+ 
++// static 
++nsIThread*
++nsHtml5Module::GetStreamParserThread()
++{
++  return sOffMainThread ? sStreamParserThread : sMainThread;
++}
++
+ #ifdef DEBUG
+ PRBool nsHtml5Module::sNsHtml5ModuleInitialized = PR_FALSE;
+ #endif
+diff --git a/parser/html/nsHtml5Module.h b/parser/html/nsHtml5Module.h
+--- a/parser/html/nsHtml5Module.h
++++ b/parser/html/nsHtml5Module.h
+@@ -34,24 +34,29 @@
+  * the terms of any one of the MPL, the GPL or the LGPL.
+  *
+  * ***** END LICENSE BLOCK ***** */
+ 
+ #ifndef nsHtml5Module_h__
+ #define nsHtml5Module_h__
+ 
+ #include "nsIParser.h"
++#include "nsIThread.h"
+ 
+ class nsHtml5Module
+ {
+   public:
+     static void InitializeStatics();
+     static void ReleaseStatics();
+     static already_AddRefed<nsIParser> NewHtml5Parser();
+     static nsresult Initialize(nsIParser* aParser, nsIDocument* aDoc, nsIURI* aURI, nsISupports* aContainer, nsIChannel* aChannel);
++    static nsIThread* GetStreamParserThread();
+     static PRBool sEnabled;
++    static PRBool sOffMainThread;
++  private:
+ #ifdef DEBUG
+-  private:
+     static PRBool sNsHtml5ModuleInitialized;
+ #endif
++    static nsIThread* sStreamParserThread;
++    static nsIThread* sMainThread;
+ };
+ 
+ #endif // nsHtml5Module_h__
+diff --git a/parser/html/nsHtml5RefPtr.h b/parser/html/nsHtml5RefPtr.h
+new file mode 100644
+--- /dev/null
++++ b/parser/html/nsHtml5RefPtr.h
+@@ -0,0 +1,554 @@
++/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is mozilla.org code.
++ *
++ * The Initial Developer of the Original Code is
++ * Netscape Communications Corporation.
++ * Portions created by the Initial Developer are Copyright (C) 1998
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *   Scott Collins <scc@mozilla.org> (original author of nsCOMPtr)
++ *   L. David Baron <dbaron@dbaron.org>
++ *   Henri Sivonen <hsivonen@iki.fi>
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either of the GNU General Public License Version 2 or later (the "GPL"),
++ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++#ifndef nsHtml5RefPtr_h___
++#define nsHtml5RefPtr_h___
++
++#include "nsIThread.h"
++
++template <class T>
++class nsHtml5RefPtrReleaser : public nsRunnable
++  {
++    private:
++      T* mPtr;
++    public:
++      nsHtml5RefPtrReleaser(T* aPtr)
++          : mPtr(aPtr)
++        {}
++      NS_IMETHODIMP Run()
++        {
++          mPtr->Release();
++          return NS_OK;
++        }
++  };
++
++// template <class T> class nsHtml5RefPtrGetterAddRefs;
++
++/**
++ * Like nsRefPtr except release is proxied to the main thread. Mostly copied
++ * from nsRefPtr.
++ */
++template <class T>
++class nsHtml5RefPtr
++  {
++    private:
++
++      void
++      assign_with_AddRef( T* rawPtr )
++        {
++          if ( rawPtr )
++            rawPtr->AddRef();
++          assign_assuming_AddRef(rawPtr);
++        }
++
++      void**
++      begin_assignment()
++        {
++          assign_assuming_AddRef(0);
++          return reinterpret_cast<void**>(&mRawPtr);
++        }
++
++      void
++      assign_assuming_AddRef( T* newPtr )
++        {
++          T* oldPtr = mRawPtr;
++          mRawPtr = newPtr;
++          if ( oldPtr )
++            release(oldPtr);
++        }
++
++      void
++      release( T* aPtr )
++        {
++          nsCOMPtr<nsIRunnable> releaser = new nsHtml5RefPtrReleaser<T>(aPtr);
++          if (NS_FAILED(NS_DispatchToMainThread(releaser))) 
++            {
++              NS_WARNING("Failed to dispatch releaser event.");
++            }
++        }
++
++    private:
++      T* mRawPtr;
++
++    public:
++      typedef T element_type;
++      
++     ~nsHtml5RefPtr()
++        {
++          if ( mRawPtr )
++            release(mRawPtr);
++        }
++
++        // Constructors
++
++      nsHtml5RefPtr()
++            : mRawPtr(0)
++          // default constructor
++        {
++        }
++
++      nsHtml5RefPtr( const nsHtml5RefPtr<T>& aSmartPtr )
++            : mRawPtr(aSmartPtr.mRawPtr)
++          // copy-constructor
++        {
++          if ( mRawPtr )
++            mRawPtr->AddRef();
++        }
++
++      nsHtml5RefPtr( T* aRawPtr )
++            : mRawPtr(aRawPtr)
++          // construct from a raw pointer (of the right type)
++        {
++          if ( mRawPtr )
++            mRawPtr->AddRef();
++        }
++
++      nsHtml5RefPtr( const already_AddRefed<T>& aSmartPtr )
++            : mRawPtr(aSmartPtr.mRawPtr)
++          // construct from |dont_AddRef(expr)|
++        {
++        }
++
++        // Assignment operators
++
++      nsHtml5RefPtr<T>&
++      operator=( const nsHtml5RefPtr<T>& rhs )
++          // copy assignment operator
++        {
++          assign_with_AddRef(rhs.mRawPtr);
++          return *this;
++        }
++
++      nsHtml5RefPtr<T>&
++      operator=( T* rhs )
++          // assign from a raw pointer (of the right type)
++        {
++          assign_with_AddRef(rhs);
++          return *this;
++        }
++
++      nsHtml5RefPtr<T>&
++      operator=( const already_AddRefed<T>& rhs )
++          // assign from |dont_AddRef(expr)|
++        {
++          assign_assuming_AddRef(rhs.mRawPtr);
++          return *this;
++        }
++
++        // Other pointer operators
++
++      void
++      swap( nsHtml5RefPtr<T>& rhs )
++          // ...exchange ownership with |rhs|; can save a pair of refcount operations
++        {
++          T* temp = rhs.mRawPtr;
++          rhs.mRawPtr = mRawPtr;
++          mRawPtr = temp;
++        }
++
++      void
++      swap( T*& rhs )
++          // ...exchange ownership with |rhs|; can save a pair of refcount operations
++        {
++          T* temp = rhs;
++          rhs = mRawPtr;
++          mRawPtr = temp;
++        }
++
++      already_AddRefed<T>
++      forget()
++          // return the value of mRawPtr and null out mRawPtr. Useful for
++          // already_AddRefed return values.
++        {
++          T* temp = 0;
++          swap(temp);
++          return temp;
++        }
++
++      template <typename I>
++      void
++      forget( I** rhs)
++          // Set the target of rhs to the value of mRawPtr and null out mRawPtr.
++          // Useful to avoid unnecessary AddRef/Release pairs with "out"
++          // parameters where rhs bay be a T** or an I** where I is a base class
++          // of T.
++        {
++          NS_ASSERTION(rhs, "Null pointer passed to forget!");
++          *rhs = mRawPtr;
++          mRawPtr = 0;
++        }
++
++      T*
++      get() const
++          /*
++            Prefer the implicit conversion provided automatically by |operator T*() const|.
++            Use |get()| to resolve ambiguity or to get a castable pointer.
++          */
++        {
++          return const_cast<T*>(mRawPtr);
++        }
++
++      operator T*() const
++          /*
++            ...makes an |nsHtml5RefPtr| act like its underlying raw pointer type whenever it
++            is used in a context where a raw pointer is expected.  It is this operator
++            that makes an |nsHtml5RefPtr| substitutable for a raw pointer.
++
++            Prefer the implicit use of this operator to calling |get()|, except where
++            necessary to resolve ambiguity.
++          */
++        {
++          return get();
++        }
++
++      T*
++      operator->() const
++        {
++          NS_PRECONDITION(mRawPtr != 0, "You can't dereference a NULL nsHtml5RefPtr with operator->().");
++          return get();
++        }
++
++#ifdef CANT_RESOLVE_CPP_CONST_AMBIGUITY
++  // broken version for IRIX
++
++      nsHtml5RefPtr<T>*
++      get_address() const
++          // This is not intended to be used by clients.  See |address_of|
++          // below.
++        {
++          return const_cast<nsHtml5RefPtr<T>*>(this);
++        }
++
++#else // CANT_RESOLVE_CPP_CONST_AMBIGUITY
++
++      nsHtml5RefPtr<T>*
++      get_address()
++          // This is not intended to be used by clients.  See |address_of|
++          // below.
++        {
++          return this;
++        }
++
++      const nsHtml5RefPtr<T>*
++      get_address() const
++          // This is not intended to be used by clients.  See |address_of|
++          // below.
++        {
++          return this;
++        }
++
++#endif // CANT_RESOLVE_CPP_CONST_AMBIGUITY
++
++    public:
++      T&
++      operator*() const
++        {
++          NS_PRECONDITION(mRawPtr != 0, "You can't dereference a NULL nsHtml5RefPtr with operator*().");
++          return *get();
++        }
++
++      T**
++      StartAssignment()
++        {
++#ifndef NSCAP_FEATURE_INLINE_STARTASSIGNMENT
++          return reinterpret_cast<T**>(begin_assignment());
++#else
++          assign_assuming_AddRef(0);
++          return reinterpret_cast<T**>(&mRawPtr);
++#endif
++        }
++  };
++
++#ifdef CANT_RESOLVE_CPP_CONST_AMBIGUITY
++
++// This is the broken version for IRIX, which can't handle the version below.
++
++template <class T>
++inline
++nsHtml5RefPtr<T>*
++address_of( const nsHtml5RefPtr<T>& aPtr )
++  {
++    return aPtr.get_address();
++  }
++
++#else // CANT_RESOLVE_CPP_CONST_AMBIGUITY
++
++template <class T>
++inline
++nsHtml5RefPtr<T>*
++address_of( nsHtml5RefPtr<T>& aPtr )
++  {
++    return aPtr.get_address();
++  }
++
++template <class T>
++inline
++const nsHtml5RefPtr<T>*
++address_of( const nsHtml5RefPtr<T>& aPtr )
++  {
++    return aPtr.get_address();
++  }
++
++#endif // CANT_RESOLVE_CPP_CONST_AMBIGUITY
++
++template <class T>
++class nsHtml5RefPtrGetterAddRefs
++    /*
++      ...
++
++      This class is designed to be used for anonymous temporary objects in the
++      argument list of calls that return COM interface pointers, e.g.,
++
++        nsHtml5RefPtr<IFoo> fooP;
++        ...->GetAddRefedPointer(getter_AddRefs(fooP))
++
++      DO NOT USE THIS TYPE DIRECTLY IN YOUR CODE.  Use |getter_AddRefs()| instead.
++
++      When initialized with a |nsHtml5RefPtr|, as in the example above, it returns
++      a |void**|, a |T**|, or an |nsISupports**| as needed, that the
++      outer call (|GetAddRefedPointer| in this case) can fill in.
++
++      This type should be a nested class inside |nsHtml5RefPtr<T>|.
++    */
++  {
++    public:
++      explicit
++      nsHtml5RefPtrGetterAddRefs( nsHtml5RefPtr<T>& aSmartPtr )
++          : mTargetSmartPtr(aSmartPtr)
++        {
++          // nothing else to do
++        }
++
++      operator void**()
++        {
++          return reinterpret_cast<void**>(mTargetSmartPtr.StartAssignment());
++        }
++
++      operator T**()
++        {
++          return mTargetSmartPtr.StartAssignment();
++        }
++
++      T*&
++      operator*()
++        {
++          return *(mTargetSmartPtr.StartAssignment());
++        }
++
++    private:
++      nsHtml5RefPtr<T>& mTargetSmartPtr;
++  };
++
++template <class T>
++inline
++nsHtml5RefPtrGetterAddRefs<T>
++getter_AddRefs( nsHtml5RefPtr<T>& aSmartPtr )
++    /*
++      Used around a |nsHtml5RefPtr| when 
++      ...makes the class |nsHtml5RefPtrGetterAddRefs<T>| invisible.
++    */
++  {
++    return nsHtml5RefPtrGetterAddRefs<T>(aSmartPtr);
++  }
++
++
++
++  // Comparing two |nsHtml5RefPtr|s
++
++template <class T, class U>
++inline
++NSCAP_BOOL
++operator==( const nsHtml5RefPtr<T>& lhs, const nsHtml5RefPtr<U>& rhs )
++  {
++    return static_cast<const T*>(lhs.get()) == static_cast<const U*>(rhs.get());
++  }
++
++
++template <class T, class U>
++inline
++NSCAP_BOOL
++operator!=( const nsHtml5RefPtr<T>& lhs, const nsHtml5RefPtr<U>& rhs )
++  {
++    return static_cast<const T*>(lhs.get()) != static_cast<const U*>(rhs.get());
++  }
++
++
++  // Comparing an |nsHtml5RefPtr| to a raw pointer
++
++template <class T, class U>
++inline
++NSCAP_BOOL
++operator==( const nsHtml5RefPtr<T>& lhs, const U* rhs )
++  {
++    return static_cast<const T*>(lhs.get()) == static_cast<const U*>(rhs);
++  }
++
++template <class T, class U>
++inline
++NSCAP_BOOL
++operator==( const U* lhs, const nsHtml5RefPtr<T>& rhs )
++  {
++    return static_cast<const U*>(lhs) == static_cast<const T*>(rhs.get());
++  }
++
++template <class T, class U>
++inline
++NSCAP_BOOL
++operator!=( const nsHtml5RefPtr<T>& lhs, const U* rhs )
++  {
++    return static_cast<const T*>(lhs.get()) != static_cast<const U*>(rhs);
++  }
++
++template <class T, class U>
++inline
++NSCAP_BOOL
++operator!=( const U* lhs, const nsHtml5RefPtr<T>& rhs )
++  {
++    return static_cast<const U*>(lhs) != static_cast<const T*>(rhs.get());
++  }
++
++  // To avoid ambiguities caused by the presence of builtin |operator==|s
++  // creating a situation where one of the |operator==| defined above
++  // has a better conversion for one argument and the builtin has a
++  // better conversion for the other argument, define additional
++  // |operator==| without the |const| on the raw pointer.
++  // See bug 65664 for details.
++
++#ifndef NSCAP_DONT_PROVIDE_NONCONST_OPEQ
++template <class T, class U>
++inline
++NSCAP_BOOL
++operator==( const nsHtml5RefPtr<T>& lhs, U* rhs )
++  {
++    return static_cast<const T*>(lhs.get()) == const_cast<const U*>(rhs);
++  }
++
++template <class T, class U>
++inline
++NSCAP_BOOL
++operator==( U* lhs, const nsHtml5RefPtr<T>& rhs )
++  {
++    return const_cast<const U*>(lhs) == static_cast<const T*>(rhs.get());
++  }
++
++template <class T, class U>
++inline
++NSCAP_BOOL
++operator!=( const nsHtml5RefPtr<T>& lhs, U* rhs )
++  {
++    return static_cast<const T*>(lhs.get()) != const_cast<const U*>(rhs);
++  }
++
++template <class T, class U>
++inline
++NSCAP_BOOL
++operator!=( U* lhs, const nsHtml5RefPtr<T>& rhs )
++  {
++    return const_cast<const U*>(lhs) != static_cast<const T*>(rhs.get());
++  }
++#endif
++
++
++
++  // Comparing an |nsHtml5RefPtr| to |0|
++
++template <class T>
++inline
++NSCAP_BOOL
++operator==( const nsHtml5RefPtr<T>& lhs, NSCAP_Zero* rhs )
++    // specifically to allow |smartPtr == 0|
++  {
++    return static_cast<const void*>(lhs.get()) == reinterpret_cast<const void*>(rhs);
++  }
++
++template <class T>
++inline
++NSCAP_BOOL
++operator==( NSCAP_Zero* lhs, const nsHtml5RefPtr<T>& rhs )
++    // specifically to allow |0 == smartPtr|
++  {
++    return reinterpret_cast<const void*>(lhs) == static_cast<const void*>(rhs.get());
++  }
++
++template <class T>
++inline
++NSCAP_BOOL
++operator!=( const nsHtml5RefPtr<T>& lhs, NSCAP_Zero* rhs )
++    // specifically to allow |smartPtr != 0|
++  {
++    return static_cast<const void*>(lhs.get()) != reinterpret_cast<const void*>(rhs);
++  }
++
++template <class T>
++inline
++NSCAP_BOOL
++operator!=( NSCAP_Zero* lhs, const nsHtml5RefPtr<T>& rhs )
++    // specifically to allow |0 != smartPtr|
++  {
++    return reinterpret_cast<const void*>(lhs) != static_cast<const void*>(rhs.get());
++  }
++
++
++#ifdef HAVE_CPP_TROUBLE_COMPARING_TO_ZERO
++
++  // We need to explicitly define comparison operators for `int'
++  // because the compiler is lame.
++
++template <class T>
++inline
++NSCAP_BOOL
++operator==( const nsHtml5RefPtr<T>& lhs, int rhs )
++    // specifically to allow |smartPtr == 0|
++  {
++    return static_cast<const void*>(lhs.get()) == reinterpret_cast<const void*>(rhs);
++  }
++
++template <class T>
++inline
++NSCAP_BOOL
++operator==( int lhs, const nsHtml5RefPtr<T>& rhs )
++    // specifically to allow |0 == smartPtr|
++  {
++    return reinterpret_cast<const void*>(lhs) == static_cast<const void*>(rhs.get());
++  }
++
++#endif // !defined(HAVE_CPP_TROUBLE_COMPARING_TO_ZERO)
++
++#endif // !defined(nsHtml5RefPtr_h___)
+diff --git a/parser/html/nsHtml5StreamParser.cpp b/parser/html/nsHtml5StreamParser.cpp
+--- a/parser/html/nsHtml5StreamParser.cpp
++++ b/parser/html/nsHtml5StreamParser.cpp
+@@ -44,44 +44,85 @@
+ #include "nsEncoderDecoderUtils.h"
+ #include "nsContentUtils.h"
+ #include "nsICharsetDetector.h"
+ #include "nsHtml5Tokenizer.h"
+ #include "nsIHttpChannel.h"
+ #include "nsHtml5Parser.h"
+ #include "nsHtml5TreeBuilder.h"
+ #include "nsHtml5AtomTable.h"
++#include "nsHtml5Module.h"
++#include "nsHtml5RefPtr.h"
+ 
+ static NS_DEFINE_CID(kCharsetAliasCID, NS_CHARSETALIAS_CID);
+ 
+ NS_IMPL_CYCLE_COLLECTING_ADDREF(nsHtml5StreamParser)
+ NS_IMPL_CYCLE_COLLECTING_RELEASE(nsHtml5StreamParser)
+ 
+ NS_INTERFACE_TABLE_HEAD(nsHtml5StreamParser)
+   NS_INTERFACE_TABLE2(nsHtml5StreamParser, 
+                       nsIStreamListener, 
+                       nsICharsetDetectionObserver)
+   NS_INTERFACE_TABLE_TO_MAP_SEGUE_CYCLE_COLLECTION(nsHtml5StreamParser)
+ NS_INTERFACE_MAP_END
+ 
+-NS_IMPL_CYCLE_COLLECTION_3(nsHtml5StreamParser, mObserver, mRequest, mOwner)
++NS_IMPL_CYCLE_COLLECTION_CLASS(nsHtml5StreamParser)
++
++NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsHtml5StreamParser)
++  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mObserver)
++  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mRequest)
++  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mOwner)
++  tmp->mExecutorFlusher = nsnull;
++  tmp->mExecutor = nsnull;
++NS_IMPL_CYCLE_COLLECTION_UNLINK_END
++
++NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsHtml5StreamParser)
++  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mObserver)
++  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mRequest)
++  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mOwner)
++  // hack: count the strongly owned edge wrapped in the runnable
++  if (tmp->mExecutorFlusher) {
++    NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mExecutorFlusher->mExecutor");
++    cb.NoteXPCOMChild(static_cast<nsIContentSink*> (tmp->mExecutor));
++  }
++NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
++
++class nsHtml5ExecutorFlusher : public nsRunnable
++{
++  private:
++    nsRefPtr<nsHtml5TreeOpExecutor> mExecutor;
++  public:
++    nsHtml5ExecutorFlusher(nsHtml5TreeOpExecutor* aExecutor)
++      : mExecutor(aExecutor)
++    {}
++    NS_IMETHODIMP Run()
++    {
++      mExecutor->Flush();
++      return NS_OK;
++    }
++};
+ 
+ nsHtml5StreamParser::nsHtml5StreamParser(nsHtml5TreeOpExecutor* aExecutor,
+                                          nsHtml5Parser* aOwner)
+   : mFirstBuffer(new nsHtml5UTF16Buffer(NS_HTML5_STREAM_PARSER_READ_BUFFER_SIZE))
+   , mLastBuffer(mFirstBuffer)
+   , mExecutor(aExecutor)
+   , mTreeBuilder(new nsHtml5TreeBuilder(mExecutor->GetStage()))
+   , mTokenizer(new nsHtml5Tokenizer(mTreeBuilder))
+   , mTokenizerMutex("nsHtml5StreamParser mTokenizerMutex")
+   , mOwner(aOwner)
+   , mTerminatedMutex("nsHtml5StreamParser mTerminatedMutex")
++  , mThread(nsHtml5Module::GetStreamParserThread())
++  , mExecutorFlusher(new nsHtml5ExecutorFlusher(aExecutor))
+ {
+   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+   mAtomTable.Init(); // we aren't checking for OOM anyway...
++  #ifdef DEBUG
++    mAtomTable.SetPermittedLookupThread(mThread);
++  #endif
+   mTokenizer->setInterner(&mAtomTable);
+   mTokenizer->setEncodingDeclarationHandler(this);
+   // There's a zeroing operator new for everything else
+ }
+ 
+ nsHtml5StreamParser::~nsHtml5StreamParser()
+ {
+   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+@@ -108,29 +149,31 @@ nsHtml5StreamParser::GetChannel(nsIChann
+   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+   return mRequest ? CallQueryInterface(mRequest, aChannel) :
+                     NS_ERROR_NOT_AVAILABLE;
+ }
+ 
+ NS_IMETHODIMP
+ nsHtml5StreamParser::Notify(const char* aCharset, nsDetectionConfident aConf)
+ {
++  NS_ASSERTION(IsParserThread(), "Wrong thread!");
+   if (aConf == eBestAnswer || aConf == eSureAnswer) {
+     mCharset.Assign(aCharset);
+     mCharsetSource = kCharsetFromAutoDetection;
+     mTreeBuilder->SetDocumentCharset(mCharset);
+   }
+   return NS_OK;
+ }
+ 
+ nsresult
+ nsHtml5StreamParser::SetupDecodingAndWriteSniffingBufferAndCurrentSegment(const PRUint8* aFromSegment, // can be null
+                                                                           PRUint32 aCount,
+                                                                           PRUint32* aWriteCount)
+ {
++  NS_ASSERTION(IsParserThread(), "Wrong thread!");
+   nsresult rv = NS_OK;
+   nsCOMPtr<nsICharsetConverterManager> convManager = do_GetService(NS_CHARSETCONVERTERMANAGER_CONTRACTID, &rv);
+   NS_ENSURE_SUCCESS(rv, rv);
+   rv = convManager->GetUnicodeDecoder(mCharset.get(), getter_AddRefs(mUnicodeDecoder));
+   if (rv == NS_ERROR_UCONV_NOCONV) {
+     mCharset.Assign("windows-1252"); // lower case is the raw form
+     mCharsetSource = kCharsetFromWeakDocTypeDefault;
+     rv = convManager->GetUnicodeDecoderRaw(mCharset.get(), getter_AddRefs(mUnicodeDecoder));
+@@ -141,16 +184,17 @@ nsHtml5StreamParser::SetupDecodingAndWri
+   return WriteSniffingBufferAndCurrentSegment(aFromSegment, aCount, aWriteCount);
+ }
+ 
+ nsresult
+ nsHtml5StreamParser::WriteSniffingBufferAndCurrentSegment(const PRUint8* aFromSegment, // can be null
+                                                           PRUint32 aCount,
+                                                           PRUint32* aWriteCount)
+ {
++  NS_ASSERTION(IsParserThread(), "Wrong thread!");
+   nsresult rv = NS_OK;
+   if (mSniffingBuffer) {
+     PRUint32 writeCount;
+     rv = WriteStreamBytes(mSniffingBuffer, mSniffingLength, &writeCount);
+     NS_ENSURE_SUCCESS(rv, rv);
+     mSniffingBuffer = nsnull;
+   }
+   mMetaScanner = nsnull;
+@@ -158,16 +202,17 @@ nsHtml5StreamParser::WriteSniffingBuffer
+     rv = WriteStreamBytes(aFromSegment, aCount, aWriteCount);
+   }
+   return rv;
+ }
+ 
+ nsresult
+ nsHtml5StreamParser::SetupDecodingFromBom(const char* aCharsetName, const char* aDecoderCharsetName)
+ {
++  NS_ASSERTION(IsParserThread(), "Wrong thread!");
+   nsresult rv = NS_OK;
+   nsCOMPtr<nsICharsetConverterManager> convManager = do_GetService(NS_CHARSETCONVERTERMANAGER_CONTRACTID, &rv);
+   NS_ENSURE_SUCCESS(rv, rv);
+   rv = convManager->GetUnicodeDecoderRaw(aDecoderCharsetName, getter_AddRefs(mUnicodeDecoder));
+   NS_ENSURE_SUCCESS(rv, rv);
+   mCharset.Assign(aCharsetName);
+   mCharsetSource = kCharsetFromByteOrderMark;
+   mTreeBuilder->SetDocumentCharset(mCharset);
+@@ -178,16 +223,17 @@ nsHtml5StreamParser::SetupDecodingFromBo
+ }
+ 
+ nsresult
+ nsHtml5StreamParser::FinalizeSniffing(const PRUint8* aFromSegment, // can be null
+                                       PRUint32 aCount,
+                                       PRUint32* aWriteCount,
+                                       PRUint32 aCountToSniffingLimit)
+ {
++  NS_ASSERTION(IsParserThread(), "Wrong thread!");
+   // meta scan failed.
+   if (mCharsetSource >= kCharsetFromHintPrevDoc) {
+     return SetupDecodingAndWriteSniffingBufferAndCurrentSegment(aFromSegment, aCount, aWriteCount);
+   }
+   // maybe try chardet now; instantiation copied from nsDOMFile
+   const nsAdoptingString& detectorName = nsContentUtils::GetLocalizedStringPref("intl.charset.detector");
+   if (!detectorName.IsEmpty()) {
+     nsCAutoString detectorContractID;
+@@ -222,16 +268,17 @@ nsHtml5StreamParser::FinalizeSniffing(co
+   return SetupDecodingAndWriteSniffingBufferAndCurrentSegment(aFromSegment, aCount, aWriteCount);
+ }
+ 
+ nsresult
+ nsHtml5StreamParser::SniffStreamBytes(const PRUint8* aFromSegment,
+                                       PRUint32 aCount,
+                                       PRUint32* aWriteCount)
+ {
++  NS_ASSERTION(IsParserThread(), "Wrong thread!");
+   nsresult rv = NS_OK;
+   PRUint32 writeCount;
+   for (PRUint32 i = 0; i < aCount; i++) {
+     switch (mBomState) {
+       case BOM_SNIFFING_NOT_STARTED:
+         NS_ASSERTION(i == 0, "Bad BOM sniffing state.");
+         switch (*aFromSegment) {
+           case 0xEF:
+@@ -337,16 +384,17 @@ nsHtml5StreamParser::SniffStreamBytes(co
+   return NS_OK;
+ }
+ 
+ nsresult
+ nsHtml5StreamParser::WriteStreamBytes(const PRUint8* aFromSegment,
+                                       PRUint32 aCount,
+                                       PRUint32* aWriteCount)
+ {
++  NS_ASSERTION(IsParserThread(), "Wrong thread!");
+   // mLastBuffer always points to a buffer of the size NS_HTML5_STREAM_PARSER_READ_BUFFER_SIZE.
+   if (mLastBuffer->getEnd() == NS_HTML5_STREAM_PARSER_READ_BUFFER_SIZE) {
+     mLastBuffer = (mLastBuffer->next = new nsHtml5UTF16Buffer(NS_HTML5_STREAM_PARSER_READ_BUFFER_SIZE));
+   }
+   PRUint32 totalByteCount = 0;
+   for (;;) {
+     PRInt32 end = mLastBuffer->getEnd();
+     PRInt32 byteCount = aCount - totalByteCount;
+@@ -444,92 +492,132 @@ nsHtml5StreamParser::OnStartRequest(nsIR
+   nsCOMPtr<nsICharsetConverterManager> convManager = do_GetService(NS_CHARSETCONVERTERMANAGER_CONTRACTID, &rv);
+   NS_ENSURE_SUCCESS(rv, rv);
+   rv = convManager->GetUnicodeDecoder(mCharset.get(), getter_AddRefs(mUnicodeDecoder));
+   NS_ENSURE_SUCCESS(rv, rv);
+   mUnicodeDecoder->SetInputErrorBehavior(nsIUnicodeDecoder::kOnError_Recover);
+   return NS_OK;
+ }
+ 
++void
++nsHtml5StreamParser::DoStopRequest()
++{
++  NS_ASSERTION(IsParserThread(), "Wrong thread!");
++  NS_PRECONDITION(STREAM_BEING_READ == mStreamState,
++                  "Stream ended without being open.");
++  if (!mUnicodeDecoder) {
++    PRUint32 writeCount;
++    FinalizeSniffing(nsnull, 0, &writeCount, 0);
++    // dropped nsresult here
++  }
++
++  mStreamState = STREAM_ENDED;
++  
++  if (!mWaitingForScripts) {
++    ParseUntilScript();
++  }  
++}
++
++class nsHtml5RequestStopper : public nsRunnable
++{
++  private:
++    nsHtml5RefPtr<nsHtml5StreamParser> mStreamParser;
++  public:
++    nsHtml5RequestStopper(nsHtml5StreamParser* aStreamParser)
++      : mStreamParser(aStreamParser)
++    {}
++    NS_IMETHODIMP Run()
++    {
++      mStreamParser->DoStopRequest();
++      return NS_OK;
++    }
++};
++
+ nsresult
+ nsHtml5StreamParser::OnStopRequest(nsIRequest* aRequest,
+                              nsISupports* aContext,
+                              nsresult status)
+ {
+-  NS_PRECONDITION(STREAM_BEING_READ == mStreamState,
+-                  "Stream ended without being open.");
+   NS_ASSERTION(mRequest == aRequest, "Got Stop on wrong stream.");
+   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+-  nsresult rv = NS_OK;
+-  if (!mUnicodeDecoder) {
+-    PRUint32 writeCount;
+-    rv = FinalizeSniffing(nsnull, 0, &writeCount, 0);
+-    NS_ENSURE_SUCCESS(rv, rv);
+-  }
+-
+-  mStreamState = STREAM_ENDED;
+-
+   if (mObserver) {
+     mObserver->OnStopRequest(aRequest, aContext, status);
+   }
+-  // TODO: proxy this to parser thread
+-  if (!mWaitingForScripts) {
+-    ParseUntilScript();
+-  }  
++  nsCOMPtr<nsIRunnable> stopper = new nsHtml5RequestStopper(this);
++  if (NS_FAILED(mThread->Dispatch(stopper, nsIThread::DISPATCH_NORMAL))) {
++    NS_WARNING("Dispatching StopRequest event failed.");
++  }
+   return NS_OK;
+ }
+ 
+-// nsIStreamListener method:
+-/*
+- * This function is invoked as a result of a call to a stream's
+- * ReadSegments() method. It is called for each contiguous buffer
+- * of data in the underlying stream or pipe. Using ReadSegments
+- * allows us to avoid copying data to read out of the stream.
+- */
+-NS_METHOD
+-nsHtml5StreamParser::ParserWriteFunc(nsIInputStream* aInStream,
+-                void* aHtml5StreamParser,
+-                const char* aFromSegment,
+-                PRUint32 aToOffset,
+-                PRUint32 aCount,
+-                PRUint32* aWriteCount)
++void
++nsHtml5StreamParser::DoDataAvailable(PRUint8* aBuffer, PRUint32 aLength)
+ {
+-  nsHtml5StreamParser* streamParser = static_cast<nsHtml5StreamParser*> (aHtml5StreamParser);
+-  if (streamParser->HasDecoder()) {
+-    return streamParser->WriteStreamBytes((const PRUint8*)aFromSegment, aCount, aWriteCount);
+-  } else {
+-    return streamParser->SniffStreamBytes((const PRUint8*)aFromSegment, aCount, aWriteCount);
++  NS_ASSERTION(IsParserThread(), "Wrong thread!");
++  NS_PRECONDITION(STREAM_BEING_READ == mStreamState,
++                  "DoDataAvailable called when stream not open.");
++  PRUint32 writeCount;
++  HasDecoder() ? WriteStreamBytes(aBuffer, aLength, &writeCount) :
++                 SniffStreamBytes(aBuffer, aLength, &writeCount);
++  // dropping nsresult here
++  NS_ASSERTION(writeCount == aLength, "Wrong number of stream bytes written/sniffed.");
++  if (!mWaitingForScripts) {
++    ParseUntilScript();
+   }
+ }
+ 
++class nsHtml5DataAvailable : public nsRunnable
++{
++  private:
++    nsHtml5RefPtr<nsHtml5StreamParser> mStreamParser;
++    nsAutoArrayPtr<PRUint8>            mData;
++    PRUint32                           mLength;
++  public:
++    nsHtml5DataAvailable(nsHtml5StreamParser* aStreamParser,
++                         PRUint8*             aData,
++                         PRUint32             aLength)
++      : mStreamParser(aStreamParser)
++      , mData(aData)
++      , mLength(aLength)
++    {}
++    NS_IMETHODIMP Run()
++    {
++      mStreamParser->DoDataAvailable(mData, mLength);
++      return NS_OK;
++    }
++};
++
++// nsIStreamListener method:
+ nsresult
+ nsHtml5StreamParser::OnDataAvailable(nsIRequest* aRequest,
+                                nsISupports* aContext,
+                                nsIInputStream* aInStream,
+                                PRUint32 aSourceOffset,
+                                PRUint32 aLength)
+ {
+-  NS_PRECONDITION(STREAM_BEING_READ == mStreamState,
+-                  "OnDataAvailable called when stream not open.");
+   NS_ASSERTION(mRequest == aRequest, "Got data on wrong stream.");
+   PRUint32 totalRead;
+-  nsresult rv = aInStream->ReadSegments(nsHtml5StreamParser::ParserWriteFunc, 
+-                                        static_cast<void*> (this), 
+-                                        aLength, 
+-                                        &totalRead);
+-  NS_ASSERTION(totalRead == aLength, "ReadSegments read the wrong number of bytes.");
+-  if (!mWaitingForScripts) {
+-    ParseUntilScript();
++  nsAutoArrayPtr<PRUint8> data(new PRUint8[aLength]);
++  nsresult rv = aInStream->Read(reinterpret_cast<char*>(data.get()),
++  aLength, &totalRead);
++  NS_ENSURE_SUCCESS(rv, rv);
++  NS_ASSERTION(totalRead <= aLength, "Read more bytes than were available?");
++  nsCOMPtr<nsIRunnable> dataAvailable = new nsHtml5DataAvailable(this,
++                                                                data.forget(),
++                                                                totalRead);
++  if (NS_FAILED(mThread->Dispatch(dataAvailable, nsIThread::DISPATCH_NORMAL))) {
++    NS_WARNING("Dispatching DataAvailable event failed.");
+   }
+   return rv;
+ }
+ 
+ void
+ nsHtml5StreamParser::internalEncodingDeclaration(nsString* aEncoding)
+ {
++  NS_ASSERTION(IsParserThread(), "Wrong thread!");
+   if (mCharsetSource >= kCharsetFromMetaTag) { // this threshold corresponds to "confident" in the HTML5 spec
+     return;
+   }
+   nsresult rv = NS_OK;
+   nsCOMPtr<nsICharsetAlias> calias(do_GetService(kCharsetAliasCID, &rv));
+   if (NS_FAILED(rv)) {
+     return;
+   }
+@@ -557,40 +645,47 @@ nsHtml5StreamParser::internalEncodingDec
+   mTreeBuilder->Flush();
+   // the tree op executor will cause the stream parser to terminate
+   // if the charset switch request is accepted
+ }
+ 
+ void
+ nsHtml5StreamParser::ParseUntilScript()
+ {
++  NS_ASSERTION(IsParserThread(), "Wrong thread!");
+   if (IsTerminated()) {
+     return;
+   }
+ 
+   // TODO: Relax this mutex so that the parser doesn't speculate to
+   // completion when it's already known that the speculation will fail.
++  // Maybe have another boolean and mutex for checking IsSpeculationFailing()
++  // or something like that instead of trying to be fancy with this mutex.
+   mozilla::MutexAutoLock autoLock(mTokenizerMutex);
+ 
++  mWaitingForScripts = PR_FALSE;
++
+   for (;;) {
+     if (!mFirstBuffer->hasMore()) {
+       if (mFirstBuffer == mLastBuffer) {
+         switch (mStreamState) {
+           case STREAM_BEING_READ:
+             // never release the last buffer. instead just zero its indeces for refill
+             mFirstBuffer->setStart(0);
+             mFirstBuffer->setEnd(0);
+             mTreeBuilder->Flush();
+             return; // no more data for now but expecting more
+           case STREAM_ENDED:
+             Terminate(); // TODO Don't terminate if this is a speculation
+             mTokenizer->eof();
+             mTreeBuilder->StreamEnded();
+             mTreeBuilder->Flush();
+-            TellExecutorToFlush();
++            if (NS_FAILED(NS_DispatchToMainThread(mExecutorFlusher))) {
++              NS_WARNING("failed to dispatch executor flush event");
++            }  
+             return; // no more data and not expecting more
+           default:
+             NS_NOTREACHED("It should be impossible to reach this.");
+             return;
+         }
+       } else {
+         nsHtml5UTF16Buffer* oldBuf = mFirstBuffer;
+         mFirstBuffer = mFirstBuffer->next;
+@@ -609,27 +704,44 @@ nsHtml5StreamParser::ParseUntilScript()
+       // Can't assert that here, though, because it's possible that the main
+       // thread has called Terminate() while this thread was parsing.
+       if (IsTerminated()) {
+         return;
+       }
+       if (mTreeBuilder->HasScript()) {
+         mTreeBuilder->AddSnapshotToScript(mTreeBuilder->newSnapshot());
+         mTreeBuilder->Flush();
+-        TellExecutorToFlush();
++        if (NS_FAILED(NS_DispatchToMainThread(mExecutorFlusher))) {
++          NS_WARNING("failed to dispatch executor flush event");
++        }  
+         // XXX start speculation
+         mWaitingForScripts = PR_TRUE;
+         return; // ContinueAfterScripts() will re-enable this parser
+       }
+       mTreeBuilder->MaybeFlush();
+     }
+     continue;
+   }
+ }
+ 
++class nsHtml5ContinueAfterScript : public nsRunnable
++{
++private:
++  nsHtml5RefPtr<nsHtml5StreamParser> mStreamParser;
++public:
++  nsHtml5ContinueAfterScript(nsHtml5StreamParser* aStreamParser)
++    : mStreamParser(aStreamParser)
++  {}
++  NS_IMETHODIMP Run()
++  {
++    mStreamParser->ParseUntilScript();
++    return NS_OK;
++  }
++};
++
+ void
+ nsHtml5StreamParser::ContinueAfterScripts(nsHtml5Tokenizer* aTokenizer, 
+                                           nsHtml5TreeBuilder* aTreeBuilder,
+                                           PRBool aLastWasCR)
+ {
+   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+   mExecutor->StartReadingFromStage();
+   // TODO:
+@@ -643,49 +755,28 @@ nsHtml5StreamParser::ContinueAfterScript
+   // executor and discard the stream data for that speculation. Return.
+   // Otherwise, rendez-vous at barrier, load the tree op queue from the 
+   // speculation into the tree op executor, set the tree op executor to read 
+   // from the stage, set the stream parser tree builder to write to stage,
+   // discard the stream data for the speculation.
+   
+   {
+     mozilla::MutexAutoLock autoLock(mTokenizerMutex); 
++    #ifdef DEBUG
++      nsCOMPtr<nsIThread> mainThread;
++      NS_GetMainThread(getter_AddRefs(mainThread));
++      mAtomTable.SetPermittedLookupThread(mainThread);
++    #endif
+ 
+     // Approximation: Copy state over for now unconditionally.
+     mLastWasCR = aLastWasCR;
+     mTokenizer->loadState(aTokenizer);
+     mTreeBuilder->loadState(aTreeBuilder, &mAtomTable);
+     
+-    mWaitingForScripts = PR_FALSE;
++    #ifdef DEBUG
++      mAtomTable.SetPermittedLookupThread(mThread);
++    #endif
+   }
+-  // TODO: proxy the tail of this method to the parser thread
+-  ParseUntilScript();
++  nsCOMPtr<nsIRunnable> event = new nsHtml5ContinueAfterScript(this);
++  if (NS_FAILED(mThread->Dispatch(event, nsIThread::DISPATCH_NORMAL))) {
++    NS_WARNING("Failed to dispatch ParseUntilScript event");
++  }
+ }
+-
+-class nsHtml5StreamParserExecutorFlushEvent : public nsRunnable
+-{
+-public:
+-  nsRefPtr<nsHtml5StreamParser> mStreamParser;
+-  nsHtml5StreamParserExecutorFlushEvent(nsHtml5StreamParser* aStreamParser)
+-    : mStreamParser(aStreamParser)
+-  {}
+-  NS_IMETHODIMP Run()
+-  {
+-    mStreamParser->DoExecFlush();
+-    return NS_OK;
+-  }
+-};
+-
+-void
+-nsHtml5StreamParser::DoExecFlush()
+-{
+-  mExecutor->Flush();
+-}
+-
+-void
+-nsHtml5StreamParser::TellExecutorToFlush()
+-{
+-  // TODO: Make this cross-thread
+-  nsCOMPtr<nsIRunnable> event = new nsHtml5StreamParserExecutorFlushEvent(this);
+-  if (NS_FAILED(NS_DispatchToMainThread(event))) {
+-    NS_WARNING("failed to dispatch executor flush event");
+-  }  
+-}
+diff --git a/parser/html/nsHtml5StreamParser.h b/parser/html/nsHtml5StreamParser.h
+--- a/parser/html/nsHtml5StreamParser.h
++++ b/parser/html/nsHtml5StreamParser.h
+@@ -96,16 +96,21 @@ enum eBomState {
+ enum eHtml5StreamState {
+   STREAM_NOT_STARTED = 0,
+   STREAM_BEING_READ = 1,
+   STREAM_ENDED = 2
+ };
+ 
+ class nsHtml5StreamParser : public nsIStreamListener,
+                             public nsICharsetDetectionObserver {
++
++  friend class nsHtml5RequestStopper;
++  friend class nsHtml5DataAvailable;
++  friend class nsHtml5ContinueAfterScript;
++
+   public:
+     NS_DECL_AND_IMPL_ZEROING_OPERATOR_NEW
+     NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+     NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsHtml5StreamParser, nsIStreamListener)
+ 
+     nsHtml5StreamParser(nsHtml5TreeOpExecutor* aExecutor,
+                         nsHtml5Parser* aOwner);
+                         
+@@ -147,52 +152,53 @@ class nsHtml5StreamParser : public nsISt
+     
+     inline void SetObserver(nsIRequestObserver* aObserver) {
+       NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+       mObserver = aObserver;
+     }
+     
+     nsresult GetChannel(nsIChannel** aChannel);
+ 
+-    void ParseUntilScript();
+-    
+     /**
+      * The owner parser must call this after script execution
+      * when no scripts are executing and the document.written 
+      * buffer has been exhausted.
+      */
+     void ContinueAfterScripts(nsHtml5Tokenizer* aTokenizer, 
+                               nsHtml5TreeBuilder* aTreeBuilder,
+                               PRBool aLastWasCR);
+ 
+     void Terminate() {
+       mozilla::MutexAutoLock autoLock(mTerminatedMutex);
+       mTerminated = PR_TRUE;
+       // TODO: Make sure this object stays alive as long as there are 
+       // in-flight runnables coming this way
+     }
+     
+-    void DoExecFlush();
++  private:
+ 
+-  private:
++#ifdef DEBUG
++    PRBool IsParserThread() {
++      PRBool ret;
++      mThread->IsOnCurrentThread(&ret);
++      return ret;
++    }
++#endif
++
++    void ParseUntilScript();
++    
++    void DoStopRequest();
++    
++    void DoDataAvailable(PRUint8* aBuffer, PRUint32 aLength);
+ 
+     PRBool IsTerminated() {
+       mozilla::MutexAutoLock autoLock(mTerminatedMutex);
+       return mTerminated;    
+     }
+ 
+-    void TellExecutorToFlush();
+-
+-    static NS_METHOD ParserWriteFunc(nsIInputStream* aInStream,
+-                                     void* aHtml5StreamParser,
+-                                     const char* aFromSegment,
+-                                     PRUint32 aToOffset,
+-                                     PRUint32 aCount,
+-                                     PRUint32* aWriteCount);
+-
+     /**
+      * True when there is a Unicode decoder already
+      */
+     inline PRBool HasDecoder() {
+       return !!mUnicodeDecoder;
+     }
+ 
+     /**
+@@ -372,12 +378,18 @@ class nsHtml5StreamParser : public nsISt
+      */
+     PRBool                        mWaitingForScripts;
+ 
+     /**
+      * True to terminate early; protected by mTerminatedMutex
+      */
+     PRBool                        mTerminated;
+     mozilla::Mutex                mTerminatedMutex;
+-
++    
++    /**
++     * The thread this stream parser runs on.
++     */
++    nsCOMPtr<nsIThread>           mThread;
++    
++    nsCOMPtr<nsIRunnable>         mExecutorFlusher;
+ };
+ 
+ #endif // nsHtml5StreamParser_h__
+diff --git a/parser/html/nsHtml5TreeOpExecutor.h b/parser/html/nsHtml5TreeOpExecutor.h
+--- a/parser/html/nsHtml5TreeOpExecutor.h
++++ b/parser/html/nsHtml5TreeOpExecutor.h
+@@ -76,18 +76,18 @@ enum eHtml5ParserLifecycle {
+   /**
+    * The parse has ended.
+    */
+   TERMINATED = 2
+ };
+ 
+ typedef nsIContent* nsIContentPtr;
+ 
+-class nsHtml5TreeOpExecutor : public nsIContentSink,
+-                              public nsContentSink,
++class nsHtml5TreeOpExecutor : public nsContentSink,
++                              public nsIContentSink,
+                               public nsAHtml5TreeOpSink
+ {
+   public:
+     NS_DECL_AND_IMPL_ZEROING_OPERATOR_NEW
+     NS_DECL_ISUPPORTS_INHERITED
+     NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(nsHtml5TreeOpExecutor, nsContentSink)
+ 
+   private:

@@ -1,0 +1,25 @@
+diff --git a/parser/htmlparser/tests/crashtests/525229-1.html b/parser/htmlparser/tests/crashtests/525229-1.html
+new file mode 100644
+--- /dev/null
++++ b/parser/htmlparser/tests/crashtests/525229-1.html
+@@ -0,0 +1,7 @@
++<!DOCTYPE html>
++<title>Test for bug 525229</title>
++<body>
++<script>
++document.write("<script src='data:text/javascript,'><\/script><div>");
++</script>
++text
+diff --git a/parser/htmlparser/tests/crashtests/crashtests.list b/parser/htmlparser/tests/crashtests/crashtests.list
+--- a/parser/htmlparser/tests/crashtests/crashtests.list
++++ b/parser/htmlparser/tests/crashtests/crashtests.list
+@@ -31,8 +31,9 @@ load 286733-1.html
+ load 286733-2.html
+ load 299036-1.html
+ load 328751-1.html
+ load 408939-1.html
+ load 423373-1.html
+ skip load 460706-1.xhtml # Bug 479499
+ load 468538-1.xhtml
+ load 515816-1.html
++load 525229-1.html

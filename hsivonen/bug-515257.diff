@@ -1,0 +1,21 @@
+diff --git a/content/html/content/src/nsHTMLOptGroupElement.cpp b/content/html/content/src/nsHTMLOptGroupElement.cpp
+--- a/content/html/content/src/nsHTMLOptGroupElement.cpp
++++ b/content/html/content/src/nsHTMLOptGroupElement.cpp
+@@ -181,17 +181,16 @@ nsHTMLOptGroupElement::InsertChildAt(nsI
+     safeMutation.MutationFailed();
+   }
+   return rv;
+ }
+ 
+ nsresult
+ nsHTMLOptGroupElement::RemoveChildAt(PRUint32 aIndex, PRBool aNotify, PRBool aMutationEvent)
+ {
+-  NS_ASSERTION(aMutationEvent, "Someone tried to inhibit mutation events on optgroup child removal.");
+   nsSafeOptionListMutation safeMutation(GetSelect(), this, nsnull, aIndex);
+   nsresult rv = nsGenericHTMLElement::RemoveChildAt(aIndex, aNotify, aMutationEvent);
+   if (NS_FAILED(rv)) {
+     safeMutation.MutationFailed();
+   }
+   return rv;
+ }
+ 

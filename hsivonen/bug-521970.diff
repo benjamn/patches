@@ -1,0 +1,160 @@
+diff --git a/parser/html/nsHtml5Parser.cpp b/parser/html/nsHtml5Parser.cpp
+--- a/parser/html/nsHtml5Parser.cpp
++++ b/parser/html/nsHtml5Parser.cpp
+@@ -190,23 +190,16 @@ nsHtml5Parser::GetDTD(nsIDTD** aDTD)
+ NS_IMETHODIMP
+ nsHtml5Parser::GetStreamListener(nsIStreamListener** aListener)
+ {
+   NS_IF_ADDREF(*aListener = mStreamParser);
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+-nsHtml5Parser::ContinueParsing()
+-{
+-  UnblockParser();
+-  return ContinueInterruptedParsing();
+-}
+-
+-NS_IMETHODIMP
+ nsHtml5Parser::ContinueInterruptedParsing()
+ {
+   // If there are scripts executing, then the content sink is jumping the gun
+   // (probably due to a synchronous XMLHttpRequest) and will re-enable us
+   // later, see bug 460706.
+   if (mExecutor->IsScriptExecuting()) {
+     return NS_OK;
+   }
+diff --git a/parser/html/nsHtml5Parser.h b/parser/html/nsHtml5Parser.h
+--- a/parser/html/nsHtml5Parser.h
++++ b/parser/html/nsHtml5Parser.h
+@@ -136,21 +136,16 @@ class nsHtml5Parser : public nsIParser,
+     NS_IMETHOD GetDTD(nsIDTD** aDTD);
+ 
+     /**
+      * Get the stream parser for this parser
+      */
+     NS_IMETHOD GetStreamListener(nsIStreamListener** aListener);
+ 
+     /**
+-     * Unblocks parser and calls ContinueInterruptedParsing()
+-     */
+-    NS_IMETHOD        ContinueParsing();
+-
+-    /**
+      * If scripts are not executing, maybe flushes tree builder and parses
+      * until suspension.
+      */
+     NS_IMETHOD        ContinueInterruptedParsing();
+ 
+     /**
+      * Blocks the parser.
+      */
+diff --git a/parser/htmlparser/public/nsIParser.h b/parser/htmlparser/public/nsIParser.h
+--- a/parser/htmlparser/public/nsIParser.h
++++ b/parser/htmlparser/public/nsIParser.h
+@@ -50,19 +50,18 @@
+ #include "nsISupports.h"
+ #include "nsIStreamListener.h"
+ #include "nsIDTD.h"
+ #include "nsStringGlue.h"
+ #include "nsTArray.h"
+ #include "nsIAtom.h"
+ 
+ #define NS_IPARSER_IID \
+-{ 0xa44dc586, 0xc521, 0x40a1, \
+-{ 0xa0, 0xaf, 0xbe, 0x02, 0xa5, 0x51, 0xe0, 0xb7 } }
+-
++{ 0x3db442c2, 0x8a4d, 0x4ce4, \
++{ 0x86, 0x58, 0x48, 0xee, 0x55, 0x4b, 0xbb, 0xd4 } }
+ 
+ // {41421C60-310A-11d4-816F-000064657374}
+ #define NS_IDEBUG_DUMP_CONTENT_IID \
+ { 0x41421c60, 0x310a, 0x11d4, \
+ { 0x81, 0x6f, 0x0, 0x0, 0x64, 0x65, 0x73, 0x74 } }
+ 
+ class nsIContentSink;
+ class nsIRequestObserver;
+@@ -202,19 +201,16 @@ class nsIParser : public nsISupports {
+     NS_IMETHOD GetStreamListener(nsIStreamListener** aListener) = 0;
+ 
+     /**************************************************************************
+      *  Parse methods always begin with an input source, and perform
+      *  conversions until you wind up being emitted to the given contentsink
+      *  (which may or may not be a proxy for the NGLayout content model).
+      ************************************************************************/
+     
+-    // Call this method to resume the parser from the blocked state.
+-    NS_IMETHOD ContinueParsing() = 0;
+-
+     // Call this method to resume the parser from an unblocked state.
+     // This can happen, for example, if parsing was interrupted and then the
+     // consumer needed to restart the parser without waiting for more data.
+     // This also happens after loading scripts, which unblock the parser in
+     // order to process the output of document.write() and then need to
+     // continue on with the page load on an enabled parser.
+     NS_IMETHOD ContinueInterruptedParsing() = 0;
+     
+diff --git a/parser/htmlparser/src/nsParser.cpp b/parser/htmlparser/src/nsParser.cpp
+--- a/parser/htmlparser/src/nsParser.cpp
++++ b/parser/htmlparser/src/nsParser.cpp
+@@ -1777,29 +1777,16 @@ nsParser::Terminate(void)
+     result = mSink->DidBuildModel(PR_TRUE);
+     NS_ENSURE_SUCCESS(result, result);
+   }
+ 
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+-nsParser::ContinueParsing()
+-{
+-  if (mFlags & NS_PARSER_FLAG_PARSER_ENABLED) {
+-    NS_WARNING("Trying to continue parsing on a unblocked parser.");
+-    return NS_OK;
+-  }
+-
+-  mFlags |= NS_PARSER_FLAG_PARSER_ENABLED;
+-
+-  return ContinueInterruptedParsing();
+-}
+-
+-NS_IMETHODIMP
+ nsParser::ContinueInterruptedParsing()
+ {
+   // If there are scripts executing, then the content sink is jumping the gun
+   // (probably due to a synchronous XMLHttpRequest) and will re-enable us
+   // later, see bug 460706.
+   if (!IsOkToProcessNetworkData()) {
+     return NS_OK;
+   }
+diff --git a/parser/htmlparser/src/nsParser.h b/parser/htmlparser/src/nsParser.h
+--- a/parser/htmlparser/src/nsParser.h
++++ b/parser/htmlparser/src/nsParser.h
+@@ -224,26 +224,16 @@ class nsParser : public nsIParser,
+     /**
+      * This method gets called when the tokens have been consumed, and it's time
+      * to build the model via the content sink.
+      * @update	gess5/11/98
+      * @return  YES if model building went well -- NO otherwise.
+      */
+     NS_IMETHOD BuildModel(void);
+ 
+-    /**
+-     *  Call this when you want control whether or not the parser will parse
+-     *  and tokenize input (TRUE), or whether it just caches input to be 
+-     *  parsed later (FALSE).
+-     *  
+-     *  @update  gess 9/1/98
+-     *  @param   aState determines whether we parse/tokenize or just cache.
+-     *  @return  current state
+-     */
+-    NS_IMETHOD        ContinueParsing();
+     NS_IMETHOD        ContinueInterruptedParsing();
+     NS_IMETHOD_(void) BlockParser();
+     NS_IMETHOD_(void) UnblockParser();
+     NS_IMETHOD        Terminate(void);
+ 
+     /**
+      * Call this to query whether the parser is enabled or not.
+      *

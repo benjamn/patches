@@ -1,0 +1,287 @@
+diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpExecutor.cpp
+--- a/parser/html/nsHtml5TreeOpExecutor.cpp
++++ b/parser/html/nsHtml5TreeOpExecutor.cpp
+@@ -242,27 +242,40 @@ nsHtml5TreeOpExecutor::PostEvaluateScrip
+   nsCOMPtr<nsIHTMLDocument> htmlDocument = do_QueryInterface(mDocument);
+   NS_ASSERTION(htmlDocument, "Document didn't QI into HTML document.");
+   htmlDocument->ScriptExecuted(aElement);
+ }
+ 
+ void
+ nsHtml5TreeOpExecutor::UpdateStyleSheet(nsIContent* aElement)
+ {
++  // Break out of the doc update created by Flush() to zap a runnable 
++  // waiting to call UpdateStyleSheet without the right observer
++  EndDocUpdate();
++
++  if (NS_UNLIKELY(!mParser)) {
++    // EndDocUpdate ran stuff that called nsIParser::Terminate()
++    return;
++  }
++
+   nsCOMPtr<nsIStyleSheetLinkingElement> ssle(do_QueryInterface(aElement));
+-  if (ssle) {
+-    ssle->SetEnableUpdates(PR_TRUE);
+-    PRBool willNotify;
+-    PRBool isAlternate;
+-    nsresult rv = ssle->UpdateStyleSheet(this, &willNotify, &isAlternate);
+-    if (NS_SUCCEEDED(rv) && willNotify && !isAlternate) {
+-      ++mPendingSheetCount;
+-      mScriptLoader->AddExecuteBlocker();
+-    }
++  NS_ASSERTION(ssle, "Node didn't QI to style.");
++
++  ssle->SetEnableUpdates(PR_TRUE);
++
++  PRBool willNotify;
++  PRBool isAlternate;
++  nsresult rv = ssle->UpdateStyleSheet(this, &willNotify, &isAlternate);
++  if (NS_SUCCEEDED(rv) && willNotify && !isAlternate) {
++    ++mPendingSheetCount;
++    mScriptLoader->AddExecuteBlocker();
+   }
++
++  // Re-open update
++  BeginDocUpdate();
+ }
+ 
+ void
+ nsHtml5TreeOpExecutor::Flush()
+ {
+   if (!mParser) {
+     mFlushTimer->Cancel();
+     return;
+@@ -275,56 +288,62 @@ nsHtml5TreeOpExecutor::Flush()
+ 
+   nsRefPtr<nsHtml5TreeOpExecutor> kungFuDeathGrip(this); // avoid crashing near EOF
+   nsCOMPtr<nsIParser> parserKungFuDeathGrip(mParser);
+ 
+   if (mReadingFromStage) {
+     mStage.RetrieveOperations(mOpQueue);
+   }
+   
+-  { // scope for the auto update so that it ends before we try to run the 
+-    // script
+-    MOZ_AUTO_DOC_UPDATE(GetDocument(), UPDATE_CONTENT_MODEL, PR_TRUE);
+-    PRIntervalTime flushStart = 0;
+-    PRUint32 opQueueLength = mOpQueue.Length();
+-    if (opQueueLength > NS_HTML5_TREE_OP_EXECUTOR_MIN_QUEUE_LENGTH) { // avoid computing averages with too few ops
+-      flushStart = PR_IntervalNow();
++  BeginDocUpdate();
++
++  PRIntervalTime flushStart = 0;
++  PRUint32 opQueueLength = mOpQueue.Length();
++  if (opQueueLength > NS_HTML5_TREE_OP_EXECUTOR_MIN_QUEUE_LENGTH) { // avoid computing averages with too few ops
++    flushStart = PR_IntervalNow();
++  }
++  mElementsSeenInThisAppendBatch.SetCapacity(opQueueLength * 2);
++  // XXX alloc failure
++  const nsHtml5TreeOperation* start = mOpQueue.Elements();
++  const nsHtml5TreeOperation* end = start + opQueueLength;
++  for (nsHtml5TreeOperation* iter = (nsHtml5TreeOperation*)start; iter < end; ++iter) {
++    if (NS_UNLIKELY(!mParser)) {
++      // The previous tree op caused a call to nsIParser::Terminate();
++      break;
+     }
+-    mElementsSeenInThisAppendBatch.SetCapacity(opQueueLength * 2);
+-    // XXX alloc failure
+-    const nsHtml5TreeOperation* start = mOpQueue.Elements();
+-    const nsHtml5TreeOperation* end = start + opQueueLength;
+-    for (nsHtml5TreeOperation* iter = (nsHtml5TreeOperation*)start; iter < end; ++iter) {
+-      if (NS_UNLIKELY(!mParser)) {
+-        // The previous tree op caused a call to nsIParser::Terminate();
+-        break;
+-      }
+-      iter->Perform(this);
++    iter->Perform(this);
++  }
++
++  if (NS_LIKELY(mParser)) {
++    FlushPendingAppendNotifications();
++  } else {
++    mPendingNotifications.Clear();
++  }
++
++#ifdef DEBUG_hsivonen
++  if (mOpQueue.Length() > sInsertionBatchMaxLength) {
++    sInsertionBatchMaxLength = opQueueLength;
++  }
++#endif
++  mOpQueue.Clear();
++  if (flushStart) {
++    PRUint32 delta = PR_IntervalToMilliseconds(PR_IntervalNow() - flushStart);
++    sTreeOpQueueMaxLength = delta ?
++      (PRUint32)((NS_HTML5_TREE_OP_EXECUTOR_MAX_QUEUE_TIME * (PRUint64)opQueueLength) / delta) :
++      0;
++    if (sTreeOpQueueMaxLength < NS_HTML5_TREE_OP_EXECUTOR_MIN_QUEUE_LENGTH) {
++      sTreeOpQueueMaxLength = NS_HTML5_TREE_OP_EXECUTOR_MIN_QUEUE_LENGTH;
+     }
+-    FlushPendingAppendNotifications();
+ #ifdef DEBUG_hsivonen
+-    if (mOpQueue.Length() > sInsertionBatchMaxLength) {
+-      sInsertionBatchMaxLength = opQueueLength;
+-    }
++    printf("QUEUE MAX LENGTH: %d\n", sTreeOpQueueMaxLength);
+ #endif
+-    mOpQueue.Clear();
+-    if (flushStart) {
+-      PRUint32 delta = PR_IntervalToMilliseconds(PR_IntervalNow() - flushStart);
+-      sTreeOpQueueMaxLength = delta ?
+-        (PRUint32)((NS_HTML5_TREE_OP_EXECUTOR_MAX_QUEUE_TIME * (PRUint64)opQueueLength) / delta) :
+-        0;
+-      if (sTreeOpQueueMaxLength < NS_HTML5_TREE_OP_EXECUTOR_MIN_QUEUE_LENGTH) {
+-        sTreeOpQueueMaxLength = NS_HTML5_TREE_OP_EXECUTOR_MIN_QUEUE_LENGTH;
+-      }
+-#ifdef DEBUG_hsivonen
+-      printf("QUEUE MAX LENGTH: %d\n", sTreeOpQueueMaxLength);
+-#endif
+-    }
+   }
+ 
++  EndDocUpdate();
++
+   mFlushing = PR_FALSE;
+ 
+   if (!mParser) {
+     return;
+   }
+ 
+   ScheduleTimer();
+ 
+@@ -533,16 +552,18 @@ void
+ nsHtml5TreeOpExecutor::Reset() {
+   mHasProcessedBase = PR_FALSE;
+   mReadingFromStage = PR_FALSE;
+   mOpQueue.Clear();
+   mStarted = PR_FALSE;
+   mScriptElement = nsnull;
+   mCallDidBuildModel = PR_FALSE;
+   mCharsetSwitch.Truncate();
++  mInDocumentUpdate = PR_FALSE;
++  mFlushing = PR_FALSE;
+ }
+ 
+ void
+ nsHtml5TreeOpExecutor::MaybeFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue)
+ {
+   // no-op
+ }
+ 
+diff --git a/parser/html/nsHtml5TreeOpExecutor.h b/parser/html/nsHtml5TreeOpExecutor.h
+--- a/parser/html/nsHtml5TreeOpExecutor.h
++++ b/parser/html/nsHtml5TreeOpExecutor.h
+@@ -109,16 +109,18 @@ class nsHtml5TreeOpExecutor : public nsC
+      * Script to run ASAP
+      */
+     nsCOMPtr<nsIContent>          mScriptElement;
+     
+     nsHtml5TreeOpStage            mStage;
+ 
+     PRBool                        mFlushing;
+     
++    PRBool                        mInDocumentUpdate;
++
+     /**
+      * Used for deferring DidBuildModel call out of notification batch
+      */
+     PRBool                        mCallDidBuildModel;
+     
+     nsCString                     mCharsetSwitch;
+ 
+   public:
+@@ -221,16 +223,30 @@ class nsHtml5TreeOpExecutor : public nsC
+     inline void SetScriptElement(nsIContent* aScript) {
+       mScriptElement = aScript;
+     }
+     
+     void InitializeDocWriteParserState(nsAHtml5TreeBuilderState* aState);
+ 
+     PRBool IsScriptEnabled();
+ 
++    inline void BeginDocUpdate() {
++      NS_PRECONDITION(!mInDocumentUpdate, "Tried to double-open update.");
++      NS_PRECONDITION(mParser, "Started update without parser.");
++      mInDocumentUpdate = PR_TRUE;
++      mDocument->BeginUpdate(UPDATE_CONTENT_MODEL);
++    }
++
++    inline void EndDocUpdate() {
++      if (mInDocumentUpdate) {
++        mInDocumentUpdate = PR_FALSE;
++        mDocument->EndUpdate(UPDATE_CONTENT_MODEL);
++      }
++    }
++
+     void PostPendingAppendNotification(nsIContent* aParent, nsIContent* aChild) {
+       PRBool newParent = PR_TRUE;
+       const nsIContentPtr* first = mElementsSeenInThisAppendBatch.Elements();
+       const nsIContentPtr* last = first + mElementsSeenInThisAppendBatch.Length() - 1;
+       for (const nsIContentPtr* iter = last; iter >= first; --iter) {
+ #ifdef DEBUG_hsivonen
+         sAppendBatchSlotsExamined++;
+ #endif
+diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOperation.cpp
+--- a/parser/html/nsHtml5TreeOperation.cpp
++++ b/parser/html/nsHtml5TreeOperation.cpp
+@@ -225,35 +225,36 @@ nsHtml5TreeOperation::Perform(nsHtml5Tre
+       nsCOMPtr<nsIContent> newContent;
+       nsCOMPtr<nsINodeInfo> nodeInfo = aBuilder->GetNodeInfoManager()->GetNodeInfo(name, nsnull, ns);
+       NS_ASSERTION(nodeInfo, "Got null nodeinfo.");
+       NS_NewElement(getter_AddRefs(newContent), nodeInfo->NamespaceID(), nodeInfo, PR_TRUE);
+       NS_ASSERTION(newContent, "Element creation created null pointer.");
+ 
+       aBuilder->HoldElement(*target = newContent);      
+ 
++      if (NS_UNLIKELY(name == nsHtml5Atoms::style || name == nsHtml5Atoms::link)) {
++        nsCOMPtr<nsIStyleSheetLinkingElement> ssle(do_QueryInterface(newContent));
++        if (ssle) {
++          ssle->InitStyleLinkElement(PR_FALSE);
++          ssle->SetEnableUpdates(PR_FALSE);
++        }
++      }
++
+       if (!attributes) {
+         return rv;
+       }
+ 
+       PRInt32 len = attributes->getLength();
+       for (PRInt32 i = 0; i < len; ++i) {
+         // prefix doesn't need regetting. it is always null or a static atom
+         // local name is never null
+         nsCOMPtr<nsIAtom> localName = Reget(attributes->getLocalName(i));
+         newContent->SetAttr(attributes->getURI(i), localName, attributes->getPrefix(i), *(attributes->getValue(i)), PR_FALSE);
+         // XXX what to do with nsresult?
+       }
+-      if (ns != kNameSpaceID_MathML && (name == nsHtml5Atoms::style || (ns == kNameSpaceID_XHTML && name == nsHtml5Atoms::link))) {
+-        nsCOMPtr<nsIStyleSheetLinkingElement> ssle(do_QueryInterface(newContent));
+-        if (ssle) {
+-          ssle->InitStyleLinkElement(PR_FALSE);
+-          ssle->SetEnableUpdates(PR_FALSE);
+-        }
+-      }
+       return rv;
+     }
+     case eTreeOpSetFormElement: {
+       nsIContent* node = *(mOne.node);
+       nsIContent* parent = *(mTwo.node);
+       nsCOMPtr<nsIFormControl> formControl(do_QueryInterface(node));
+       // NS_ASSERTION(formControl, "Form-associated element did not implement nsIFormControl.");
+       // TODO: uncomment the above line when <output> (bug 346485) and <keygen> (bug 101019) are supported by Gecko
+@@ -346,16 +347,17 @@ nsHtml5TreeOperation::Perform(nsHtml5Tre
+     }
+     case eTreeOpNeedsCharsetSwitchTo: {
+       char* str = mOne.charPtr;
+       aBuilder->NeedsCharsetSwitchTo(str);
+       return rv;    
+     }
+     case eTreeOpUpdateStyleSheet: {
+       nsIContent* node = *(mOne.node);
++      aBuilder->FlushPendingAppendNotifications();
+       aBuilder->UpdateStyleSheet(node);
+       return rv;
+     }
+     case eTreeOpProcessBase: {
+       nsIContent* node = *(mOne.node);
+       rv = aBuilder->ProcessBASETag(node);
+       return rv;
+     }

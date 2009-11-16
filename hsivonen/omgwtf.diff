@@ -1,0 +1,22 @@
+diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOperation.cpp
+--- a/parser/html/nsHtml5TreeOperation.cpp
++++ b/parser/html/nsHtml5TreeOperation.cpp
+@@ -165,17 +165,17 @@ nsHtml5TreeOperation::Perform(nsHtml5Tre
+                                         localName, 
+                                         static_cast<PRUint8>(nsIDOMMutationEvent::ADDITION),
+                                         stateMask);
+         }
+       }
+       return rv;
+     }
+     case eTreeOpDoneAddingChildren: {
+-      mNode->DoneAddingChildren(aBuilder->HaveNotified(mNode));
++      mNode->DoneAddingChildren(PR_FALSE);
+       return rv;
+     }
+     case eTreeOpDoneCreatingElement: {
+       mNode->DoneCreatingElement();
+       return rv;
+     }
+     case eTreeOpUpdateStyleSheet: {
+       aBuilder->UpdateStyleSheet(mNode);

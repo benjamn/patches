@@ -1,0 +1,102 @@
+diff --git a/content/base/test/Makefile.in b/content/base/test/Makefile.in
+--- a/content/base/test/Makefile.in
++++ b/content/base/test/Makefile.in
+@@ -240,16 +240,18 @@ _TEST_FILES = 	test_bug5141.html \
+ 		test_bug368972.html \
+ 		test_bug448993.html \
+ 		test_bug450160.html \
+ 		test_bug453736.html \
+ 		test_bug454326.html \
+ 		test_bug505783.html \
+ 		test_bug457746.html \
+ 		test_bug518104.html \
++		test_bug503473.html \
++		file_bug503473-frame.sjs \
+ 		bug457746.sjs \
+ 		test_CrossSiteXHR.html \
+ 		file_CrossSiteXHR_inner.html \
+ 		file_CrossSiteXHR_inner_data.sjs \
+ 		file_CrossSiteXHR_inner.jar \
+ 		file_CrossSiteXHR_server.sjs \
+ 		test_CrossSiteXHR_cache.html \
+ 		file_CrossSiteXHR_cache_server.sjs \
+diff --git a/content/base/test/file_bug503473-frame.sjs b/content/base/test/file_bug503473-frame.sjs
+new file mode 100644
+--- /dev/null
++++ b/content/base/test/file_bug503473-frame.sjs
+@@ -0,0 +1,22 @@
++function handleRequest(request, response) {
++  response.processAsync();
++  response.setStatusLine(request.httpVersion, 200, "OK");
++  response.setHeader("Content-Type", "text/html; charset=utf-8", false);
++
++  response.write(
++    '<!DOCTYPE html>' +
++    '<div></div>' +
++    '<script>' +
++    'function doWrite() {' +
++    '  document.write("<p></p>");' +
++    '  parent.done();' +
++    '  document.close();' +
++    '}' +
++    'setTimeout(doWrite, 1);' +
++    '</script>' 
++  );
++
++  response.bodyOutputStream.flush();
++  // leave the stream open
++}
++
+diff --git a/content/base/test/test_bug503473.html b/content/base/test/test_bug503473.html
+new file mode 100644
+--- /dev/null
++++ b/content/base/test/test_bug503473.html
+@@ -0,0 +1,48 @@
++<!DOCTYPE HTML>
++<html>
++<!--
++https://bugzilla.mozilla.org/show_bug.cgi?id=503473
++-->
++<head>
++  <title>Test for Bug 503473</title>
++  <script type="text/javascript" src="/MochiKit/MochiKit.js"></script>
++  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
++  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
++</head>
++<body>
++<a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=503473">Mozilla Bug 503473</a>
++<p id="display"></p>
++<pre id="test">
++<script class="testbody" type="text/javascript">
++
++/** Test for Bug 503473 **/
++
++netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
++var prefs = Components.classes["@mozilla.org/preferences-service;1"]
++          .getService(Components.interfaces.nsIPrefBranch);
++var gOriginalHtml5Pref = prefs.getBoolPref("html5.enable");
++prefs.setBoolPref("html5.enable", true);
++
++SimpleTest.waitForExplicitFinish();
++
++function done() {
++  var iframe = document.getElementById("iframe");
++  var divs = iframe.contentWindow.document.getElementsByTagName("div").length;
++  is(divs, 0, "Div wasn't blown away.")
++
++  netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
++  var prefs = Components.classes["@mozilla.org/preferences-service;1"]
++            .getService(Components.interfaces.nsIPrefBranch);
++  prefs.setBoolPref("html5.enable", gOriginalHtml5Pref);
++
++  SimpleTest.finish();
++}
++
++</script>
++</pre>
++<div id="content" style="display: none">
++  <iframe id='iframe' src="file_bug503473-frame.sjs">
++  </iframe>
++</div>
++</body>
++</html>

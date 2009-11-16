@@ -1,0 +1,143 @@
+diff --git a/parser/html/nsHtml5Parser.cpp b/parser/html/nsHtml5Parser.cpp
+--- a/parser/html/nsHtml5Parser.cpp
++++ b/parser/html/nsHtml5Parser.cpp
+@@ -410,19 +410,16 @@ nsHtml5Parser::Terminate(void)
+   if (mExecutor->IsComplete()) {
+     return NS_OK;
+   }
+   // XXX - [ until we figure out a way to break parser-sink circularity ]
+   // Hack - Hold a reference until we are completely done...
+   nsCOMPtr<nsIParser> kungFuDeathGrip(this);
+   nsRefPtr<nsHtml5StreamParser> streamKungFuDeathGrip(mStreamParser);
+   nsRefPtr<nsHtml5TreeOpExecutor> treeOpKungFuDeathGrip(mExecutor);
+-  // CancelParsingEvents must be called to avoid leaking the nsParser object
+-  // @see bug 108049
+-  CancelParsingEvents();
+   if (mStreamParser) {
+     mStreamParser->Terminate();
+   }
+   return mExecutor->DidBuildModel(PR_TRUE);
+ }
+ 
+ NS_IMETHODIMP
+ nsHtml5Parser::ParseFragment(const nsAString& aSourceBuffer,
+diff --git a/parser/html/nsHtml5TreeBuilderCppSupplement.h b/parser/html/nsHtml5TreeBuilderCppSupplement.h
+--- a/parser/html/nsHtml5TreeBuilderCppSupplement.h
++++ b/parser/html/nsHtml5TreeBuilderCppSupplement.h
+@@ -395,21 +395,17 @@ nsHtml5TreeBuilder::appendDoctypeToDocum
+ void
+ nsHtml5TreeBuilder::elementPushed(PRInt32 aNamespace, nsIAtom* aName, nsIContent** aElement)
+ {
+   NS_ASSERTION(aNamespace == kNameSpaceID_XHTML || aNamespace == kNameSpaceID_SVG || aNamespace == kNameSpaceID_MathML, "Element isn't HTML, SVG or MathML!");
+   NS_ASSERTION(aName, "Element doesn't have local name!");
+   NS_ASSERTION(aElement, "No element!");
+   // Give autoloading links a chance to fire
+   if (aNamespace == kNameSpaceID_XHTML) {
+-    if (aName == nsHtml5Atoms::body) {
+-      nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+-      // XXX if null, OOM!
+-      treeOp->Init(eTreeOpStartLayout, nsnull);
+-    } else if (aName == nsHtml5Atoms::html) {
++    if (aName == nsHtml5Atoms::html) {
+       nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+       // XXX if null, OOM!
+       treeOp->Init(eTreeOpProcessOfflineManifest, aElement);
+       return;
+     }
+   }
+ }
+ 
+@@ -494,16 +490,22 @@ nsHtml5TreeBuilder::elementPopped(PRInt3
+     return;
+   }
+   if (aName == nsHtml5Atoms::meta) {
+     nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+     // XXX if null, OOM!
+     treeOp->Init(eTreeOpProcessMeta, aElement);
+     return;
+   }
++  if (aName == nsHtml5Atoms::head) {
++    nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
++    // XXX if null, OOM!
++    treeOp->Init(eTreeOpStartLayout, nsnull);
++    return;
++  }
+   return;
+ }
+ 
+ void
+ nsHtml5TreeBuilder::accumulateCharacters(PRUnichar* aBuf, PRInt32 aStart, PRInt32 aLength)
+ {
+   PRInt32 newFillLen = charBufferLen + aLength;
+   if (newFillLen > charBuffer.length) {
+diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpExecutor.cpp
+--- a/parser/html/nsHtml5TreeOpExecutor.cpp
++++ b/parser/html/nsHtml5TreeOpExecutor.cpp
+@@ -123,17 +123,16 @@ nsHtml5TreeOpExecutor::WillParse()
+ NS_IMETHODIMP
+ nsHtml5TreeOpExecutor::DidBuildModel(PRBool aTerminated)
+ {
+   NS_PRECONDITION(mStarted && mParser, 
+                   "Bad life cycle.");
+   // This is comes from nsXMLContentSink
+   DidBuildModelImpl(aTerminated);
+   mDocument->ScriptLoader()->RemoveObserver(this);
+-  nsContentSink::StartLayout(PR_FALSE);
+   ScrollToRef();
+   mDocument->RemoveObserver(this);
+   mDocument->EndLoad();
+   static_cast<nsHtml5Parser*> (mParser.get())->DropStreamParser();
+   static_cast<nsHtml5Parser*> (mParser.get())->CancelParsingEvents();
+   DropParserAndPerfHint();
+ #ifdef GATHER_DOCWRITE_STATISTICS
+   printf("UNSAFE SCRIPTS: %d\n", sUnsafeDocWrites);
+@@ -289,16 +288,20 @@ nsHtml5TreeOpExecutor::Flush()
+     if (opQueueLength > NS_HTML5_TREE_OP_EXECUTOR_MIN_QUEUE_LENGTH) { // avoid computing averages with too few ops
+       flushStart = PR_IntervalNow();
+     }
+     mElementsSeenInThisAppendBatch.SetCapacity(opQueueLength * 2);
+     // XXX alloc failure
+     const nsHtml5TreeOperation* start = mOpQueue.Elements();
+     const nsHtml5TreeOperation* end = start + opQueueLength;
+     for (nsHtml5TreeOperation* iter = (nsHtml5TreeOperation*)start; iter < end; ++iter) {
++      if (NS_UNLIKELY(!mParser)) {
++        // The previous tree op caused a call to nsIParser::Terminate();
++        break;
++      }
+       iter->Perform(this);
+     }
+     FlushPendingAppendNotifications();
+ #ifdef DEBUG_hsivonen
+     if (mOpQueue.Length() > sInsertionBatchMaxLength) {
+       sInsertionBatchMaxLength = opQueueLength;
+     }
+ #endif
+@@ -311,20 +314,25 @@ nsHtml5TreeOpExecutor::Flush()
+       if (sTreeOpQueueMaxLength < NS_HTML5_TREE_OP_EXECUTOR_MIN_QUEUE_LENGTH) {
+         sTreeOpQueueMaxLength = NS_HTML5_TREE_OP_EXECUTOR_MIN_QUEUE_LENGTH;
+       }
+ #ifdef DEBUG_hsivonen
+       printf("QUEUE MAX LENGTH: %d\n", sTreeOpQueueMaxLength);
+ #endif
+     }
+   }
++
++  mFlushing = PR_FALSE;
++
++  if (!mParser) {
++    return;
++  }
++
+   ScheduleTimer();
+-  
+-  mFlushing = PR_FALSE;
+-  
++
+   if (mScriptElement) {
+     NS_ASSERTION(!mCallDidBuildModel, "Had a script element and DidBuildModel call");
+     RunScript();
+   } else if (mCallDidBuildModel) {
+     mCallDidBuildModel = PR_FALSE;
+     DidBuildModel(PR_FALSE);
+   }
+ }

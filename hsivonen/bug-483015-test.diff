@@ -1,0 +1,191 @@
+diff --git a/content/base/test/Makefile.in b/content/base/test/Makefile.in
+--- a/content/base/test/Makefile.in
++++ b/content/base/test/Makefile.in
+@@ -306,16 +306,18 @@ _TEST_FILES = 	test_bug5141.html \
+ 		test_bug473162-1.html \
+ 		test_bug473162-2.html \
+ 		test_bug466751.xhtml \
+ 		test_bug461555.html \
+ 		test_sync_xhr_timer.xhtml \
+ 		test_bug498240.html \
+ 		file_htmlserializer_ipv6.html \
+ 		file_htmlserializer_ipv6_out.html \
++		test_bug483015.html \
++		test_bug483015-bis.html \
+ 		test_bug498433.html \
+ 		test_bug498897.html \
+ 		file_bug498897.html \
+ 		file_bug498897.html^headers^ \
+ 		file_bug498897.css \
+ 		test_bug493881.js \
+ 		test_bug493881.html \
+ 		bug466409-page.html \
+diff --git a/content/base/test/test_bug483015-bis.html b/content/base/test/test_bug483015-bis.html
+new file mode 100644
+--- /dev/null
++++ b/content/base/test/test_bug483015-bis.html
+@@ -0,0 +1,83 @@
++<!DOCTYPE HTML>
++<html>
++<!--
++https://bugzilla.mozilla.org/show_bug.cgi?id=483015
++-->
++<head>
++  <title>Test for Bug 483015</title>
++  <script type="text/javascript" src="/MochiKit/packed.js"></script>
++  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
++  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
++</head>
++<body>
++<pre id="test">
++<script class="testbody" type="text/javascript">
++
++  netscape.security.PrivilegeManager.enablePrivilege('UniversalXPConnect');
++
++  const Cc = Components.classes;
++  const Ci = Components.interfaces;
++  const Cr = Components.results;
++
++  var consoleService =
++    Cc["@mozilla.org/consoleservice;1"].getService(Ci.nsIConsoleService);
++
++  var consoleListener = {
++    seenError: false,
++
++    observe: function(message) {
++      netscape.security.PrivilegeManager.enablePrivilege('UniversalXPConnect');
++
++      ok(!this.seenError, "Seen too many errors!");
++      
++      this.seenError = true;
++      
++      var scriptErr = message.QueryInterface(Ci.nsIScriptError);
++
++      is(scriptErr.lineNumber, 2,
++         "Wrong line");
++    },
++    
++    finish: function() {
++      ok(this.seenError , "Didn't get message.");
++      SimpleTest.finish();
++    },
++
++    QueryInterface: function(iid) {
++      netscape.security.PrivilegeManager.enablePrivilege('UniversalXPConnect');
++      if (iid.equals(Ci.nsIConsoleListener) ||
++          iid.equals(Ci.nsISupports)) {
++        return this;
++      }
++      throw Cr.NS_NOINTERFACE;
++    }
++  };
++
++  consoleService.reset();
++  consoleService.registerListener(consoleListener);
++  SimpleTest.waitForExplicitFinish();
++
++  function done() {
++    netscape.security.PrivilegeManager.enablePrivilege('UniversalXPConnect');
++    consoleListener.finish();
++    consoleService.unregisterListener(consoleListener);
++  }
++  
++  // Write a couple of lines for confusion:
++  document.write("\n\n");
++</script>
++<iframe></iframe>
++<script>
++  var iframe = document.getElementsByTagName('iframe')[0];
++  iframe.contentWindow.document.open();
++  iframe.contentWindow.document.writeln("<script>document.writeln();<\/script>");
++  iframe.contentWindow.document.writeln("<style>qux { foo: bar; }<\/style>");
++  iframe.contentWindow.document.close();
++
++  setTimeout(done, 1);
++</script>
++
++</pre>
++</body>
++</html>
++
+diff --git a/content/base/test/test_bug483015.html b/content/base/test/test_bug483015.html
+new file mode 100644
+--- /dev/null
++++ b/content/base/test/test_bug483015.html
+@@ -0,0 +1,76 @@
++<!DOCTYPE HTML>
++<html>
++<!--
++https://bugzilla.mozilla.org/show_bug.cgi?id=483015
++-->
++<head>
++  <title>Test for Bug 483015</title>
++  <script type="text/javascript" src="/MochiKit/packed.js"></script>
++  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
++  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
++</head>
++<body>
++<pre id="test">
++<script class="testbody" type="text/javascript">
++
++  netscape.security.PrivilegeManager.enablePrivilege('UniversalXPConnect');
++
++  const Cc = Components.classes;
++  const Ci = Components.interfaces;
++  const Cr = Components.results;
++
++  var consoleService =
++    Cc["@mozilla.org/consoleservice;1"].getService(Ci.nsIConsoleService);
++
++  var consoleListener = {
++    seenError: false,
++
++    observe: function(message) {
++      netscape.security.PrivilegeManager.enablePrivilege('UniversalXPConnect');
++
++      ok(!this.seenError, "Seen too many errors!");
++      
++      this.seenError = true;
++      
++      var scriptErr = message.QueryInterface(Ci.nsIScriptError);
++
++      is(scriptErr.lineNumber, 69,
++         "Wrong line");
++    },
++    
++    finish: function() {
++      ok(this.seenError , "Didn't get message.");
++      SimpleTest.finish();
++    },
++
++    QueryInterface: function(iid) {
++      netscape.security.PrivilegeManager.enablePrivilege('UniversalXPConnect');
++      if (iid.equals(Ci.nsIConsoleListener) ||
++          iid.equals(Ci.nsISupports)) {
++        return this;
++      }
++      throw Cr.NS_NOINTERFACE;
++    }
++  };
++
++  consoleService.reset();
++  consoleService.registerListener(consoleListener);
++  SimpleTest.waitForExplicitFinish();
++
++  function done() {
++    netscape.security.PrivilegeManager.enablePrivilege('UniversalXPConnect');
++    consoleListener.finish();
++    consoleService.unregisterListener(consoleListener);
++  }
++  
++  // Write a couple of lines for confusion:
++  document.write("\n\n");
++</script>
++<style>qux { foo: bar; }</style>
++<script>
++  setTimeout(done, 1);
++</script>
++</pre>
++</body>
++</html>
++

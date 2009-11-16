@@ -1,0 +1,303 @@
+diff --git a/parser/html/nsHtml5Parser.cpp b/parser/html/nsHtml5Parser.cpp
+--- a/parser/html/nsHtml5Parser.cpp
++++ b/parser/html/nsHtml5Parser.cpp
+@@ -689,8 +689,16 @@ nsHtml5Parser::StartTokenizer(PRBool aSc
+ void
+ nsHtml5Parser::InitializeDocWriteParserState(nsAHtml5TreeBuilderState* aState)
+ {
+   mTokenizer->resetToDataState();
+   mTreeBuilder->loadState(aState, &mAtomTable);
+   mLastWasCR = PR_FALSE;
+   mReturnToStreamParserPermitted = PR_TRUE;
+ }
++
++void
++nsHtml5Parser::ContinueAfterFailedCharsetSwitch()
++{
++  NS_PRECONDITION(mStreamParser, 
++    "Tried to continue after failed charset switch without a stream parser");
++  mStreamParser->ContinueAfterFailedCharsetSwitch();
++}
+diff --git a/parser/html/nsHtml5Parser.h b/parser/html/nsHtml5Parser.h
+--- a/parser/html/nsHtml5Parser.h
++++ b/parser/html/nsHtml5Parser.h
+@@ -306,16 +306,18 @@ class nsHtml5Parser : public nsIParser,
+      */
+     void MaybePostContinueEvent();
+     
+     void DropStreamParser() {
+       mStreamParser = nsnull;
+     }
+     
+     void StartTokenizer(PRBool aScriptingEnabled);
++    
++    void ContinueAfterFailedCharsetSwitch();
+ 
+ #ifdef DEBUG
+     PRBool HasStreamParser() {
+       return !!mStreamParser;
+     }
+ #endif
+ 
+   private:
+diff --git a/parser/html/nsHtml5StreamParser.cpp b/parser/html/nsHtml5StreamParser.cpp
+--- a/parser/html/nsHtml5StreamParser.cpp
++++ b/parser/html/nsHtml5StreamParser.cpp
+@@ -646,45 +646,61 @@ nsHtml5StreamParser::OnDataAvailable(nsI
+ 
+ void
+ nsHtml5StreamParser::internalEncodingDeclaration(nsString* aEncoding)
+ {
+   NS_ASSERTION(IsParserThread(), "Wrong thread!");
+   if (mCharsetSource >= kCharsetFromMetaTag) { // this threshold corresponds to "confident" in the HTML5 spec
+     return;
+   }
++
++  // The encodings are different.
++  if (mReparseForbidden) {
++    return; // not reparsing even if we wanted to
++  }
++
+   nsresult rv = NS_OK;
+   nsCOMPtr<nsICharsetAlias> calias(do_GetService(kCharsetAliasCID, &rv));
+   if (NS_FAILED(rv)) {
++    NS_NOTREACHED("Charset alias service not available.");
+     return;
+   }
+   nsCAutoString newEncoding;
+   CopyUTF16toUTF8(*aEncoding, newEncoding);
+   PRBool eq;
+   rv = calias->Equals(newEncoding, mCharset, &eq);
+   if (NS_FAILED(rv)) {
++    NS_NOTREACHED("Charset name equality check failed.");
+     return;
+   }
+   if (eq) {
+     mCharsetSource = kCharsetFromMetaTag; // become confident
+     return;
+   }
+   
+   // XXX check HTML5 non-IANA aliases here
+-
+-  // The encodings are different. We want to reparse.
+-  if (mReparseForbidden) {
+-    return; // not reparsing after all
++  
++  nsCAutoString preferred;
++  
++  rv = calias->GetPreferred(newEncoding, preferred);
++  if (NS_FAILED(rv)) {
++    // the encoding name is bogus
++    return;
+   }
+   
+   // we still want to reparse
+-  mTreeBuilder->NeedsCharsetSwitchTo(newEncoding);
++  mTreeBuilder->NeedsCharsetSwitchTo(preferred);
+   mTreeBuilder->Flush();
++  Interrupt();
++  if (NS_FAILED(NS_DispatchToMainThread(mExecutorFlusher))) {
++    NS_WARNING("failed to dispatch executor flush event");
++  }
+   // the tree op executor will cause the stream parser to terminate
+-  // if the charset switch request is accepted
++  // if the charset switch request is accepted or it'll uninterrupt 
++  // if the request failed.
+ }
+ 
+ void
+ nsHtml5StreamParser::ParseAvailableData()
+ {
+   NS_ASSERTION(IsParserThread(), "Wrong thread!");
+   mTokenizerMutex.AssertCurrentThreadOwns();
+ 
+@@ -876,8 +892,20 @@ nsHtml5StreamParser::ContinueAfterScript
+       NS_WARNING("Failed to dispatch ParseAvailableData event");
+     }
+     // A stream event might run before this event runs, but that's harmless.
+     #ifdef DEBUG
+       mAtomTable.SetPermittedLookupThread(mThread);
+     #endif
+   }
+ }
++
++void
++nsHtml5StreamParser::ContinueAfterFailedCharsetSwitch()
++{
++  NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
++  mozilla::MutexAutoLock tokenizerAutoLock(mTokenizerMutex);
++  Uninterrupt();
++  nsCOMPtr<nsIRunnable> event = new nsHtml5StreamParserContinuation(this);
++  if (NS_FAILED(mThread->Dispatch(event, nsIThread::DISPATCH_NORMAL))) {
++    NS_WARNING("Failed to dispatch ParseAvailableData event");
++  }  
++}
+diff --git a/parser/html/nsHtml5StreamParser.h b/parser/html/nsHtml5StreamParser.h
+--- a/parser/html/nsHtml5StreamParser.h
++++ b/parser/html/nsHtml5StreamParser.h
+@@ -164,33 +164,38 @@ class nsHtml5StreamParser : public nsISt
+      * The owner parser must call this after script execution
+      * when no scripts are executing and the document.written 
+      * buffer has been exhausted.
+      */
+     void ContinueAfterScripts(nsHtml5Tokenizer* aTokenizer, 
+                               nsHtml5TreeBuilder* aTreeBuilder,
+                               PRBool aLastWasCR);
+ 
++    /**
++     * Uninterrupts and continues the stream parser if the charset switch 
++     * failed.
++     */
++    void ContinueAfterFailedCharsetSwitch();
++
+     void Terminate() {
+       mozilla::MutexAutoLock autoLock(mTerminatedMutex);
+       mTerminated = PR_TRUE;
+     }
+     
+   private:
+ 
+ #ifdef DEBUG
+     PRBool IsParserThread() {
+       PRBool ret;
+       mThread->IsOnCurrentThread(&ret);
+       return ret;
+     }
+ #endif
+ 
+     void Interrupt() {
+-      NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+       mozilla::MutexAutoLock autoLock(mTerminatedMutex);
+       mInterrupted = PR_TRUE;
+     }
+ 
+     void Uninterrupt() {
+       NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+       mTokenizerMutex.AssertCurrentThreadOwns();
+       // Not acquiring mTerminatedMutex because mTokenizerMutex is already
+diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpExecutor.cpp
+--- a/parser/html/nsHtml5TreeOpExecutor.cpp
++++ b/parser/html/nsHtml5TreeOpExecutor.cpp
+@@ -323,17 +323,26 @@ nsHtml5TreeOpExecutor::Flush()
+   mFlushing = PR_FALSE;
+ 
+   if (!mParser) {
+     return;
+   }
+ 
+   ScheduleTimer();
+ 
+-  if (mScriptElement) {
++  if (!mCharsetSwitch.IsEmpty()) {
++    NS_ASSERTION(!mScriptElement, "Had a charset switch and a script");
++    NS_ASSERTION(!mCallDidBuildModel, "Had a charset switch and DidBuildModel call");
++    PerformCharsetSwitch();
++    mCharsetSwitch.Truncate();
++    if (mParser) {
++      // The charset switch was unsuccessful.
++      return (static_cast<nsHtml5Parser*> (mParser.get()))->ContinueAfterFailedCharsetSwitch();      
++    }
++  } else if (mScriptElement) {
+     NS_ASSERTION(!mCallDidBuildModel, "Had a script element and DidBuildModel call");
+     RunScript();
+   } else if (mCallDidBuildModel) {
+     mCallDidBuildModel = PR_FALSE;
+     DidBuildModel(PR_FALSE);
+   }
+ }
+ 
+@@ -484,28 +493,34 @@ nsHtml5TreeOpExecutor::Start()
+   mStarted = PR_TRUE;
+   mScriptElement = nsnull;
+   ScheduleTimer();
+ }
+ 
+ void
+ nsHtml5TreeOpExecutor::NeedsCharsetSwitchTo(const char* aEncoding)
+ {
++  mCharsetSwitch.Assign(aEncoding);
++}
++
++void
++nsHtml5TreeOpExecutor::PerformCharsetSwitch()
++{
+   nsresult rv = NS_OK;
+   nsCOMPtr<nsIWebShellServices> wss = do_QueryInterface(mDocShell);
+   if (!wss) {
+     return;
+   }
+ #ifndef DONT_INFORM_WEBSHELL
+   // ask the webshellservice to load the URL
+   if (NS_FAILED(rv = wss->SetRendering(PR_FALSE))) {
+     // do nothing and fall thru
+   } else if (NS_FAILED(rv = wss->StopDocumentLoad())) {
+     rv = wss->SetRendering(PR_TRUE); // turn on the rendering so at least we will see something.
+-  } else if (NS_FAILED(rv = wss->ReloadDocument(aEncoding, kCharsetFromMetaTag))) {
++  } else if (NS_FAILED(rv = wss->ReloadDocument(mCharsetSwitch.get(), kCharsetFromMetaTag))) {
+     rv = wss->SetRendering(PR_TRUE); // turn on the rendering so at least we will see something.
+   }
+   // if the charset switch was accepted, wss has called Terminate() on the
+   // parser by now
+ #endif
+ }
+ 
+ nsHtml5Tokenizer*
+@@ -517,16 +532,17 @@ nsHtml5TreeOpExecutor::GetTokenizer()
+ void
+ nsHtml5TreeOpExecutor::Reset() {
+   mHasProcessedBase = PR_FALSE;
+   mReadingFromStage = PR_FALSE;
+   mOpQueue.Clear();
+   mStarted = PR_FALSE;
+   mScriptElement = nsnull;
+   mCallDidBuildModel = PR_FALSE;
++  mCharsetSwitch.Truncate();
+ }
+ 
+ void
+ nsHtml5TreeOpExecutor::MaybeFlush(nsTArray<nsHtml5TreeOperation>& aOpQueue)
+ {
+   // no-op
+ }
+ 
+diff --git a/parser/html/nsHtml5TreeOpExecutor.h b/parser/html/nsHtml5TreeOpExecutor.h
+--- a/parser/html/nsHtml5TreeOpExecutor.h
++++ b/parser/html/nsHtml5TreeOpExecutor.h
+@@ -113,16 +113,18 @@ class nsHtml5TreeOpExecutor : public nsC
+     nsHtml5TreeOpStage            mStage;
+ 
+     PRBool                        mFlushing;
+     
+     /**
+      * Used for deferring DidBuildModel call out of notification batch
+      */
+     PRBool                        mCallDidBuildModel;
++    
++    nsCString                     mCharsetSwitch;
+ 
+   public:
+   
+     nsHtml5TreeOpExecutor();
+     virtual ~nsHtml5TreeOpExecutor();
+   
+     // nsIContentSink
+ 
+@@ -298,16 +300,18 @@ class nsHtml5TreeOpExecutor : public nsC
+     void Flush();
+ 
+     void MaybeSuspend();
+ 
+     void Start();
+ 
+     void NeedsCharsetSwitchTo(const char* aEncoding);
+     
++    void PerformCharsetSwitch();
++    
+ #ifdef DEBUG
+     PRBool HasScriptElement() {
+       return !!mScriptElement;
+     }
+ #endif
+ 
+     PRBool IsComplete() {
+       return !mParser;

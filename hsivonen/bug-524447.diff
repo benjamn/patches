@@ -1,0 +1,96 @@
+diff --git a/parser/html/nsHtml5Parser.cpp b/parser/html/nsHtml5Parser.cpp
+--- a/parser/html/nsHtml5Parser.cpp
++++ b/parser/html/nsHtml5Parser.cpp
+@@ -206,17 +206,17 @@ nsHtml5Parser::ContinueInterruptedParsin
+   // If the stream has already finished, there's a good chance
+   // that we might start closing things down when the parser
+   // is reenabled. To make sure that we're not deleted across
+   // the reenabling process, hold a reference to ourselves.
+   nsCOMPtr<nsIParser> kungFuDeathGrip(this);
+   nsRefPtr<nsHtml5StreamParser> streamKungFuDeathGrip(mStreamParser);
+   nsRefPtr<nsHtml5TreeOpExecutor> treeOpKungFuDeathGrip(mExecutor);
+   CancelParsingEvents(); // If the executor caused us to continue, ignore event
+-  ParseUntilScript();
++  ParseUntilBlocked();
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP_(void)
+ nsHtml5Parser::BlockParser()
+ {
+   mBlocked = PR_TRUE;
+ }
+@@ -293,21 +293,22 @@ nsHtml5Parser::Parse(const nsAString& aS
+      */
+     mExecutor->WillBuildModel(eDTDMode_unknown);
+   }
+   if (mExecutor->IsComplete()) {
+     return NS_OK;
+   }
+   if (aLastCall && aSourceBuffer.IsEmpty() && aKey == GetRootContextKey()) {
+     // document.close()
+-      NS_ASSERTION(!mStreamParser,
+-                   "Had stream parser but got document.close().");
++    NS_ASSERTION(!mStreamParser,
++                 "Had stream parser but got document.close().");
+     mDocumentClosed = PR_TRUE;
+-    // TODO: Try to tokenize: http://www.w3.org/Bugs/Public/show_bug.cgi?id=7917
+-    MaybePostContinueEvent();
++    if (!mBlocked) {
++      ParseUntilBlocked();
++    }
+     return NS_OK;
+   }
+ 
+   NS_PRECONDITION(IsInsertionPointDefined(), 
+                   "Document.write called when insertion point not defined.");
+ 
+   if (aSourceBuffer.IsEmpty()) {
+     return NS_OK;
+@@ -571,19 +572,19 @@ nsHtml5Parser::HandleParserContinueEvent
+   if (mContinueEvent != ev)
+     return;
+   mContinueEvent = nsnull;
+   NS_ASSERTION(!mExecutor->IsScriptExecuting(), "Interrupted in the middle of a script?");
+   ContinueInterruptedParsing();
+ }
+ 
+ void
+-nsHtml5Parser::ParseUntilScript()
++nsHtml5Parser::ParseUntilBlocked()
+ {
+-  NS_PRECONDITION(!mFragmentMode, "ParseUntilScript called in fragment mode.");
++  NS_PRECONDITION(!mFragmentMode, "ParseUntilBlocked called in fragment mode.");
+ 
+   if (mBlocked) {
+     return;
+   }
+ 
+   if (mExecutor->IsComplete()) {
+     return;
+   }
+diff --git a/parser/html/nsHtml5Parser.h b/parser/html/nsHtml5Parser.h
+--- a/parser/html/nsHtml5Parser.h
++++ b/parser/html/nsHtml5Parser.h
+@@ -318,19 +318,19 @@ class nsHtml5Parser : public nsIParser,
+     PRBool HasStreamParser() {
+       return !!mStreamParser;
+     }
+ #endif
+ 
+   private:
+ 
+     /**
+-     * Parse until pending data is exhausted or a script end tag is seen
++     * Parse until pending data is exhausted or a script blocks the parser
+      */
+-    void ParseUntilScript();
++    void ParseUntilBlocked();
+ 
+     // State variables
+ 
+     /**
+      * Whether the last character tokenized was a carriage return (for CRLF)
+      */
+     PRBool                        mLastWasCR;
+ 

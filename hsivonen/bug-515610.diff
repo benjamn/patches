@@ -1,0 +1,295 @@
+diff --git a/content/base/src/nsContentSink.cpp b/content/base/src/nsContentSink.cpp
+--- a/content/base/src/nsContentSink.cpp
++++ b/content/base/src/nsContentSink.cpp
+@@ -355,16 +355,19 @@ nsContentSink::ScriptAvailable(nsresult 
+                mScriptElements.IndexOf(aElement) == -1,
+                "script found at unexpected position");
+ 
+   // Check if this is the element we were waiting for
+   if (count == 0 || aElement != mScriptElements[count - 1]) {
+     return NS_OK;
+   }
+ 
++  NS_ASSERTION(!aElement->GetScriptDeferred(), "defer script was in mScriptElements");
++  NS_ASSERTION(!aElement->GetScriptAsync(), "async script was in mScriptElements");
++
+   if (mParser && !mParser->IsParserEnabled()) {
+     // make sure to unblock the parser before evaluating the script,
+     // we must unblock the parser even if loading the script failed or
+     // if the script was empty, if we don't, the parser will never be
+     // unblocked.
+     mParser->UnblockParser();
+   }
+ 
+@@ -397,16 +400,19 @@ nsContentSink::ScriptEvaluated(nsresult 
+   mDeflectedCount = mPerfDeflectCount;
+ 
+   // Check if this is the element we were waiting for
+   PRInt32 count = mScriptElements.Count();
+   if (count == 0 || aElement != mScriptElements[count - 1]) {
+     return NS_OK;
+   }
+ 
++  NS_ASSERTION(!aElement->GetScriptDeferred(), "defer script was in mScriptElements");
++  NS_ASSERTION(!aElement->GetScriptAsync(), "async script was in mScriptElements");
++
+   // Pop the script element stack
+   mScriptElements.RemoveObjectAt(count - 1); 
+ 
+   if (NS_SUCCEEDED(aResult)) {
+     PostEvaluateScript(aElement);
+   }
+ 
+   if (mParser && mParser->IsParserEnabled()) {
+diff --git a/parser/html/nsHtml5TreeBuilderCppSupplement.h b/parser/html/nsHtml5TreeBuilderCppSupplement.h
+--- a/parser/html/nsHtml5TreeBuilderCppSupplement.h
++++ b/parser/html/nsHtml5TreeBuilderCppSupplement.h
+@@ -54,16 +54,17 @@ nsHtml5TreeBuilder::nsHtml5TreeBuilder(n
+   : scriptingEnabled(PR_FALSE)
+   , fragment(PR_FALSE)
+   , contextNode(nsnull)
+   , formPointer(nsnull)
+   , headPointer(nsnull)
+   , mOpSink(aOpSink)
+   , mHandles(new nsIContent*[NS_HTML5_TREE_BUILDER_HANDLE_ARRAY_LENGTH])
+   , mHandlesUsed(0)
++  , mCurrentHtmlScriptIsAsyncOrDefer(PR_FALSE)
+ #ifdef DEBUG
+   , mActive(PR_FALSE)
+ #endif
+ {
+   MOZ_COUNT_CTOR(nsHtml5TreeBuilder);
+ }
+ 
+ nsHtml5TreeBuilder::~nsHtml5TreeBuilder()
+@@ -169,16 +170,19 @@ nsHtml5TreeBuilder::createElement(PRInt3
+           nsString* url = aAttributes->getValue(nsHtml5AttributeName::ATTR_SRC);
+           if (url) {
+             nsString* charset = aAttributes->getValue(nsHtml5AttributeName::ATTR_CHARSET);
+             nsString* type = aAttributes->getValue(nsHtml5AttributeName::ATTR_TYPE);
+             Dispatch(new nsHtml5SpeculativeScript(mSpeculativeLoader, 
+                                                   *url,
+                                                   (charset) ? *charset : EmptyString(),
+                                                   (type) ? *type : EmptyString()));
++            mCurrentHtmlScriptIsAsyncOrDefer = 
++              aAttributes->contains(nsHtml5AttributeName::ATTR_ASYNC) ||
++              aAttributes->contains(nsHtml5AttributeName::ATTR_DEFER);
+           }
+         } else if (nsHtml5Atoms::link == aName) {
+           nsString* rel = aAttributes->getValue(nsHtml5AttributeName::ATTR_REL);
+           // Not splitting on space here is bogus but the old parser didn't even
+           // do a case-insensitive check.
+           if (rel && rel->LowerCaseEqualsASCII("stylesheet")) {
+             nsString* url = aAttributes->getValue(nsHtml5AttributeName::ATTR_HREF);
+             if (url) {
+@@ -228,25 +232,31 @@ nsHtml5TreeBuilder::createElement(PRInt3
+             Dispatch(new nsHtml5SpeculativeStyle(mSpeculativeLoader, 
+                                                  *url,
+                                                  EmptyString()));
+           }
+         }        
+         break;
+     }
+   } else if (aNamespace != kNameSpaceID_MathML) {
+-    // No speculative loader--just line numbers
++    // No speculative loader--just line numbers and defer/async check
+     if (nsHtml5Atoms::style == aName) {
+       nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+       NS_ASSERTION(treeOp, "Tree op allocation failed.");
+       treeOp->Init(eTreeOpSetStyleLineNumber, content, tokenizer->getLineNumber());
+     } else if (nsHtml5Atoms::script == aName) {
+       nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+       NS_ASSERTION(treeOp, "Tree op allocation failed.");
+       treeOp->Init(eTreeOpSetScriptLineNumber, content, tokenizer->getLineNumber());
++      if (aNamespace == kNameSpaceID_XHTML) {
++        mCurrentHtmlScriptIsAsyncOrDefer = 
++          aAttributes->contains(nsHtml5AttributeName::ATTR_SRC) &&
++          (aAttributes->contains(nsHtml5AttributeName::ATTR_ASYNC) ||
++           aAttributes->contains(nsHtml5AttributeName::ATTR_DEFER));
++      }
+     }
+   }
+ 
+   // End wall of code for speculative loading
+   
+   return content;
+ }
+ 
+@@ -418,16 +428,17 @@ nsHtml5TreeBuilder::markMalformedIfScrip
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   NS_ASSERTION(treeOp, "Tree op allocation failed.");
+   treeOp->Init(eTreeOpMarkMalformedIfScript, aElement);
+ }
+ 
+ void
+ nsHtml5TreeBuilder::start(PRBool fragment)
+ {
++  mCurrentHtmlScriptIsAsyncOrDefer = PR_FALSE;
+ #ifdef DEBUG
+   mActive = PR_TRUE;
+ #endif
+ }
+ 
+ void
+ nsHtml5TreeBuilder::end()
+ {
+@@ -478,16 +489,23 @@ nsHtml5TreeBuilder::elementPopped(PRInt3
+   NS_ASSERTION(aNamespace == kNameSpaceID_XHTML || aNamespace == kNameSpaceID_SVG || aNamespace == kNameSpaceID_MathML, "Element isn't HTML, SVG or MathML!");
+   NS_ASSERTION(aName, "Element doesn't have local name!");
+   NS_ASSERTION(aElement, "No element!");
+   if (aNamespace == kNameSpaceID_MathML) {
+     return;
+   }
+   // we now have only SVG and HTML
+   if (aName == nsHtml5Atoms::script) {
++    if (mCurrentHtmlScriptIsAsyncOrDefer && aNamespace == kNameSpaceID_XHTML) {
++      nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
++      NS_ASSERTION(treeOp, "Tree op allocation failed.");
++      treeOp->Init(eTreeOpRunScriptAsyncDefer, aElement);      
++      mCurrentHtmlScriptIsAsyncOrDefer = PR_FALSE;
++      return;
++    }
+     requestSuspension();
+     nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+     NS_ASSERTION(treeOp, "Tree op allocation failed.");
+     treeOp->InitScript(aElement);
+     return;
+   }
+   if (aName == nsHtml5Atoms::title) {
+     nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+diff --git a/parser/html/nsHtml5TreeBuilderHSupplement.h b/parser/html/nsHtml5TreeBuilderHSupplement.h
+--- a/parser/html/nsHtml5TreeBuilderHSupplement.h
++++ b/parser/html/nsHtml5TreeBuilderHSupplement.h
+@@ -40,16 +40,17 @@
+   private:
+ 
+     nsTArray<nsHtml5TreeOperation>         mOpQueue;
+     nsAHtml5TreeOpSink*                    mOpSink;
+     nsAutoArrayPtr<nsIContent*>            mHandles;
+     PRInt32                                mHandlesUsed;
+     nsTArray<nsAutoArrayPtr<nsIContent*> > mOldHandles;
+     nsRefPtr<nsHtml5SpeculativeLoader>     mSpeculativeLoader;
++    PRBool                                 mCurrentHtmlScriptIsAsyncOrDefer;
+ #ifdef DEBUG
+     PRBool                                 mActive;
+ #endif
+ 
+     // DocumentModeHandler
+     /**
+      * Tree builder uses this to report quirkiness of the document
+      */
+diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpExecutor.cpp
+--- a/parser/html/nsHtml5TreeOpExecutor.cpp
++++ b/parser/html/nsHtml5TreeOpExecutor.cpp
+@@ -446,47 +446,61 @@ nsHtml5TreeOpExecutor::DocumentMode(nsHt
+  * The reason why this is called as a tail call when mFlushState is set to
+  * eNotFlushing is to allow re-entry to Flush() but only after the current 
+  * Flush() has cleared the op queue and is otherwise done cleaning up after 
+  * itself.
+  */
+ void
+ nsHtml5TreeOpExecutor::RunScript(nsIContent* aScriptElement)
+ {
+-  mReadingFromStage = PR_FALSE;
+   NS_ASSERTION(aScriptElement, "No script to run");
+-  NS_ASSERTION(mFlushState == eNotFlushing, "Tried to run script when flushing.");
+-
+   nsCOMPtr<nsIScriptElement> sele = do_QueryInterface(aScriptElement);
+-
++  
+   if (!mParser) {
+     NS_ASSERTION(sele->IsMalformed(), "Script wasn't marked as malformed.");
+     // We got here not because of an end tag but because the tree builder
+     // popped an incomplete script element on EOF. Returning here to avoid
+     // calling back into mParser anymore.
+     return;
+   }
+   
+   if (mFragmentMode) {
+     // ending the doc update called nsIParser::Terminate or we are in the
+     // fragment mode
+     sele->PreventExecution();
+     return;
+   }
+ 
++  if (sele->GetScriptDeferred() || sele->GetScriptAsync()) {
++    #ifdef DEBUG
++    nsresult rv = 
++    #endif
++    aScriptElement->DoneAddingChildren(PR_TRUE); // scripts ignore the argument
++    NS_ASSERTION(rv != NS_ERROR_HTMLPARSER_BLOCK, 
++                 "Defer or async script tried to block.");
++    return;
++  }
++  
++  NS_ASSERTION(mFlushState == eNotFlushing, "Tried to run script when flushing.");
++
++  mReadingFromStage = PR_FALSE;
++  
+   sele->SetCreatorParser(mParser);
++
+   // Notify our document that we're loading this script.
+   nsCOMPtr<nsIHTMLDocument> htmlDocument = do_QueryInterface(mDocument);
+   NS_ASSERTION(htmlDocument, "Document didn't QI into HTML document.");
+   htmlDocument->ScriptLoading(sele);
++
+   // Copied from nsXMLContentSink
+   // Now tell the script that it's ready to go. This may execute the script
+   // or return NS_ERROR_HTMLPARSER_BLOCK. Or neither if the script doesn't
+   // need executing.
+   nsresult rv = aScriptElement->DoneAddingChildren(PR_TRUE);
++
+   // If the act of insertion evaluated the script, we're fine.
+   // Else, block the parser till the script has loaded.
+   if (rv == NS_ERROR_HTMLPARSER_BLOCK) {
+     mScriptElements.AppendObject(sele);
+     mParser->BlockParser();
+   } else {
+     // This may have already happened if the script executed, but in case
+     // it didn't then remove the element so that it doesn't get stuck forever.
+diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOperation.cpp
+--- a/parser/html/nsHtml5TreeOperation.cpp
++++ b/parser/html/nsHtml5TreeOperation.cpp
+@@ -408,16 +408,21 @@ nsHtml5TreeOperation::Perform(nsHtml5Tre
+       nsIContent* node = *(mOne.node);
+       nsAHtml5TreeBuilderState* snapshot = mTwo.state;
+       if (snapshot) {
+         aBuilder->InitializeDocWriteParserState(snapshot, mInt);
+       }
+       *aScriptElement = node;
+       return rv;
+     }
++    case eTreeOpRunScriptAsyncDefer: {
++      nsIContent* node = *(mOne.node);
++      aBuilder->RunScript(node);
++      return rv;
++    }
+     case eTreeOpDoneAddingChildren: {
+       nsIContent* node = *(mOne.node);
+       node->DoneAddingChildren(PR_FALSE);
+       return rv;
+     }
+     case eTreeOpDoneCreatingElement: {
+       nsIContent* node = *(mOne.node);
+       aBuilder->FlushPendingAppendNotifications();
+diff --git a/parser/html/nsHtml5TreeOperation.h b/parser/html/nsHtml5TreeOperation.h
+--- a/parser/html/nsHtml5TreeOperation.h
++++ b/parser/html/nsHtml5TreeOperation.h
+@@ -59,16 +59,17 @@ enum eHtml5TreeOperation {
+   eTreeOpDocumentMode,
+   eTreeOpCreateElement,
+   eTreeOpSetFormElement,
+   eTreeOpCreateTextNode,
+   eTreeOpCreateComment,
+   eTreeOpCreateDoctype,
+   // Gecko-specific on-pop ops
+   eTreeOpRunScript,
++  eTreeOpRunScriptAsyncDefer,
+   eTreeOpDoneAddingChildren,
+   eTreeOpDoneCreatingElement,
+   eTreeOpSetDocumentCharset,
+   eTreeOpNeedsCharsetSwitchTo,
+   eTreeOpUpdateStyleSheet,
+   eTreeOpProcessBase,
+   eTreeOpProcessMeta,
+   eTreeOpProcessOfflineManifest,

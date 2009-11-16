@@ -1,0 +1,3972 @@
+diff --git a/parser/html/nsHtml5AttributeName.cpp b/parser/html/nsHtml5AttributeName.cpp
+--- a/parser/html/nsHtml5AttributeName.cpp
++++ b/parser/html/nsHtml5AttributeName.cpp
+@@ -24,16 +24,17 @@
+  * THIS IS A GENERATED FILE. PLEASE DO NOT EDIT.
+  * Please edit AttributeName.java instead and regenerate.
+  */
+ 
+ #define nsHtml5AttributeName_cpp__
+ 
+ #include "prtypes.h"
+ #include "nsIAtom.h"
++#include "nsHtml5AtomTable.h"
+ #include "nsString.h"
+ #include "nsINameSpaceManager.h"
+ #include "nsIContent.h"
+ #include "nsIDocument.h"
+ #include "nsTraceRefcnt.h"
+ #include "jArray.h"
+ #include "nsHtml5DocumentMode.h"
+ #include "nsHtml5ArrayCopy.h"
+@@ -91,27 +92,27 @@ nsHtml5AttributeName::SAME_LOCAL(nsIAtom
+   nsIAtom** arr = new nsIAtom*[4];
+   arr[0] = name;
+   arr[1] = name;
+   arr[2] = name;
+   return arr;
+ }
+ 
+ nsHtml5AttributeName* 
+-nsHtml5AttributeName::nameByBuffer(PRUnichar* buf, PRInt32 offset, PRInt32 length)
++nsHtml5AttributeName::nameByBuffer(PRUnichar* buf, PRInt32 offset, PRInt32 length, nsHtml5AtomTable* interner)
+ {
+   PRInt32 hash = nsHtml5AttributeName::bufToHash(buf, length);
+   PRInt32 index = nsHtml5AttributeName::ATTRIBUTE_HASHES.binarySearch(hash);
+   if (index < 0) {
+-    return nsHtml5AttributeName::createAttributeName(nsHtml5Portability::newLocalNameFromBuffer(buf, offset, length));
++    return nsHtml5AttributeName::createAttributeName(nsHtml5Portability::newLocalNameFromBuffer(buf, offset, length, interner));
+   } else {
+     nsHtml5AttributeName* attributeName = nsHtml5AttributeName::ATTRIBUTE_NAMES[index];
+     nsIAtom* name = attributeName->getLocal(NS_HTML5ATTRIBUTE_NAME_HTML);
+     if (!nsHtml5Portability::localEqualsBuffer(name, buf, offset, length)) {
+-      return nsHtml5AttributeName::createAttributeName(nsHtml5Portability::newLocalNameFromBuffer(buf, offset, length));
++      return nsHtml5AttributeName::createAttributeName(nsHtml5Portability::newLocalNameFromBuffer(buf, offset, length, interner));
+     }
+     return attributeName;
+   }
+ }
+ 
+ PRInt32 
+ nsHtml5AttributeName::bufToHash(PRUnichar* buf, PRInt32 len)
+ {
+diff --git a/parser/html/nsHtml5AttributeName.h b/parser/html/nsHtml5AttributeName.h
+--- a/parser/html/nsHtml5AttributeName.h
++++ b/parser/html/nsHtml5AttributeName.h
+@@ -25,16 +25,17 @@
+  * Please edit AttributeName.java instead and regenerate.
+  */
+ 
+ #ifndef nsHtml5AttributeName_h__
+ #define nsHtml5AttributeName_h__
+ 
+ #include "prtypes.h"
+ #include "nsIAtom.h"
++#include "nsHtml5AtomTable.h"
+ #include "nsString.h"
+ #include "nsINameSpaceManager.h"
+ #include "nsIContent.h"
+ #include "nsIDocument.h"
+ #include "nsTraceRefcnt.h"
+ #include "jArray.h"
+ #include "nsHtml5DocumentMode.h"
+ #include "nsHtml5ArrayCopy.h"
+@@ -69,17 +70,17 @@ class nsHtml5AttributeName
+     static nsIAtom** XMLNS_PREFIX;
+     static nsIAtom** XLINK_PREFIX;
+     static nsIAtom** XML_PREFIX;
+     static nsIAtom** SVG_DIFFERENT(nsIAtom* name, nsIAtom* camel);
+     static nsIAtom** MATH_DIFFERENT(nsIAtom* name, nsIAtom* camel);
+     static nsIAtom** COLONIFIED_LOCAL(nsIAtom* name, nsIAtom* suffix);
+   public:
+     static nsIAtom** SAME_LOCAL(nsIAtom* name);
+-    static nsHtml5AttributeName* nameByBuffer(PRUnichar* buf, PRInt32 offset, PRInt32 length);
++    static nsHtml5AttributeName* nameByBuffer(PRUnichar* buf, PRInt32 offset, PRInt32 length, nsHtml5AtomTable* interner);
+   private:
+     static PRInt32 bufToHash(PRUnichar* buf, PRInt32 len);
+     PRInt32* uri;
+     nsIAtom** local;
+     nsIAtom** prefix;
+   protected:
+     nsHtml5AttributeName(PRInt32* uri, nsIAtom** local, nsIAtom** prefix);
+   private:
+diff --git a/parser/html/nsHtml5ElementName.cpp b/parser/html/nsHtml5ElementName.cpp
+--- a/parser/html/nsHtml5ElementName.cpp
++++ b/parser/html/nsHtml5ElementName.cpp
+@@ -24,16 +24,17 @@
+  * THIS IS A GENERATED FILE. PLEASE DO NOT EDIT.
+  * Please edit ElementName.java instead and regenerate.
+  */
+ 
+ #define nsHtml5ElementName_cpp__
+ 
+ #include "prtypes.h"
+ #include "nsIAtom.h"
++#include "nsHtml5AtomTable.h"
+ #include "nsString.h"
+ #include "nsINameSpaceManager.h"
+ #include "nsIContent.h"
+ #include "nsIDocument.h"
+ #include "nsTraceRefcnt.h"
+ #include "jArray.h"
+ #include "nsHtml5DocumentMode.h"
+ #include "nsHtml5ArrayCopy.h"
+@@ -51,27 +52,27 @@
+ #include "nsHtml5UTF16Buffer.h"
+ #include "nsHtml5StateSnapshot.h"
+ #include "nsHtml5Portability.h"
+ 
+ #include "nsHtml5ElementName.h"
+ #include "nsHtml5ReleasableElementName.h"
+ 
+ nsHtml5ElementName* 
+-nsHtml5ElementName::elementNameByBuffer(jArray<PRUnichar,PRInt32> buf, PRInt32 offset, PRInt32 length)
++nsHtml5ElementName::elementNameByBuffer(jArray<PRUnichar,PRInt32> buf, PRInt32 offset, PRInt32 length, nsHtml5AtomTable* interner)
+ {
+   PRInt32 hash = nsHtml5ElementName::bufToHash(buf, length);
+   PRInt32 index = nsHtml5ElementName::ELEMENT_HASHES.binarySearch(hash);
+   if (index < 0) {
+-    return new nsHtml5ReleasableElementName(nsHtml5Portability::newLocalNameFromBuffer(buf, offset, length));
++    return new nsHtml5ReleasableElementName(nsHtml5Portability::newLocalNameFromBuffer(buf, offset, length, interner));
+   } else {
+     nsHtml5ElementName* elementName = nsHtml5ElementName::ELEMENT_NAMES[index];
+     nsIAtom* name = elementName->name;
+     if (!nsHtml5Portability::localEqualsBuffer(name, buf, offset, length)) {
+-      return new nsHtml5ReleasableElementName(nsHtml5Portability::newLocalNameFromBuffer(buf, offset, length));
++      return new nsHtml5ReleasableElementName(nsHtml5Portability::newLocalNameFromBuffer(buf, offset, length, interner));
+     }
+     return elementName;
+   }
+ }
+ 
+ PRInt32 
+ nsHtml5ElementName::bufToHash(jArray<PRUnichar,PRInt32> buf, PRInt32 len)
+ {
+diff --git a/parser/html/nsHtml5ElementName.h b/parser/html/nsHtml5ElementName.h
+--- a/parser/html/nsHtml5ElementName.h
++++ b/parser/html/nsHtml5ElementName.h
+@@ -25,16 +25,17 @@
+  * Please edit ElementName.java instead and regenerate.
+  */
+ 
+ #ifndef nsHtml5ElementName_h__
+ #define nsHtml5ElementName_h__
+ 
+ #include "prtypes.h"
+ #include "nsIAtom.h"
++#include "nsHtml5AtomTable.h"
+ #include "nsString.h"
+ #include "nsINameSpaceManager.h"
+ #include "nsIContent.h"
+ #include "nsIDocument.h"
+ #include "nsTraceRefcnt.h"
+ #include "jArray.h"
+ #include "nsHtml5DocumentMode.h"
+ #include "nsHtml5ArrayCopy.h"
+@@ -60,17 +61,17 @@ class nsHtml5ElementName
+   public:
+     static nsHtml5ElementName* ELT_NULL_ELEMENT_NAME;
+     nsIAtom* name;
+     nsIAtom* camelCaseName;
+     PRInt32 group;
+     PRBool special;
+     PRBool scoping;
+     PRBool fosterParenting;
+-    static nsHtml5ElementName* elementNameByBuffer(jArray<PRUnichar,PRInt32> buf, PRInt32 offset, PRInt32 length);
++    static nsHtml5ElementName* elementNameByBuffer(jArray<PRUnichar,PRInt32> buf, PRInt32 offset, PRInt32 length, nsHtml5AtomTable* interner);
+   private:
+     static PRInt32 bufToHash(jArray<PRUnichar,PRInt32> buf, PRInt32 len);
+     nsHtml5ElementName(nsIAtom* name, nsIAtom* camelCaseName, PRInt32 group, PRBool special, PRBool scoping, PRBool fosterParenting);
+   protected:
+     nsHtml5ElementName(nsIAtom* name);
+   public:
+     virtual void release();
+     ~nsHtml5ElementName();
+diff --git a/parser/html/nsHtml5HtmlAttributes.cpp b/parser/html/nsHtml5HtmlAttributes.cpp
+--- a/parser/html/nsHtml5HtmlAttributes.cpp
++++ b/parser/html/nsHtml5HtmlAttributes.cpp
+@@ -25,16 +25,17 @@
+  * THIS IS A GENERATED FILE. PLEASE DO NOT EDIT.
+  * Please edit HtmlAttributes.java instead and regenerate.
+  */
+ 
+ #define nsHtml5HtmlAttributes_cpp__
+ 
+ #include "prtypes.h"
+ #include "nsIAtom.h"
++#include "nsHtml5AtomTable.h"
+ #include "nsString.h"
+ #include "nsINameSpaceManager.h"
+ #include "nsIContent.h"
+ #include "nsIDocument.h"
+ #include "nsTraceRefcnt.h"
+ #include "jArray.h"
+ #include "nsHtml5DocumentMode.h"
+ #include "nsHtml5ArrayCopy.h"
+diff --git a/parser/html/nsHtml5HtmlAttributes.h b/parser/html/nsHtml5HtmlAttributes.h
+--- a/parser/html/nsHtml5HtmlAttributes.h
++++ b/parser/html/nsHtml5HtmlAttributes.h
+@@ -26,16 +26,17 @@
+  * Please edit HtmlAttributes.java instead and regenerate.
+  */
+ 
+ #ifndef nsHtml5HtmlAttributes_h__
+ #define nsHtml5HtmlAttributes_h__
+ 
+ #include "prtypes.h"
+ #include "nsIAtom.h"
++#include "nsHtml5AtomTable.h"
+ #include "nsString.h"
+ #include "nsINameSpaceManager.h"
+ #include "nsIContent.h"
+ #include "nsIDocument.h"
+ #include "nsTraceRefcnt.h"
+ #include "jArray.h"
+ #include "nsHtml5DocumentMode.h"
+ #include "nsHtml5ArrayCopy.h"
+diff --git a/parser/html/nsHtml5MetaScanner.cpp b/parser/html/nsHtml5MetaScanner.cpp
+--- a/parser/html/nsHtml5MetaScanner.cpp
++++ b/parser/html/nsHtml5MetaScanner.cpp
+@@ -25,16 +25,17 @@
+  * THIS IS A GENERATED FILE. PLEASE DO NOT EDIT.
+  * Please edit MetaScanner.java instead and regenerate.
+  */
+ 
+ #define nsHtml5MetaScanner_cpp__
+ 
+ #include "prtypes.h"
+ #include "nsIAtom.h"
++#include "nsHtml5AtomTable.h"
+ #include "nsString.h"
+ #include "nsINameSpaceManager.h"
+ #include "nsIContent.h"
+ #include "nsIDocument.h"
+ #include "nsTraceRefcnt.h"
+ #include "jArray.h"
+ #include "nsHtml5DocumentMode.h"
+ #include "nsHtml5ArrayCopy.h"
+diff --git a/parser/html/nsHtml5MetaScanner.h b/parser/html/nsHtml5MetaScanner.h
+--- a/parser/html/nsHtml5MetaScanner.h
++++ b/parser/html/nsHtml5MetaScanner.h
+@@ -26,16 +26,17 @@
+  * Please edit MetaScanner.java instead and regenerate.
+  */
+ 
+ #ifndef nsHtml5MetaScanner_h__
+ #define nsHtml5MetaScanner_h__
+ 
+ #include "prtypes.h"
+ #include "nsIAtom.h"
++#include "nsHtml5AtomTable.h"
+ #include "nsString.h"
+ #include "nsINameSpaceManager.h"
+ #include "nsIContent.h"
+ #include "nsIDocument.h"
+ #include "nsTraceRefcnt.h"
+ #include "jArray.h"
+ #include "nsHtml5DocumentMode.h"
+ #include "nsHtml5ArrayCopy.h"
+diff --git a/parser/html/nsHtml5Parser.cpp b/parser/html/nsHtml5Parser.cpp
+--- a/parser/html/nsHtml5Parser.cpp
++++ b/parser/html/nsHtml5Parser.cpp
+@@ -54,16 +54,17 @@
+ #include "nsIContentViewer.h"
+ #include "nsIScriptGlobalObjectOwner.h"
+ #include "nsIScriptSecurityManager.h"
+ #include "nsHtml5DocumentMode.h"
+ #include "nsHtml5Tokenizer.h"
+ #include "nsHtml5UTF16Buffer.h"
+ #include "nsHtml5TreeBuilder.h"
+ #include "nsHtml5Parser.h"
++#include "nsHtml5AtomTable.h"
+ 
+ //-------------- Begin ParseContinue Event Definition ------------------------
+ /*
+ The parser can be explicitly interrupted by calling Suspend(). This will cause
+ the parser to stop processing and allow the application to return to the event
+ loop. The parser will schedule a nsHtml5ParserContinueEvent which will call
+ the parser to process the remaining data after returning to the event loop.
+ */
+@@ -91,33 +92,34 @@ NS_INTERFACE_MAP_END
+ NS_IMPL_CYCLE_COLLECTING_ADDREF(nsHtml5Parser)
+ NS_IMPL_CYCLE_COLLECTING_RELEASE(nsHtml5Parser)
+ 
+ NS_IMPL_CYCLE_COLLECTION_CLASS(nsHtml5Parser)
+ 
+ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsHtml5Parser)
+   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR_AMBIGUOUS(mExecutor, nsIContentSink)
+   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR_AMBIGUOUS(mStreamParser, nsIStreamListener)
+-  tmp->mTreeBuilder->DoTraverse(cb);
+ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+ 
+ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsHtml5Parser)
+   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mExecutor)
+   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mStreamParser)
+-  tmp->mTreeBuilder->DoUnlink();
+ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+ 
+ nsHtml5Parser::nsHtml5Parser()
+   : mFirstBuffer(new nsHtml5UTF16Buffer(0))
+   , mLastBuffer(mFirstBuffer)
+   , mExecutor(new nsHtml5TreeOpExecutor())
+   , mTreeBuilder(new nsHtml5TreeBuilder(mExecutor))
+   , mTokenizer(new nsHtml5Tokenizer(mTreeBuilder))
++  , mAtomTable(new nsHtml5AtomTable())
+ {
+   mExecutor->SetTreeBuilder(mTreeBuilder);
++  mAtomTable->Init(); // we aren't checking for OOM anyway...
++  mTokenizer->setInterner(mAtomTable);
+   // There's a zeroing operator new for everything else
+ }
+ 
+ nsHtml5Parser::~nsHtml5Parser()
+ {
+   while (mFirstBuffer) {
+      nsHtml5UTF16Buffer* old = mFirstBuffer;
+      mFirstBuffer = mFirstBuffer->next;
+@@ -450,25 +452,29 @@ nsHtml5Parser::ParseFragment(const nsASt
+   NS_ASSERTION(target, "Target did not QI to nsIContent");
+ 
+   nsIDocument* doc = target->GetOwnerDoc();
+   NS_ENSURE_TRUE(doc, NS_ERROR_NOT_AVAILABLE);
+   
+   nsIURI* uri = doc->GetDocumentURI();
+   NS_ENSURE_TRUE(uri, NS_ERROR_NOT_AVAILABLE);
+ 
+-  Initialize(doc, uri, nsnull, nsnull);
++  nsCOMPtr<nsISupports> container = doc->GetContainer();
++  NS_ENSURE_TRUE(container, NS_ERROR_NOT_AVAILABLE);
++
++  Initialize(doc, uri, container, nsnull);
+ 
+   // Initialize() doesn't deal with base URI
+   mExecutor->SetBaseUriFromDocument();
+   mExecutor->ProhibitInterrupts();
+   mExecutor->SetParser(this);
+   mExecutor->SetNodeInfoManager(target->GetOwnerDoc()->NodeInfoManager());
+ 
+-  mTreeBuilder->setFragmentContext(aContextLocalName, aContextNamespace, target, aQuirks);
++  nsIContent* weakTarget = target;
++  mTreeBuilder->setFragmentContext(aContextLocalName, aContextNamespace, &weakTarget, aQuirks);
+   mFragmentMode = PR_TRUE;
+   
+   NS_PRECONDITION(mExecutor->GetLifeCycle() == NOT_STARTED, "Tried to start parse without initializing the parser properly.");
+   mTreeBuilder->setScriptingEnabled(mExecutor->IsScriptEnabled());
+   mTokenizer->start();
+   mExecutor->SetLifeCycle(PARSING);
+   if (!aSourceBuffer.IsEmpty()) {
+     PRBool lastWasCR = PR_FALSE;
+@@ -484,16 +490,17 @@ nsHtml5Parser::ParseFragment(const nsASt
+       }
+     }
+   }
+   mExecutor->SetLifeCycle(TERMINATED);
+   mTokenizer->eof();
+   mExecutor->Flush();
+   mTokenizer->end();
+   mExecutor->DropParserAndPerfHint();
++  mAtomTable->Clear();
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ nsHtml5Parser::BuildModel(void)
+ {
+   // XXX who calls this? Should this be a no-op?
+   ParseUntilSuspend();
+@@ -513,16 +520,17 @@ nsHtml5Parser::Reset()
+   mExecutor->Reset();
+   mLastWasCR = PR_FALSE;
+   mFragmentMode = PR_FALSE;
+   UnblockParser();
+   mSuspending = PR_FALSE;
+   mStreamParser = nsnull;
+   mRootContextKey = nsnull;
+   mContinueEvent = nsnull;  // weak ref
++  mAtomTable->Clear(); // should be already cleared in the fragment case anyway
+   // Portable parser objects
+   while (mFirstBuffer->next) {
+     nsHtml5UTF16Buffer* oldBuf = mFirstBuffer;
+     mFirstBuffer = mFirstBuffer->next;
+     delete oldBuf;
+   }
+   mFirstBuffer->setStart(0);
+   mFirstBuffer->setEnd(0);
+diff --git a/parser/html/nsHtml5Parser.h b/parser/html/nsHtml5Parser.h
+--- a/parser/html/nsHtml5Parser.h
++++ b/parser/html/nsHtml5Parser.h
+@@ -55,16 +55,17 @@
+ #include "nsIHTMLDocument.h"
+ #include "nsIUnicharStreamListener.h"
+ #include "nsCycleCollectionParticipant.h"
+ #include "nsIInputStream.h"
+ #include "nsDetectionConfident.h"
+ #include "nsHtml5UTF16Buffer.h"
+ #include "nsHtml5TreeOpExecutor.h"
+ #include "nsHtml5StreamParser.h"
++#include "nsHtml5AtomTable.h"
+ 
+ class nsHtml5Parser : public nsIParser {
+   public:
+     NS_DECL_AND_IMPL_ZEROING_OPERATOR_NEW
+     NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+ 
+     NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsHtml5Parser, nsIParser)
+ 
+@@ -333,27 +334,32 @@ class nsHtml5Parser : public nsIParser {
+      * The last buffer in the pending UTF-16 buffer queue
+      */
+     nsHtml5UTF16Buffer*           mLastBuffer; // weak ref; always points to
+                       // a buffer of the size NS_HTML5_PARSER_READ_BUFFER_SIZE
+ 
+     /**
+      * The tree operation executor
+      */
+-    nsRefPtr<nsHtml5TreeOpExecutor> mExecutor;
++    nsRefPtr<nsHtml5TreeOpExecutor>     mExecutor;
+ 
+     /**
+      * The HTML5 tree builder
+      */
+     const nsAutoPtr<nsHtml5TreeBuilder> mTreeBuilder;
+ 
+     /**
+      * The HTML5 tokenizer
+      */
+     const nsAutoPtr<nsHtml5Tokenizer>   mTokenizer;
+ 
+     /**
+      * The stream parser.
+      */
+-    nsRefPtr<nsHtml5StreamParser> mStreamParser;
++    nsRefPtr<nsHtml5StreamParser>       mStreamParser;
++
++    /**
++     * The scoped atom service
++     */
++    const nsAutoPtr<nsHtml5AtomTable>   mAtomTable;
+ 
+ };
+ #endif
+diff --git a/parser/html/nsHtml5Portability.cpp b/parser/html/nsHtml5Portability.cpp
+--- a/parser/html/nsHtml5Portability.cpp
++++ b/parser/html/nsHtml5Portability.cpp
+@@ -37,20 +37,21 @@
+ 
+ #include "prtypes.h"
+ #include "nsIAtom.h"
+ #include "nsString.h"
+ #include "jArray.h"
+ #include "nsHtml5Portability.h"
+ 
+ nsIAtom*
+-nsHtml5Portability::newLocalNameFromBuffer(PRUnichar* buf, PRInt32 offset, PRInt32 length)
++nsHtml5Portability::newLocalNameFromBuffer(PRUnichar* buf, PRInt32 offset, PRInt32 length, nsHtml5AtomTable* interner)
+ {
+   NS_ASSERTION(!offset, "The offset should always be zero here.");
+-  return NS_NewAtom(nsDependentSubstring(buf, buf + length));
++  NS_ASSERTION(interner, "Didn't get an atom service.");
++  return interner->GetAtom(nsDependentSubstring(buf, buf + length));
+ }
+ 
+ nsString*
+ nsHtml5Portability::newStringFromBuffer(PRUnichar* buf, PRInt32 offset, PRInt32 length)
+ {
+   return new nsString(buf + offset, length);
+ }
+ 
+@@ -96,38 +97,38 @@ nsHtml5Portability::newCharArrayFromStri
+ }
+ 
+ void
+ nsHtml5Portability::releaseString(nsString* str)
+ {
+   delete str;
+ }
+ 
++// XXX useless code
+ void
+ nsHtml5Portability::retainLocal(nsIAtom* local)
+ {
+-  NS_IF_ADDREF(local);
+ }
+ 
++// XXX useless code
+ void
+ nsHtml5Portability::releaseLocal(nsIAtom* local)
+ {
+-  NS_IF_RELEASE(local);
+ }
+ 
++// XXX Useless code
+ void
+-nsHtml5Portability::retainElement(nsIContent* element)
++nsHtml5Portability::retainElement(nsIContent** element)
+ {
+-  NS_IF_ADDREF(element);
+ }
+ 
++// XXX Useless code
+ void
+-nsHtml5Portability::releaseElement(nsIContent* element)
++nsHtml5Portability::releaseElement(nsIContent** element)
+ {
+-  NS_IF_RELEASE(element);
+ }
+ 
+ PRBool
+ nsHtml5Portability::localEqualsBuffer(nsIAtom* local, PRUnichar* buf, PRInt32 offset, PRInt32 length)
+ {
+   return local->Equals(nsDependentSubstring(buf + offset, buf + offset + length));
+ }
+ 
+diff --git a/parser/html/nsHtml5Portability.h b/parser/html/nsHtml5Portability.h
+--- a/parser/html/nsHtml5Portability.h
++++ b/parser/html/nsHtml5Portability.h
+@@ -25,16 +25,17 @@
+  * Please edit Portability.java instead and regenerate.
+  */
+ 
+ #ifndef nsHtml5Portability_h__
+ #define nsHtml5Portability_h__
+ 
+ #include "prtypes.h"
+ #include "nsIAtom.h"
++#include "nsHtml5AtomTable.h"
+ #include "nsString.h"
+ #include "nsINameSpaceManager.h"
+ #include "nsIContent.h"
+ #include "nsIDocument.h"
+ #include "nsTraceRefcnt.h"
+ #include "jArray.h"
+ #include "nsHtml5DocumentMode.h"
+ #include "nsHtml5ArrayCopy.h"
+@@ -53,28 +54,28 @@ class nsHtml5ElementName;
+ class nsHtml5HtmlAttributes;
+ class nsHtml5UTF16Buffer;
+ class nsHtml5StateSnapshot;
+ 
+ 
+ class nsHtml5Portability
+ {
+   public:
+-    static nsIAtom* newLocalNameFromBuffer(PRUnichar* buf, PRInt32 offset, PRInt32 length);
++    static nsIAtom* newLocalNameFromBuffer(PRUnichar* buf, PRInt32 offset, PRInt32 length, nsHtml5AtomTable* interner);
+     static nsString* newStringFromBuffer(PRUnichar* buf, PRInt32 offset, PRInt32 length);
+     static nsString* newEmptyString();
+     static nsString* newStringFromLiteral(const char* literal);
+     static nsString* newStringFromString(nsString* string);
+     static jArray<PRUnichar,PRInt32> newCharArrayFromLocal(nsIAtom* local);
+     static jArray<PRUnichar,PRInt32> newCharArrayFromString(nsString* string);
+     static void releaseString(nsString* str);
+     static void retainLocal(nsIAtom* local);
+     static void releaseLocal(nsIAtom* local);
+-    static void retainElement(nsIContent* elt);
+-    static void releaseElement(nsIContent* elt);
++    static void retainElement(nsIContent** elt);
++    static void releaseElement(nsIContent** elt);
+     static PRBool localEqualsBuffer(nsIAtom* local, PRUnichar* buf, PRInt32 offset, PRInt32 length);
+     static PRBool lowerCaseLiteralIsPrefixOfIgnoreAsciiCaseString(const char* lowerCaseLiteral, nsString* string);
+     static PRBool lowerCaseLiteralEqualsIgnoreAsciiCaseString(const char* lowerCaseLiteral, nsString* string);
+     static PRBool literalEqualsString(const char* literal, nsString* string);
+     static jArray<PRUnichar,PRInt32> isIndexPrompt();
+     static void initializeStatics();
+     static void releaseStatics();
+ };
+diff --git a/parser/html/nsHtml5StackNode.cpp b/parser/html/nsHtml5StackNode.cpp
+--- a/parser/html/nsHtml5StackNode.cpp
++++ b/parser/html/nsHtml5StackNode.cpp
+@@ -25,16 +25,17 @@
+  * THIS IS A GENERATED FILE. PLEASE DO NOT EDIT.
+  * Please edit StackNode.java instead and regenerate.
+  */
+ 
+ #define nsHtml5StackNode_cpp__
+ 
+ #include "prtypes.h"
+ #include "nsIAtom.h"
++#include "nsHtml5AtomTable.h"
+ #include "nsString.h"
+ #include "nsINameSpaceManager.h"
+ #include "nsIContent.h"
+ #include "nsIDocument.h"
+ #include "nsTraceRefcnt.h"
+ #include "jArray.h"
+ #include "nsHtml5DocumentMode.h"
+ #include "nsHtml5ArrayCopy.h"
+@@ -51,17 +52,17 @@
+ #include "nsHtml5HtmlAttributes.h"
+ #include "nsHtml5UTF16Buffer.h"
+ #include "nsHtml5StateSnapshot.h"
+ #include "nsHtml5Portability.h"
+ 
+ #include "nsHtml5StackNode.h"
+ 
+ 
+-nsHtml5StackNode::nsHtml5StackNode(PRInt32 group, PRInt32 ns, nsIAtom* name, nsIContent* node, PRBool scoping, PRBool special, PRBool fosterParenting, nsIAtom* popName, nsHtml5HtmlAttributes* attributes)
++nsHtml5StackNode::nsHtml5StackNode(PRInt32 group, PRInt32 ns, nsIAtom* name, nsIContent** node, PRBool scoping, PRBool special, PRBool fosterParenting, nsIAtom* popName, nsHtml5HtmlAttributes* attributes)
+   : group(group),
+     name(name),
+     popName(popName),
+     ns(ns),
+     node(node),
+     scoping(scoping),
+     special(special),
+     fosterParenting(fosterParenting),
+@@ -70,17 +71,17 @@ nsHtml5StackNode::nsHtml5StackNode(PRInt
+ {
+   MOZ_COUNT_CTOR(nsHtml5StackNode);
+   nsHtml5Portability::retainLocal(name);
+   nsHtml5Portability::retainLocal(popName);
+   nsHtml5Portability::retainElement(node);
+ }
+ 
+ 
+-nsHtml5StackNode::nsHtml5StackNode(PRInt32 ns, nsHtml5ElementName* elementName, nsIContent* node)
++nsHtml5StackNode::nsHtml5StackNode(PRInt32 ns, nsHtml5ElementName* elementName, nsIContent** node)
+   : group(elementName->group),
+     name(elementName->name),
+     popName(elementName->name),
+     ns(ns),
+     node(node),
+     scoping(elementName->scoping),
+     special(elementName->special),
+     fosterParenting(elementName->fosterParenting),
+@@ -89,17 +90,17 @@ nsHtml5StackNode::nsHtml5StackNode(PRInt
+ {
+   MOZ_COUNT_CTOR(nsHtml5StackNode);
+   nsHtml5Portability::retainLocal(name);
+   nsHtml5Portability::retainLocal(popName);
+   nsHtml5Portability::retainElement(node);
+ }
+ 
+ 
+-nsHtml5StackNode::nsHtml5StackNode(PRInt32 ns, nsHtml5ElementName* elementName, nsIContent* node, nsHtml5HtmlAttributes* attributes)
++nsHtml5StackNode::nsHtml5StackNode(PRInt32 ns, nsHtml5ElementName* elementName, nsIContent** node, nsHtml5HtmlAttributes* attributes)
+   : group(elementName->group),
+     name(elementName->name),
+     popName(elementName->name),
+     ns(ns),
+     node(node),
+     scoping(elementName->scoping),
+     special(elementName->special),
+     fosterParenting(elementName->fosterParenting),
+@@ -108,17 +109,17 @@ nsHtml5StackNode::nsHtml5StackNode(PRInt
+ {
+   MOZ_COUNT_CTOR(nsHtml5StackNode);
+   nsHtml5Portability::retainLocal(name);
+   nsHtml5Portability::retainLocal(popName);
+   nsHtml5Portability::retainElement(node);
+ }
+ 
+ 
+-nsHtml5StackNode::nsHtml5StackNode(PRInt32 ns, nsHtml5ElementName* elementName, nsIContent* node, nsIAtom* popName)
++nsHtml5StackNode::nsHtml5StackNode(PRInt32 ns, nsHtml5ElementName* elementName, nsIContent** node, nsIAtom* popName)
+   : group(elementName->group),
+     name(elementName->name),
+     popName(popName),
+     ns(ns),
+     node(node),
+     scoping(elementName->scoping),
+     special(elementName->special),
+     fosterParenting(elementName->fosterParenting),
+@@ -127,17 +128,17 @@ nsHtml5StackNode::nsHtml5StackNode(PRInt
+ {
+   MOZ_COUNT_CTOR(nsHtml5StackNode);
+   nsHtml5Portability::retainLocal(name);
+   nsHtml5Portability::retainLocal(popName);
+   nsHtml5Portability::retainElement(node);
+ }
+ 
+ 
+-nsHtml5StackNode::nsHtml5StackNode(PRInt32 ns, nsHtml5ElementName* elementName, nsIContent* node, nsIAtom* popName, PRBool scoping)
++nsHtml5StackNode::nsHtml5StackNode(PRInt32 ns, nsHtml5ElementName* elementName, nsIContent** node, nsIAtom* popName, PRBool scoping)
+   : group(elementName->group),
+     name(elementName->name),
+     popName(popName),
+     ns(ns),
+     node(node),
+     scoping(scoping),
+     special(PR_FALSE),
+     fosterParenting(PR_FALSE),
+@@ -187,10 +188,8 @@ nsHtml5StackNode::initializeStatics()
+ }
+ 
+ void
+ nsHtml5StackNode::releaseStatics()
+ {
+ }
+ 
+ 
+-#include "nsHtml5StackNodeCppSupplement.h"
+-
+diff --git a/parser/html/nsHtml5StackNode.h b/parser/html/nsHtml5StackNode.h
+--- a/parser/html/nsHtml5StackNode.h
++++ b/parser/html/nsHtml5StackNode.h
+@@ -26,16 +26,17 @@
+  * Please edit StackNode.java instead and regenerate.
+  */
+ 
+ #ifndef nsHtml5StackNode_h__
+ #define nsHtml5StackNode_h__
+ 
+ #include "prtypes.h"
+ #include "nsIAtom.h"
++#include "nsHtml5AtomTable.h"
+ #include "nsString.h"
+ #include "nsINameSpaceManager.h"
+ #include "nsIContent.h"
+ #include "nsIDocument.h"
+ #include "nsTraceRefcnt.h"
+ #include "jArray.h"
+ #include "nsHtml5DocumentMode.h"
+ #include "nsHtml5ArrayCopy.h"
+@@ -59,37 +60,35 @@ class nsHtml5Portability;
+ 
+ class nsHtml5StackNode
+ {
+   public:
+     PRInt32 group;
+     nsIAtom* name;
+     nsIAtom* popName;
+     PRInt32 ns;
+-    nsIContent* node;
++    nsIContent** node;
+     PRBool scoping;
+     PRBool special;
+     PRBool fosterParenting;
+     nsHtml5HtmlAttributes* attributes;
+   private:
+     PRInt32 refcount;
+   public:
+-    nsHtml5StackNode(PRInt32 group, PRInt32 ns, nsIAtom* name, nsIContent* node, PRBool scoping, PRBool special, PRBool fosterParenting, nsIAtom* popName, nsHtml5HtmlAttributes* attributes);
+-    nsHtml5StackNode(PRInt32 ns, nsHtml5ElementName* elementName, nsIContent* node);
+-    nsHtml5StackNode(PRInt32 ns, nsHtml5ElementName* elementName, nsIContent* node, nsHtml5HtmlAttributes* attributes);
+-    nsHtml5StackNode(PRInt32 ns, nsHtml5ElementName* elementName, nsIContent* node, nsIAtom* popName);
+-    nsHtml5StackNode(PRInt32 ns, nsHtml5ElementName* elementName, nsIContent* node, nsIAtom* popName, PRBool scoping);
++    nsHtml5StackNode(PRInt32 group, PRInt32 ns, nsIAtom* name, nsIContent** node, PRBool scoping, PRBool special, PRBool fosterParenting, nsIAtom* popName, nsHtml5HtmlAttributes* attributes);
++    nsHtml5StackNode(PRInt32 ns, nsHtml5ElementName* elementName, nsIContent** node);
++    nsHtml5StackNode(PRInt32 ns, nsHtml5ElementName* elementName, nsIContent** node, nsHtml5HtmlAttributes* attributes);
++    nsHtml5StackNode(PRInt32 ns, nsHtml5ElementName* elementName, nsIContent** node, nsIAtom* popName);
++    nsHtml5StackNode(PRInt32 ns, nsHtml5ElementName* elementName, nsIContent** node, nsIAtom* popName, PRBool scoping);
+     ~nsHtml5StackNode();
+     void dropAttributes();
+     void retain();
+     void release();
+     static void initializeStatics();
+     static void releaseStatics();
+-
+-#include "nsHtml5StackNodeHSupplement.h"
+ };
+ 
+ #ifdef nsHtml5StackNode_cpp__
+ #endif
+ 
+ 
+ 
+ #endif
+diff --git a/parser/html/nsHtml5StackNodeCppSupplement.h b/parser/html/nsHtml5StackNodeCppSupplement.h
+deleted file mode 100644
+--- a/parser/html/nsHtml5StackNodeCppSupplement.h
++++ /dev/null
+@@ -1,56 +0,0 @@
+-/* ***** BEGIN LICENSE BLOCK *****
+- * Version: MPL 1.1/GPL 2.0/LGPL 2.1
+- *
+- * The contents of this file are subject to the Mozilla Public License Version
+- * 1.1 (the "License"); you may not use this file except in compliance with
+- * the License. You may obtain a copy of the License at
+- * http://www.mozilla.org/MPL/
+- *
+- * Software distributed under the License is distributed on an "AS IS" basis,
+- * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+- * for the specific language governing rights and limitations under the
+- * License.
+- *
+- * The Original Code is HTML Parser C++ Translator code.
+- *
+- * The Initial Developer of the Original Code is
+- * Mozilla Foundation.
+- * Portions created by the Initial Developer are Copyright (C) 2009
+- * the Initial Developer. All Rights Reserved.
+- *
+- * Contributor(s):
+- *   Henri Sivonen <hsivonen@iki.fi>
+- *
+- * Alternatively, the contents of this file may be used under the terms of
+- * either the GNU General Public License Version 2 or later (the "GPL"), or
+- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+- * in which case the provisions of the GPL or the LGPL are applicable instead
+- * of those above. If you wish to allow use of your version of this file only
+- * under the terms of either the GPL or the LGPL, and not to allow others to
+- * use your version of this file under the terms of the MPL, indicate your
+- * decision by deleting the provisions above and replace them with the notice
+- * and other provisions required by the GPL or the LGPL. If you do not delete
+- * the provisions above, a recipient may use your version of this file under
+- * the terms of any one of the MPL, the GPL or the LGPL.
+- *
+- * ***** END LICENSE BLOCK ***** */
+-
+-NS_IMPL_CYCLE_COLLECTION_CLASS(nsHtml5StackNode)
+-
+-NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_NATIVE(nsHtml5StackNode)
+-  NS_IF_RELEASE(tmp->node);
+-NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+-
+-NS_IMETHODIMP
+-nsHtml5StackNode::NS_CYCLE_COLLECTION_INNERCLASS::Traverse
+-  (void *p, nsCycleCollectionTraversalCallback &cb)
+-{
+-  nsHtml5StackNode *tmp = static_cast<nsHtml5StackNode*>(p);
+-  NS_IMPL_CYCLE_COLLECTION_DESCRIBE(nsHtml5StackNode, tmp->refcount)
+-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_RAWPTR(node);
+-  return NS_OK;
+-}
+-
+-NS_IMPL_CYCLE_COLLECTION_ROOT_NATIVE(nsHtml5StackNode, retain)
+-
+-NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(nsHtml5StackNode, release)
+diff --git a/parser/html/nsHtml5StackNodeHSupplement.h b/parser/html/nsHtml5StackNodeHSupplement.h
+deleted file mode 100644
+--- a/parser/html/nsHtml5StackNodeHSupplement.h
++++ /dev/null
+@@ -1,38 +0,0 @@
+-/* ***** BEGIN LICENSE BLOCK *****
+- * Version: MPL 1.1/GPL 2.0/LGPL 2.1
+- *
+- * The contents of this file are subject to the Mozilla Public License Version
+- * 1.1 (the "License"); you may not use this file except in compliance with
+- * the License. You may obtain a copy of the License at
+- * http://www.mozilla.org/MPL/
+- *
+- * Software distributed under the License is distributed on an "AS IS" basis,
+- * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+- * for the specific language governing rights and limitations under the
+- * License.
+- *
+- * The Original Code is HTML Parser C++ Translator code.
+- *
+- * The Initial Developer of the Original Code is
+- * Mozilla Foundation.
+- * Portions created by the Initial Developer are Copyright (C) 2009
+- * the Initial Developer. All Rights Reserved.
+- *
+- * Contributor(s):
+- *   Henri Sivonen <hsivonen@iki.fi>
+- *
+- * Alternatively, the contents of this file may be used under the terms of
+- * either the GNU General Public License Version 2 or later (the "GPL"), or
+- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+- * in which case the provisions of the GPL or the LGPL are applicable instead
+- * of those above. If you wish to allow use of your version of this file only
+- * under the terms of either the GPL or the LGPL, and not to allow others to
+- * use your version of this file under the terms of the MPL, indicate your
+- * decision by deleting the provisions above and replace them with the notice
+- * and other provisions required by the GPL or the LGPL. If you do not delete
+- * the provisions above, a recipient may use your version of this file under
+- * the terms of any one of the MPL, the GPL or the LGPL.
+- *
+- * ***** END LICENSE BLOCK ***** */
+-
+-NS_DECL_CYCLE_COLLECTION_NATIVE_CLASS(nsHtml5StackNode)
+diff --git a/parser/html/nsHtml5StateSnapshot.cpp b/parser/html/nsHtml5StateSnapshot.cpp
+--- a/parser/html/nsHtml5StateSnapshot.cpp
++++ b/parser/html/nsHtml5StateSnapshot.cpp
+@@ -24,16 +24,17 @@
+  * THIS IS A GENERATED FILE. PLEASE DO NOT EDIT.
+  * Please edit StateSnapshot.java instead and regenerate.
+  */
+ 
+ #define nsHtml5StateSnapshot_cpp__
+ 
+ #include "prtypes.h"
+ #include "nsIAtom.h"
++#include "nsHtml5AtomTable.h"
+ #include "nsString.h"
+ #include "nsINameSpaceManager.h"
+ #include "nsIContent.h"
+ #include "nsIDocument.h"
+ #include "nsTraceRefcnt.h"
+ #include "jArray.h"
+ #include "nsHtml5DocumentMode.h"
+ #include "nsHtml5ArrayCopy.h"
+@@ -50,17 +51,17 @@
+ #include "nsHtml5HtmlAttributes.h"
+ #include "nsHtml5StackNode.h"
+ #include "nsHtml5UTF16Buffer.h"
+ #include "nsHtml5Portability.h"
+ 
+ #include "nsHtml5StateSnapshot.h"
+ 
+ 
+-nsHtml5StateSnapshot::nsHtml5StateSnapshot(jArray<nsHtml5StackNode*,PRInt32> stack, jArray<nsHtml5StackNode*,PRInt32> listOfActiveFormattingElements, nsIContent* formPointer)
++nsHtml5StateSnapshot::nsHtml5StateSnapshot(jArray<nsHtml5StackNode*,PRInt32> stack, jArray<nsHtml5StackNode*,PRInt32> listOfActiveFormattingElements, nsIContent** formPointer)
+   : stack(stack),
+     listOfActiveFormattingElements(listOfActiveFormattingElements),
+     formPointer(formPointer)
+ {
+   MOZ_COUNT_CTOR(nsHtml5StateSnapshot);
+ }
+ 
+ 
+diff --git a/parser/html/nsHtml5StateSnapshot.h b/parser/html/nsHtml5StateSnapshot.h
+--- a/parser/html/nsHtml5StateSnapshot.h
++++ b/parser/html/nsHtml5StateSnapshot.h
+@@ -25,16 +25,17 @@
+  * Please edit StateSnapshot.java instead and regenerate.
+  */
+ 
+ #ifndef nsHtml5StateSnapshot_h__
+ #define nsHtml5StateSnapshot_h__
+ 
+ #include "prtypes.h"
+ #include "nsIAtom.h"
++#include "nsHtml5AtomTable.h"
+ #include "nsString.h"
+ #include "nsINameSpaceManager.h"
+ #include "nsIContent.h"
+ #include "nsIDocument.h"
+ #include "nsTraceRefcnt.h"
+ #include "jArray.h"
+ #include "nsHtml5DocumentMode.h"
+ #include "nsHtml5ArrayCopy.h"
+@@ -53,20 +54,20 @@ class nsHtml5ElementName;
+ class nsHtml5HtmlAttributes;
+ class nsHtml5UTF16Buffer;
+ class nsHtml5Portability;
+ 
+ 
+ class nsHtml5StateSnapshot
+ {
+   public:
+-    nsHtml5StateSnapshot(jArray<nsHtml5StackNode*,PRInt32> stack, jArray<nsHtml5StackNode*,PRInt32> listOfActiveFormattingElements, nsIContent* formPointer);
++    nsHtml5StateSnapshot(jArray<nsHtml5StackNode*,PRInt32> stack, jArray<nsHtml5StackNode*,PRInt32> listOfActiveFormattingElements, nsIContent** formPointer);
+     jArray<nsHtml5StackNode*,PRInt32> stack;
+     jArray<nsHtml5StackNode*,PRInt32> listOfActiveFormattingElements;
+-    nsIContent* formPointer;
++    nsIContent** formPointer;
+     ~nsHtml5StateSnapshot();
+     static void initializeStatics();
+     static void releaseStatics();
+ };
+ 
+ #ifdef nsHtml5StateSnapshot_cpp__
+ #endif
+ 
+diff --git a/parser/html/nsHtml5StreamParser.cpp b/parser/html/nsHtml5StreamParser.cpp
+--- a/parser/html/nsHtml5StreamParser.cpp
++++ b/parser/html/nsHtml5StreamParser.cpp
+@@ -576,17 +576,20 @@ nsHtml5StreamParser::ParseUntilSuspend()
+             return;
+           case PARSING:
+             // never release the last buffer. instead just zero its indeces for refill
+             mFirstBuffer->setStart(0);
+             mFirstBuffer->setEnd(0);
+             return; // no more data for now but expecting more
+           case STREAM_ENDING:
+             mDone = PR_TRUE;
+-            mExecutor->DidBuildModel(PR_FALSE);
++            {
++              nsRefPtr<nsHtml5StreamParser> kungFuDeathGrip(this);
++              mExecutor->DidBuildModel(PR_FALSE);
++            }
+             return; // no more data and not expecting more
+           default:
+             NS_NOTREACHED("It should be impossible to reach this.");
+             return;
+         }
+       } else {
+         nsHtml5UTF16Buffer* oldBuf = mFirstBuffer;
+         mFirstBuffer = mFirstBuffer->next;
+diff --git a/parser/html/nsHtml5Tokenizer.cpp b/parser/html/nsHtml5Tokenizer.cpp
+--- a/parser/html/nsHtml5Tokenizer.cpp
++++ b/parser/html/nsHtml5Tokenizer.cpp
+@@ -27,16 +27,17 @@
+  * THIS IS A GENERATED FILE. PLEASE DO NOT EDIT.
+  * Please edit Tokenizer.java instead and regenerate.
+  */
+ 
+ #define nsHtml5Tokenizer_cpp__
+ 
+ #include "prtypes.h"
+ #include "nsIAtom.h"
++#include "nsHtml5AtomTable.h"
+ #include "nsString.h"
+ #include "nsINameSpaceManager.h"
+ #include "nsIContent.h"
+ #include "nsIDocument.h"
+ #include "nsTraceRefcnt.h"
+ #include "jArray.h"
+ #include "nsHtml5DocumentMode.h"
+ #include "nsHtml5ArrayCopy.h"
+@@ -67,22 +68,31 @@ static PRUnichar const IFRAME_ARR_DATA[]
+ static PRUnichar const NOEMBED_ARR_DATA[] = { 'n', 'o', 'e', 'm', 'b', 'e', 'd' };
+ static PRUnichar const NOSCRIPT_ARR_DATA[] = { 'n', 'o', 's', 'c', 'r', 'i', 'p', 't' };
+ static PRUnichar const NOFRAMES_ARR_DATA[] = { 'n', 'o', 'f', 'r', 'a', 'm', 'e', 's' };
+ 
+ nsHtml5Tokenizer::nsHtml5Tokenizer(nsHtml5TreeBuilder* tokenHandler)
+   : tokenHandler(tokenHandler),
+     encodingDeclarationHandler(nsnull),
+     bmpChar(jArray<PRUnichar,PRInt32>(1)),
+-    astralChar(jArray<PRUnichar,PRInt32>(2))
++    astralChar(jArray<PRUnichar,PRInt32>(2)),
++    attributes(nsnull),
++    tagName(nsnull),
++    attributeName(nsnull)
+ {
+   MOZ_COUNT_CTOR(nsHtml5Tokenizer);
+ }
+ 
+ void 
++nsHtml5Tokenizer::setInterner(nsHtml5AtomTable* interner)
++{
++  this->interner = interner;
++}
++
++void 
+ nsHtml5Tokenizer::initLocation(nsString* newPublicId, nsString* newSystemId)
+ {
+   this->systemId = newSystemId;
+   this->publicId = newPublicId;
+ }
+ 
+ 
+ nsHtml5Tokenizer::~nsHtml5Tokenizer()
+@@ -95,17 +105,17 @@ nsHtml5Tokenizer::~nsHtml5Tokenizer()
+ void 
+ nsHtml5Tokenizer::setContentModelFlag(PRInt32 contentModelFlag, nsIAtom* contentModelElement)
+ {
+   this->stateSave = contentModelFlag;
+   if (contentModelFlag == NS_HTML5TOKENIZER_DATA) {
+     return;
+   }
+   jArray<PRUnichar,PRInt32> asArray = nsHtml5Portability::newCharArrayFromLocal(contentModelElement);
+-  this->contentModelElement = nsHtml5ElementName::elementNameByBuffer(asArray, 0, asArray.length);
++  this->contentModelElement = nsHtml5ElementName::elementNameByBuffer(asArray, 0, asArray.length, interner);
+   asArray.release();
+   contentModelElementToArray();
+ }
+ 
+ void 
+ nsHtml5Tokenizer::setContentModelFlag(PRInt32 contentModelFlag, nsHtml5ElementName* contentModelElement)
+ {
+   this->stateSave = contentModelFlag;
+@@ -224,17 +234,17 @@ nsString*
+ nsHtml5Tokenizer::strBufToString()
+ {
+   return nsHtml5Portability::newStringFromBuffer(strBuf, 0, strBufLen);
+ }
+ 
+ void 
+ nsHtml5Tokenizer::strBufToDoctypeName()
+ {
+-  doctypeName = nsHtml5Portability::newLocalNameFromBuffer(strBuf, 0, strBufLen);
++  doctypeName = nsHtml5Portability::newLocalNameFromBuffer(strBuf, 0, strBufLen, interner);
+ }
+ 
+ void 
+ nsHtml5Tokenizer::emitStrBuf()
+ {
+   if (strBufLen > 0) {
+     tokenHandler->characters(strBuf, 0, strBufLen);
+   }
+@@ -337,46 +347,51 @@ nsHtml5Tokenizer::flushChars(PRUnichar* 
+     tokenHandler->characters(buf, cstart, pos - cstart);
+   }
+   cstart = 0x7fffffff;
+ }
+ 
+ void 
+ nsHtml5Tokenizer::resetAttributes()
+ {
+-  attributes->clear(0);
++  attributes = nsnull;
+ }
+ 
+ void 
+ nsHtml5Tokenizer::strBufToElementNameString()
+ {
+-  tagName = nsHtml5ElementName::elementNameByBuffer(strBuf, 0, strBufLen);
++  tagName = nsHtml5ElementName::elementNameByBuffer(strBuf, 0, strBufLen, interner);
+ }
+ 
+ PRInt32 
+ nsHtml5Tokenizer::emitCurrentTagToken(PRBool selfClosing, PRInt32 pos)
+ {
+   cstart = pos + 1;
+ 
+   stateSave = NS_HTML5TOKENIZER_DATA;
+   nsHtml5HtmlAttributes* attrs = (!attributes ? nsHtml5HtmlAttributes::EMPTY_ATTRIBUTES : attributes);
+   if (endTag) {
+ 
+     tokenHandler->endTag(tagName);
+   } else {
+     tokenHandler->startTag(tagName, attrs, selfClosing);
+   }
++  tagName->release();
++  tagName = nsnull;
+   resetAttributes();
+   return stateSave;
+ }
+ 
+ void 
+ nsHtml5Tokenizer::attributeNameComplete()
+ {
+-  attributeName = nsHtml5AttributeName::nameByBuffer(strBuf, 0, strBufLen);
++  attributeName = nsHtml5AttributeName::nameByBuffer(strBuf, 0, strBufLen, interner);
++  if (!attributes) {
++    attributes = new nsHtml5HtmlAttributes(0);
++  }
+   if (attributes->contains(attributeName)) {
+ 
+     attributeName->release();
+     attributeName = nsnull;
+   }
+ }
+ 
+ void 
+@@ -421,17 +436,28 @@ nsHtml5Tokenizer::start()
+   lo = 0;
+   hi = (nsHtml5NamedCharacters::NAMES.length - 1);
+   candidate = -1;
+   strBufMark = 0;
+   prevValue = -1;
+   value = 0;
+   seenDigits = PR_FALSE;
+   shouldSuspend = PR_FALSE;
+-  attributes = new nsHtml5HtmlAttributes(0);
++  if (!!tagName) {
++    tagName->release();
++    tagName = nsnull;
++  }
++  if (!!attributeName) {
++    attributeName->release();
++    attributeName = nsnull;
++  }
++  if (!!attributes) {
++    delete attributes;
++    attributes = nsnull;
++  }
+ }
+ 
+ PRBool 
+ nsHtml5Tokenizer::tokenizeBuffer(nsHtml5UTF16Buffer* buffer)
+ {
+   PRInt32 state = stateSave;
+   PRInt32 returnState = returnStateSave;
+   PRUnichar c = '\0';
+@@ -3277,18 +3303,24 @@ nsHtml5Tokenizer::emitOrAppendOne(PRUnic
+ void 
+ nsHtml5Tokenizer::end()
+ {
+   strBuf = nsnull;
+   longStrBuf = nsnull;
+   systemIdentifier = nsnull;
+   publicIdentifier = nsnull;
+   doctypeName = nsnull;
+-  tagName = nsnull;
+-  attributeName = nsnull;
++  if (!!tagName) {
++    tagName->release();
++    tagName = nsnull;
++  }
++  if (!!attributeName) {
++    attributeName->release();
++    attributeName = nsnull;
++  }
+   tokenHandler->endTokenization();
+   if (!!attributes) {
+     attributes->clear(0);
+     delete attributes;
+     attributes = nsnull;
+   }
+ }
+ 
+diff --git a/parser/html/nsHtml5Tokenizer.h b/parser/html/nsHtml5Tokenizer.h
+--- a/parser/html/nsHtml5Tokenizer.h
++++ b/parser/html/nsHtml5Tokenizer.h
+@@ -28,16 +28,17 @@
+  * Please edit Tokenizer.java instead and regenerate.
+  */
+ 
+ #ifndef nsHtml5Tokenizer_h__
+ #define nsHtml5Tokenizer_h__
+ 
+ #include "prtypes.h"
+ #include "nsIAtom.h"
++#include "nsHtml5AtomTable.h"
+ #include "nsString.h"
+ #include "nsINameSpaceManager.h"
+ #include "nsIContent.h"
+ #include "nsIDocument.h"
+ #include "nsTraceRefcnt.h"
+ #include "jArray.h"
+ #include "nsHtml5DocumentMode.h"
+ #include "nsHtml5ArrayCopy.h"
+@@ -129,18 +130,20 @@ class nsHtml5Tokenizer
+     nsString* publicIdentifier;
+     nsString* systemIdentifier;
+     PRInt32 mappingLangToXmlLang;
+     PRBool shouldSuspend;
+   protected:
+     PRBool confident;
+   private:
+     PRInt32 line;
++    nsHtml5AtomTable* interner;
+   public:
+     nsHtml5Tokenizer(nsHtml5TreeBuilder* tokenHandler);
++    void setInterner(nsHtml5AtomTable* interner);
+     void initLocation(nsString* newPublicId, nsString* newSystemId);
+     ~nsHtml5Tokenizer();
+     void setContentModelFlag(PRInt32 contentModelFlag, nsIAtom* contentModelElement);
+     void setContentModelFlag(PRInt32 contentModelFlag, nsHtml5ElementName* contentModelElement);
+   private:
+     void contentModelElementToArray();
+   public:
+     void setLineNumber(PRInt32 line);
+diff --git a/parser/html/nsHtml5TreeBuilder.cpp b/parser/html/nsHtml5TreeBuilder.cpp
+--- a/parser/html/nsHtml5TreeBuilder.cpp
++++ b/parser/html/nsHtml5TreeBuilder.cpp
+@@ -77,17 +77,17 @@ nsHtml5TreeBuilder::startTokenization(ns
+   nsHtml5Portability::releaseElement(formPointer);
+   formPointer = nsnull;
+   nsHtml5Portability::releaseElement(headPointer);
+   headPointer = nsnull;
+   start(fragment);
+   charBufferLen = 0;
+   charBuffer = jArray<PRUnichar,PRInt32>(1024);
+   if (fragment) {
+-    nsIContent* elt;
++    nsIContent** elt;
+     if (!!contextNode) {
+       elt = contextNode;
+       nsHtml5Portability::retainElement(elt);
+     } else {
+       elt = createHtmlElementSetAsRoot(tokenizer->emptyAttributes());
+     }
+     nsHtml5StackNode* node = new nsHtml5StackNode(kNameSpaceID_XHTML, nsHtml5ElementName::ELT_HTML, elt);
+     currentPtr++;
+@@ -613,39 +613,42 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+               if (kNameSpaceID_SVG == currNs) {
+                 attributes->adjustForSvg();
+                 if (selfClosing) {
+                   appendVoidElementToCurrentMayFosterCamelCase(currNs, elementName, attributes);
+                   selfClosing = PR_FALSE;
+                 } else {
+                   appendToCurrentNodeAndPushElementMayFosterCamelCase(currNs, elementName, attributes);
+                 }
++                attributes = nsnull;
+                 goto starttagloop_end;
+               } else {
+                 attributes->adjustForMath();
+                 if (selfClosing) {
+                   appendVoidElementToCurrentMayFoster(currNs, elementName, attributes);
+                   selfClosing = PR_FALSE;
+                 } else {
+                   appendToCurrentNodeAndPushElementMayFosterNoScoping(currNs, elementName, attributes);
+                 }
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+             }
+           }
+         }
+       }
+       default: {
+         switch(mode) {
+           case NS_HTML5TREE_BUILDER_IN_TABLE_BODY: {
+             switch(group) {
+               case NS_HTML5TREE_BUILDER_TR: {
+                 clearStackBackTo(findLastInTableScopeOrRootTbodyTheadTfoot());
+                 appendToCurrentNodeAndPushElement(kNameSpaceID_XHTML, elementName, attributes);
+                 mode = NS_HTML5TREE_BUILDER_IN_ROW;
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_TD_OR_TH: {
+ 
+                 clearStackBackTo(findLastInTableScopeOrRootTbodyTheadTfoot());
+                 appendToCurrentNodeAndPushElement(kNameSpaceID_XHTML, nsHtml5ElementName::ELT_TR, nsHtml5HtmlAttributes::EMPTY_ATTRIBUTES);
+                 mode = NS_HTML5TREE_BUILDER_IN_ROW;
+                 continue;
+@@ -671,16 +674,17 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+           }
+           case NS_HTML5TREE_BUILDER_IN_ROW: {
+             switch(group) {
+               case NS_HTML5TREE_BUILDER_TD_OR_TH: {
+                 clearStackBackTo(findLastOrRoot(NS_HTML5TREE_BUILDER_TR));
+                 appendToCurrentNodeAndPushElement(kNameSpaceID_XHTML, elementName, attributes);
+                 mode = NS_HTML5TREE_BUILDER_IN_CELL;
+                 insertMarker();
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_CAPTION:
+               case NS_HTML5TREE_BUILDER_COL:
+               case NS_HTML5TREE_BUILDER_COLGROUP:
+               case NS_HTML5TREE_BUILDER_TBODY_OR_THEAD_OR_TFOOT:
+               case NS_HTML5TREE_BUILDER_TR: {
+                 eltPos = findLastOrRoot(NS_HTML5TREE_BUILDER_TR);
+@@ -701,34 +705,37 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+           case NS_HTML5TREE_BUILDER_IN_TABLE: {
+             for (; ; ) {
+               switch(group) {
+                 case NS_HTML5TREE_BUILDER_CAPTION: {
+                   clearStackBackTo(findLastOrRoot(NS_HTML5TREE_BUILDER_TABLE));
+                   insertMarker();
+                   appendToCurrentNodeAndPushElement(kNameSpaceID_XHTML, elementName, attributes);
+                   mode = NS_HTML5TREE_BUILDER_IN_CAPTION;
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_COLGROUP: {
+                   clearStackBackTo(findLastOrRoot(NS_HTML5TREE_BUILDER_TABLE));
+                   appendToCurrentNodeAndPushElement(kNameSpaceID_XHTML, elementName, attributes);
+                   mode = NS_HTML5TREE_BUILDER_IN_COLUMN_GROUP;
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_COL: {
+                   clearStackBackTo(findLastOrRoot(NS_HTML5TREE_BUILDER_TABLE));
+                   appendToCurrentNodeAndPushElement(kNameSpaceID_XHTML, nsHtml5ElementName::ELT_COLGROUP, nsHtml5HtmlAttributes::EMPTY_ATTRIBUTES);
+                   mode = NS_HTML5TREE_BUILDER_IN_COLUMN_GROUP;
+                   goto starttagloop;
+                 }
+                 case NS_HTML5TREE_BUILDER_TBODY_OR_THEAD_OR_TFOOT: {
+                   clearStackBackTo(findLastOrRoot(NS_HTML5TREE_BUILDER_TABLE));
+                   appendToCurrentNodeAndPushElement(kNameSpaceID_XHTML, elementName, attributes);
+                   mode = NS_HTML5TREE_BUILDER_IN_TABLE_BODY;
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_TR:
+                 case NS_HTML5TREE_BUILDER_TD_OR_TH: {
+                   clearStackBackTo(findLastOrRoot(NS_HTML5TREE_BUILDER_TABLE));
+                   appendToCurrentNodeAndPushElement(kNameSpaceID_XHTML, nsHtml5ElementName::ELT_TBODY, nsHtml5HtmlAttributes::EMPTY_ATTRIBUTES);
+                   mode = NS_HTML5TREE_BUILDER_IN_TABLE_BODY;
+                   goto starttagloop;
+@@ -751,24 +758,26 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+                   goto starttagloop;
+                 }
+                 case NS_HTML5TREE_BUILDER_SCRIPT:
+                 case NS_HTML5TREE_BUILDER_STYLE: {
+                   appendToCurrentNodeAndPushElement(kNameSpaceID_XHTML, elementName, attributes);
+                   originalMode = mode;
+                   mode = NS_HTML5TREE_BUILDER_IN_CDATA_RCDATA;
+                   tokenizer->setContentModelFlag(NS_HTML5TOKENIZER_CDATA, elementName);
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_INPUT: {
+                   if (!nsHtml5Portability::lowerCaseLiteralEqualsIgnoreAsciiCaseString("hidden", attributes->getValue(nsHtml5AttributeName::ATTR_TYPE))) {
+                     goto intableloop_end;
+                   }
+                   appendVoidElementToCurrent(kNameSpaceID_XHTML, name, attributes, formPointer);
+                   selfClosing = PR_FALSE;
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 default: {
+ 
+                   goto intableloop_end;
+                 }
+               }
+             }
+@@ -834,16 +843,17 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+                   } else {
+ 
+                     detachFromParent(stack[1]->node);
+                     while (currentPtr > 0) {
+                       pop();
+                     }
+                     appendToCurrentNodeAndPushElement(kNameSpaceID_XHTML, elementName, attributes);
+                     mode = NS_HTML5TREE_BUILDER_IN_FRAMESET;
++                    attributes = nsnull;
+                     goto starttagloop_end;
+                   }
+                 } else {
+ 
+                   goto starttagloop_end;
+                 }
+               }
+               case NS_HTML5TREE_BUILDER_PRE_OR_LISTING:
+@@ -872,67 +882,74 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+             }
+           }
+           case NS_HTML5TREE_BUILDER_IN_BODY: {
+             for (; ; ) {
+               switch(group) {
+                 case NS_HTML5TREE_BUILDER_HTML: {
+ 
+                   addAttributesToHtml(attributes);
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_BASE:
+                 case NS_HTML5TREE_BUILDER_LINK:
+                 case NS_HTML5TREE_BUILDER_META:
+                 case NS_HTML5TREE_BUILDER_STYLE:
+                 case NS_HTML5TREE_BUILDER_SCRIPT:
+                 case NS_HTML5TREE_BUILDER_TITLE:
+                 case NS_HTML5TREE_BUILDER_COMMAND_OR_EVENT_SOURCE: {
+                   goto inbodyloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_BODY: {
+ 
+                   addAttributesToBody(attributes);
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_P:
+                 case NS_HTML5TREE_BUILDER_DIV_OR_BLOCKQUOTE_OR_CENTER_OR_MENU:
+                 case NS_HTML5TREE_BUILDER_UL_OR_OL_OR_DL:
+                 case NS_HTML5TREE_BUILDER_ADDRESS_OR_DIR_OR_ARTICLE_OR_ASIDE_OR_DATAGRID_OR_DETAILS_OR_DIALOG_OR_FIGURE_OR_FOOTER_OR_HEADER_OR_NAV_OR_SECTION: {
+                   implicitlyCloseP();
+                   appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_H1_OR_H2_OR_H3_OR_H4_OR_H5_OR_H6: {
+                   implicitlyCloseP();
+                   if (stack[currentPtr]->group == NS_HTML5TREE_BUILDER_H1_OR_H2_OR_H3_OR_H4_OR_H5_OR_H6) {
+ 
+                     pop();
+                   }
+                   appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_FIELDSET: {
+                   implicitlyCloseP();
+                   appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes, formPointer);
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_PRE_OR_LISTING: {
+                   implicitlyCloseP();
+                   appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                   needToDropLF = PR_TRUE;
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_FORM: {
+                   if (!!formPointer) {
+ 
+                     goto starttagloop_end;
+                   } else {
+                     implicitlyCloseP();
+                     appendToCurrentNodeAndPushFormElementMayFoster(attributes);
++                    attributes = nsnull;
+                     goto starttagloop_end;
+                   }
+                 }
+                 case NS_HTML5TREE_BUILDER_LI:
+                 case NS_HTML5TREE_BUILDER_DD_OR_DT: {
+                   eltPos = currentPtr;
+                   for (; ; ) {
+                     nsHtml5StackNode* node = stack[eltPos];
+@@ -947,22 +964,24 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+                       break;
+                     } else if (node->scoping || (node->special && node->name != nsHtml5Atoms::p && node->name != nsHtml5Atoms::address && node->name != nsHtml5Atoms::div)) {
+                       break;
+                     }
+                     eltPos--;
+                   }
+                   implicitlyCloseP();
+                   appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_PLAINTEXT: {
+                   implicitlyCloseP();
+                   appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                   tokenizer->setContentModelFlag(NS_HTML5TOKENIZER_PLAINTEXT, elementName);
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_A: {
+                   PRInt32 activeAPos = findInListOfActiveFormattingElementsContainsBetweenEndAndLastMarker(nsHtml5Atoms::a);
+                   if (activeAPos != -1) {
+ 
+                     nsHtml5StackNode* activeA = listOfActiveFormattingElements[activeAPos];
+                     activeA->retain();
+@@ -971,31 +990,34 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+                     activeAPos = findInListOfActiveFormattingElements(activeA);
+                     if (activeAPos != -1) {
+                       removeFromListOfActiveFormattingElements(activeAPos);
+                     }
+                     activeA->release();
+                   }
+                   reconstructTheActiveFormattingElements();
+                   appendToCurrentNodeAndPushFormattingElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_B_OR_BIG_OR_CODE_OR_EM_OR_I_OR_S_OR_SMALL_OR_STRIKE_OR_STRONG_OR_TT_OR_U:
+                 case NS_HTML5TREE_BUILDER_FONT: {
+                   reconstructTheActiveFormattingElements();
+                   appendToCurrentNodeAndPushFormattingElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_NOBR: {
+                   reconstructTheActiveFormattingElements();
+                   if (NS_HTML5TREE_BUILDER_NOT_FOUND_ON_STACK != findLastInScope(nsHtml5Atoms::nobr)) {
+ 
+                     adoptionAgencyEndTag(nsHtml5Atoms::nobr);
+                   }
+                   appendToCurrentNodeAndPushFormattingElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_BUTTON: {
+                   eltPos = findLastInScope(name);
+                   if (eltPos != NS_HTML5TREE_BUILDER_NOT_FOUND_ON_STACK) {
+ 
+                     generateImpliedEndTags();
+                     if (!isCurrent(nsHtml5Atoms::button)) {
+@@ -1005,73 +1027,81 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+                       pop();
+                     }
+                     clearTheListOfActiveFormattingElementsUpToTheLastMarker();
+                     goto starttagloop;
+                   } else {
+                     reconstructTheActiveFormattingElements();
+                     appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes, formPointer);
+                     insertMarker();
++                    attributes = nsnull;
+                     goto starttagloop_end;
+                   }
+                 }
+                 case NS_HTML5TREE_BUILDER_OBJECT: {
+                   reconstructTheActiveFormattingElements();
+                   appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes, formPointer);
+                   insertMarker();
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_MARQUEE_OR_APPLET: {
+                   reconstructTheActiveFormattingElements();
+                   appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                   insertMarker();
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_XMP: {
+                   reconstructTheActiveFormattingElements();
+                   appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                   originalMode = mode;
+                   mode = NS_HTML5TREE_BUILDER_IN_CDATA_RCDATA;
+                   tokenizer->setContentModelFlag(NS_HTML5TOKENIZER_CDATA, elementName);
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_TABLE: {
+                   if (!quirks) {
+                     implicitlyCloseP();
+                   }
+                   appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                   mode = NS_HTML5TREE_BUILDER_IN_TABLE;
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_BR:
+                 case NS_HTML5TREE_BUILDER_EMBED_OR_IMG:
+                 case NS_HTML5TREE_BUILDER_AREA_OR_BASEFONT_OR_BGSOUND_OR_SPACER_OR_WBR: {
+                   reconstructTheActiveFormattingElements();
+                 }
+                 case NS_HTML5TREE_BUILDER_PARAM_OR_SOURCE: {
+                   appendVoidElementToCurrentMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                   selfClosing = PR_FALSE;
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_HR: {
+                   implicitlyCloseP();
+                   appendVoidElementToCurrentMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                   selfClosing = PR_FALSE;
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_IMAGE: {
+ 
+                   elementName = nsHtml5ElementName::ELT_IMG;
+                   goto starttagloop;
+                 }
+                 case NS_HTML5TREE_BUILDER_KEYGEN:
+                 case NS_HTML5TREE_BUILDER_INPUT: {
+                   reconstructTheActiveFormattingElements();
+                   appendVoidElementToCurrentMayFoster(kNameSpaceID_XHTML, name, attributes, formPointer);
+                   selfClosing = PR_FALSE;
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_ISINDEX: {
+ 
+                   if (!!formPointer) {
+                     goto starttagloop_end;
+                   }
+                   implicitlyCloseP();
+@@ -1106,41 +1136,45 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+                   appendVoidElementToCurrentMayFoster(kNameSpaceID_XHTML, nsHtml5Atoms::input, inputAttributes, formPointer);
+                   pop();
+                   pop();
+                   appendVoidElementToCurrentMayFoster(kNameSpaceID_XHTML, nsHtml5ElementName::ELT_HR, nsHtml5HtmlAttributes::EMPTY_ATTRIBUTES);
+                   pop();
+                   selfClosing = PR_FALSE;
+                   delete formAttrs;
+                   delete inputAttributes;
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_TEXTAREA: {
+                   appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes, formPointer);
+                   tokenizer->setContentModelFlag(NS_HTML5TOKENIZER_RCDATA, elementName);
+                   originalMode = mode;
+                   mode = NS_HTML5TREE_BUILDER_IN_CDATA_RCDATA;
+                   needToDropLF = PR_TRUE;
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_NOSCRIPT: {
+                   if (!scriptingEnabled) {
+                     reconstructTheActiveFormattingElements();
+                     appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
++                    attributes = nsnull;
+                     goto starttagloop_end;
+                   } else {
+                   }
+                 }
+                 case NS_HTML5TREE_BUILDER_NOFRAMES:
+                 case NS_HTML5TREE_BUILDER_IFRAME:
+                 case NS_HTML5TREE_BUILDER_NOEMBED: {
+                   appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                   originalMode = mode;
+                   mode = NS_HTML5TREE_BUILDER_IN_CDATA_RCDATA;
+                   tokenizer->setContentModelFlag(NS_HTML5TOKENIZER_CDATA, elementName);
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_SELECT: {
+                   reconstructTheActiveFormattingElements();
+                   appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes, formPointer);
+                   switch(mode) {
+                     case NS_HTML5TREE_BUILDER_IN_TABLE:
+                     case NS_HTML5TREE_BUILDER_IN_CAPTION:
+@@ -1151,16 +1185,17 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+                       mode = NS_HTML5TREE_BUILDER_IN_SELECT_IN_TABLE;
+                       break;
+                     }
+                     default: {
+                       mode = NS_HTML5TREE_BUILDER_IN_SELECT;
+                       break;
+                     }
+                   }
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_OPTGROUP:
+                 case NS_HTML5TREE_BUILDER_OPTION: {
+                   if (findLastInScope(nsHtml5Atoms::option) != NS_HTML5TREE_BUILDER_NOT_FOUND_ON_STACK) {
+                     for (; ; ) {
+                       if (isCurrent(nsHtml5Atoms::option)) {
+                         pop();
+@@ -1180,54 +1215,58 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+                         }
+                         eltPos--;
+                       }
+                     }
+                     optionendtagloop_end: ;
+                   }
+                   reconstructTheActiveFormattingElements();
+                   appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_RT_OR_RP: {
+                   eltPos = findLastInScope(nsHtml5Atoms::ruby);
+                   if (eltPos != NS_HTML5TREE_BUILDER_NOT_FOUND_ON_STACK) {
+                     generateImpliedEndTags();
+                   }
+                   if (eltPos != currentPtr) {
+ 
+                     while (currentPtr > eltPos) {
+                       pop();
+                     }
+                   }
+                   appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_MATH: {
+                   reconstructTheActiveFormattingElements();
+                   attributes->adjustForMath();
+                   if (selfClosing) {
+                     appendVoidElementToCurrentMayFoster(kNameSpaceID_MathML, elementName, attributes);
+                     selfClosing = PR_FALSE;
+                   } else {
+                     appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_MathML, elementName, attributes);
+                     foreignFlag = NS_HTML5TREE_BUILDER_IN_FOREIGN;
+                   }
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_SVG: {
+                   reconstructTheActiveFormattingElements();
+                   attributes->adjustForSvg();
+                   if (selfClosing) {
+                     appendVoidElementToCurrentMayFosterCamelCase(kNameSpaceID_SVG, elementName, attributes);
+                     selfClosing = PR_FALSE;
+                   } else {
+                     appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_SVG, elementName, attributes);
+                     foreignFlag = NS_HTML5TREE_BUILDER_IN_FOREIGN;
+                   }
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_CAPTION:
+                 case NS_HTML5TREE_BUILDER_COL:
+                 case NS_HTML5TREE_BUILDER_COLGROUP:
+                 case NS_HTML5TREE_BUILDER_TBODY_OR_THEAD_OR_TFOOT:
+                 case NS_HTML5TREE_BUILDER_TR:
+                 case NS_HTML5TREE_BUILDER_TD_OR_TH:
+@@ -1235,71 +1274,78 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+                 case NS_HTML5TREE_BUILDER_FRAMESET:
+                 case NS_HTML5TREE_BUILDER_HEAD: {
+ 
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_OUTPUT_OR_LABEL: {
+                   reconstructTheActiveFormattingElements();
+                   appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes, formPointer);
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 default: {
+                   reconstructTheActiveFormattingElements();
+                   appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+               }
+             }
+             inbodyloop_end: ;
+           }
+           case NS_HTML5TREE_BUILDER_IN_HEAD: {
+             for (; ; ) {
+               switch(group) {
+                 case NS_HTML5TREE_BUILDER_HTML: {
+ 
+                   addAttributesToHtml(attributes);
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_BASE:
+                 case NS_HTML5TREE_BUILDER_COMMAND_OR_EVENT_SOURCE: {
+                   appendVoidElementToCurrentMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                   selfClosing = PR_FALSE;
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_META:
+                 case NS_HTML5TREE_BUILDER_LINK: {
+                   goto inheadloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_TITLE: {
+                   appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                   originalMode = mode;
+                   mode = NS_HTML5TREE_BUILDER_IN_CDATA_RCDATA;
+                   tokenizer->setContentModelFlag(NS_HTML5TOKENIZER_RCDATA, elementName);
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_NOSCRIPT: {
+                   if (scriptingEnabled) {
+                     appendToCurrentNodeAndPushElement(kNameSpaceID_XHTML, elementName, attributes);
+                     originalMode = mode;
+                     mode = NS_HTML5TREE_BUILDER_IN_CDATA_RCDATA;
+                     tokenizer->setContentModelFlag(NS_HTML5TOKENIZER_CDATA, elementName);
+                   } else {
+                     appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                     mode = NS_HTML5TREE_BUILDER_IN_HEAD_NOSCRIPT;
+                   }
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_SCRIPT:
+                 case NS_HTML5TREE_BUILDER_STYLE:
+                 case NS_HTML5TREE_BUILDER_NOFRAMES: {
+                   appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                   originalMode = mode;
+                   mode = NS_HTML5TREE_BUILDER_IN_CDATA_RCDATA;
+                   tokenizer->setContentModelFlag(NS_HTML5TOKENIZER_CDATA, elementName);
++                  attributes = nsnull;
+                   goto starttagloop_end;
+                 }
+                 case NS_HTML5TREE_BUILDER_HEAD: {
+ 
+                   goto starttagloop_end;
+                 }
+                 default: {
+                   pop();
+@@ -1310,35 +1356,39 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+             }
+             inheadloop_end: ;
+           }
+           case NS_HTML5TREE_BUILDER_IN_HEAD_NOSCRIPT: {
+             switch(group) {
+               case NS_HTML5TREE_BUILDER_HTML: {
+ 
+                 addAttributesToHtml(attributes);
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_LINK: {
+                 appendVoidElementToCurrentMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                 selfClosing = PR_FALSE;
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_META: {
+                 checkMetaCharset(attributes);
+                 appendVoidElementToCurrentMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                 selfClosing = PR_FALSE;
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_STYLE:
+               case NS_HTML5TREE_BUILDER_NOFRAMES: {
+                 appendToCurrentNodeAndPushElement(kNameSpaceID_XHTML, elementName, attributes);
+                 originalMode = mode;
+                 mode = NS_HTML5TREE_BUILDER_IN_CDATA_RCDATA;
+                 tokenizer->setContentModelFlag(NS_HTML5TOKENIZER_CDATA, elementName);
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_HEAD: {
+ 
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_NOSCRIPT: {
+ 
+@@ -1352,21 +1402,23 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+               }
+             }
+           }
+           case NS_HTML5TREE_BUILDER_IN_COLUMN_GROUP: {
+             switch(group) {
+               case NS_HTML5TREE_BUILDER_HTML: {
+ 
+                 addAttributesToHtml(attributes);
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_COL: {
+                 appendVoidElementToCurrentMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                 selfClosing = PR_FALSE;
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               default: {
+                 if (!currentPtr) {
+ 
+ 
+                   goto starttagloop_end;
+                 }
+@@ -1391,33 +1443,36 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+                 ; // fall through
+             }
+           }
+           case NS_HTML5TREE_BUILDER_IN_SELECT: {
+             switch(group) {
+               case NS_HTML5TREE_BUILDER_HTML: {
+ 
+                 addAttributesToHtml(attributes);
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_OPTION: {
+                 if (isCurrent(nsHtml5Atoms::option)) {
+                   pop();
+                 }
+                 appendToCurrentNodeAndPushElement(kNameSpaceID_XHTML, elementName, attributes);
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_OPTGROUP: {
+                 if (isCurrent(nsHtml5Atoms::option)) {
+                   pop();
+                 }
+                 if (isCurrent(nsHtml5Atoms::optgroup)) {
+                   pop();
+                 }
+                 appendToCurrentNodeAndPushElement(kNameSpaceID_XHTML, elementName, attributes);
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_SELECT: {
+ 
+                 eltPos = findLastInTableScope(name);
+                 if (eltPos == NS_HTML5TREE_BUILDER_NOT_FOUND_ON_STACK) {
+ 
+ 
+@@ -1436,65 +1491,71 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+                 endSelect();
+                 continue;
+               }
+               case NS_HTML5TREE_BUILDER_SCRIPT: {
+                 appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                 originalMode = mode;
+                 mode = NS_HTML5TREE_BUILDER_IN_CDATA_RCDATA;
+                 tokenizer->setContentModelFlag(NS_HTML5TOKENIZER_CDATA, elementName);
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               default: {
+ 
+                 goto starttagloop_end;
+               }
+             }
+           }
+           case NS_HTML5TREE_BUILDER_AFTER_BODY: {
+             switch(group) {
+               case NS_HTML5TREE_BUILDER_HTML: {
+ 
+                 addAttributesToHtml(attributes);
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               default: {
+ 
+                 mode = NS_HTML5TREE_BUILDER_IN_BODY;
+                 continue;
+               }
+             }
+           }
+           case NS_HTML5TREE_BUILDER_IN_FRAMESET: {
+             switch(group) {
+               case NS_HTML5TREE_BUILDER_FRAMESET: {
+                 appendToCurrentNodeAndPushElement(kNameSpaceID_XHTML, elementName, attributes);
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_FRAME: {
+                 appendVoidElementToCurrentMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                 selfClosing = PR_FALSE;
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               default:
+                 ; // fall through
+             }
+           }
+           case NS_HTML5TREE_BUILDER_AFTER_FRAMESET: {
+             switch(group) {
+               case NS_HTML5TREE_BUILDER_HTML: {
+ 
+                 addAttributesToHtml(attributes);
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_NOFRAMES: {
+                 appendToCurrentNodeAndPushElement(kNameSpaceID_XHTML, elementName, attributes);
+                 originalMode = mode;
+                 mode = NS_HTML5TREE_BUILDER_IN_CDATA_RCDATA;
+                 tokenizer->setContentModelFlag(NS_HTML5TOKENIZER_CDATA, elementName);
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               default: {
+ 
+                 goto starttagloop_end;
+               }
+             }
+           }
+@@ -1507,116 +1568,128 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+             switch(group) {
+               case NS_HTML5TREE_BUILDER_HTML: {
+                 if (attributes == nsHtml5HtmlAttributes::EMPTY_ATTRIBUTES) {
+                   appendHtmlElementToDocumentAndPush();
+                 } else {
+                   appendHtmlElementToDocumentAndPush(attributes);
+                 }
+                 mode = NS_HTML5TREE_BUILDER_BEFORE_HEAD;
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               default: {
+                 appendHtmlElementToDocumentAndPush();
+                 mode = NS_HTML5TREE_BUILDER_BEFORE_HEAD;
+                 continue;
+               }
+             }
+           }
+           case NS_HTML5TREE_BUILDER_BEFORE_HEAD: {
+             switch(group) {
+               case NS_HTML5TREE_BUILDER_HTML: {
+ 
+                 addAttributesToHtml(attributes);
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_HEAD: {
+                 appendToCurrentNodeAndPushHeadElement(attributes);
+                 mode = NS_HTML5TREE_BUILDER_IN_HEAD;
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               default: {
+                 appendToCurrentNodeAndPushHeadElement(nsHtml5HtmlAttributes::EMPTY_ATTRIBUTES);
+                 mode = NS_HTML5TREE_BUILDER_IN_HEAD;
+                 continue;
+               }
+             }
+           }
+           case NS_HTML5TREE_BUILDER_AFTER_HEAD: {
+             switch(group) {
+               case NS_HTML5TREE_BUILDER_HTML: {
+ 
+                 addAttributesToHtml(attributes);
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_BODY: {
+                 if (!attributes->getLength()) {
+                   appendToCurrentNodeAndPushBodyElement();
+                 } else {
+                   appendToCurrentNodeAndPushBodyElement(attributes);
+                 }
+                 mode = NS_HTML5TREE_BUILDER_FRAMESET_OK;
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_FRAMESET: {
+                 appendToCurrentNodeAndPushElement(kNameSpaceID_XHTML, elementName, attributes);
+                 mode = NS_HTML5TREE_BUILDER_IN_FRAMESET;
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_BASE: {
+ 
+                 pushHeadPointerOntoStack();
+                 appendVoidElementToCurrentMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                 selfClosing = PR_FALSE;
+                 pop();
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_LINK: {
+ 
+                 pushHeadPointerOntoStack();
+                 appendVoidElementToCurrentMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                 selfClosing = PR_FALSE;
+                 pop();
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_META: {
+ 
+                 checkMetaCharset(attributes);
+                 pushHeadPointerOntoStack();
+                 appendVoidElementToCurrentMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                 selfClosing = PR_FALSE;
+                 pop();
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_SCRIPT: {
+ 
+                 pushHeadPointerOntoStack();
+                 appendToCurrentNodeAndPushElement(kNameSpaceID_XHTML, elementName, attributes);
+                 originalMode = mode;
+                 mode = NS_HTML5TREE_BUILDER_IN_CDATA_RCDATA;
+                 tokenizer->setContentModelFlag(NS_HTML5TOKENIZER_CDATA, elementName);
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_STYLE:
+               case NS_HTML5TREE_BUILDER_NOFRAMES: {
+ 
+                 pushHeadPointerOntoStack();
+                 appendToCurrentNodeAndPushElement(kNameSpaceID_XHTML, elementName, attributes);
+                 originalMode = mode;
+                 mode = NS_HTML5TREE_BUILDER_IN_CDATA_RCDATA;
+                 tokenizer->setContentModelFlag(NS_HTML5TOKENIZER_CDATA, elementName);
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_TITLE: {
+ 
+                 pushHeadPointerOntoStack();
+                 appendToCurrentNodeAndPushElement(kNameSpaceID_XHTML, elementName, attributes);
+                 originalMode = mode;
+                 mode = NS_HTML5TREE_BUILDER_IN_CDATA_RCDATA;
+                 tokenizer->setContentModelFlag(NS_HTML5TOKENIZER_RCDATA, elementName);
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               case NS_HTML5TREE_BUILDER_HEAD: {
+ 
+                 goto starttagloop_end;
+               }
+               default: {
+                 appendToCurrentNodeAndPushBodyElement();
+@@ -1625,16 +1698,17 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+               }
+             }
+           }
+           case NS_HTML5TREE_BUILDER_AFTER_AFTER_BODY: {
+             switch(group) {
+               case NS_HTML5TREE_BUILDER_HTML: {
+ 
+                 addAttributesToHtml(attributes);
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               default: {
+ 
+ 
+                 mode = NS_HTML5TREE_BUILDER_IN_BODY;
+                 continue;
+               }
+@@ -1642,16 +1716,17 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+           }
+           case NS_HTML5TREE_BUILDER_AFTER_AFTER_FRAMESET: {
+             switch(group) {
+               case NS_HTML5TREE_BUILDER_NOFRAMES: {
+                 appendToCurrentNodeAndPushElementMayFoster(kNameSpaceID_XHTML, elementName, attributes);
+                 originalMode = mode;
+                 mode = NS_HTML5TREE_BUILDER_IN_CDATA_RCDATA;
+                 tokenizer->setContentModelFlag(NS_HTML5TOKENIZER_CDATA, elementName);
++                attributes = nsnull;
+                 goto starttagloop_end;
+               }
+               default: {
+ 
+                 goto starttagloop_end;
+               }
+             }
+           }
+@@ -1661,16 +1736,19 @@ nsHtml5TreeBuilder::startTag(nsHtml5Elem
+   }
+   starttagloop_end: ;
+   if (needsPostProcessing && foreignFlag == NS_HTML5TREE_BUILDER_IN_FOREIGN && !hasForeignInScope()) {
+     foreignFlag = NS_HTML5TREE_BUILDER_NOT_IN_FOREIGN;
+   }
+   if (selfClosing) {
+ 
+   }
++  if (attributes != nsHtml5HtmlAttributes::EMPTY_ATTRIBUTES) {
++    delete attributes;
++  }
+ }
+ 
+ nsString* 
+ nsHtml5TreeBuilder::extractCharsetFromContent(nsString* attributeValue)
+ {
+   PRInt32 charsetState = NS_HTML5TREE_BUILDER_CHARSET_INITIAL;
+   PRInt32 start = -1;
+   PRInt32 end = -1;
+@@ -3053,17 +3131,17 @@ nsHtml5TreeBuilder::adoptionAgencyEndTag
+       if (nodePos == formattingEltStackPos) {
+         break;
+       }
+       if (nodePos == furthestBlockPos) {
+         bookmark = nodeListPos + 1;
+       }
+ 
+ 
+-      nsIContent* clone = createElement(kNameSpaceID_XHTML, node->name, node->attributes->cloneAttributes());
++      nsIContent** clone = createElement(kNameSpaceID_XHTML, node->name, node->attributes->cloneAttributes());
+       nsHtml5StackNode* newNode = new nsHtml5StackNode(node->group, node->ns, node->name, clone, node->scoping, node->special, node->fosterParenting, node->popName, node->attributes);
+       node->dropAttributes();
+       stack[nodePos] = newNode;
+       newNode->retain();
+       listOfActiveFormattingElements[nodeListPos] = newNode;
+       node->release();
+       node->release();
+       node = newNode;
+@@ -3075,17 +3153,17 @@ nsHtml5TreeBuilder::adoptionAgencyEndTag
+     if (commonAncestor->fosterParenting) {
+ 
+       detachFromParent(lastNode->node);
+       insertIntoFosterParent(lastNode->node);
+     } else {
+       detachFromParent(lastNode->node);
+       appendElement(lastNode->node, commonAncestor->node);
+     }
+-    nsIContent* clone = createElement(kNameSpaceID_XHTML, formattingElt->name, formattingElt->attributes->cloneAttributes());
++    nsIContent** clone = createElement(kNameSpaceID_XHTML, formattingElt->name, formattingElt->attributes->cloneAttributes());
+     nsHtml5StackNode* formattingClone = new nsHtml5StackNode(formattingElt->group, formattingElt->ns, formattingElt->name, clone, formattingElt->scoping, formattingElt->special, formattingElt->fosterParenting, formattingElt->popName, formattingElt->attributes);
+     formattingElt->dropAttributes();
+     appendChildrenToNewParent(furthestBlock->node, clone);
+     appendElement(clone, furthestBlock->node);
+     removeFromListOfActiveFormattingElements(formattingEltListPos);
+     insertIntoListOfActiveFormattingElements(formattingClone, bookmark);
+ 
+     removeFromStack(formattingEltStackPos);
+@@ -3222,38 +3300,38 @@ nsHtml5TreeBuilder::reconstructTheActive
+     }
+   }
+   if (entryPos < listPtr) {
+     flushCharacters();
+   }
+   while (entryPos < listPtr) {
+     entryPos++;
+     nsHtml5StackNode* entry = listOfActiveFormattingElements[entryPos];
+-    nsIContent* clone = createElement(kNameSpaceID_XHTML, entry->name, entry->attributes->cloneAttributes());
++    nsIContent** clone = createElement(kNameSpaceID_XHTML, entry->name, entry->attributes->cloneAttributes());
+     nsHtml5StackNode* entryClone = new nsHtml5StackNode(entry->group, entry->ns, entry->name, clone, entry->scoping, entry->special, entry->fosterParenting, entry->popName, entry->attributes);
+     entry->dropAttributes();
+     nsHtml5StackNode* currentNode = stack[currentPtr];
+     if (currentNode->fosterParenting) {
+       insertIntoFosterParent(clone);
+     } else {
+       appendElement(clone, currentNode->node);
+     }
+     push(entryClone);
+     listOfActiveFormattingElements[entryPos] = entryClone;
+     entry->release();
+     entryClone->retain();
+   }
+ }
+ 
+ void 
+-nsHtml5TreeBuilder::insertIntoFosterParent(nsIContent* child)
++nsHtml5TreeBuilder::insertIntoFosterParent(nsIContent** child)
+ {
+   PRInt32 eltPos = findLastOrRoot(NS_HTML5TREE_BUILDER_TABLE);
+   nsHtml5StackNode* node = stack[eltPos];
+-  nsIContent* elt = node->node;
++  nsIContent** elt = node->node;
+   if (!eltPos) {
+     appendElement(child, elt);
+     return;
+   }
+   insertFosterParentedChild(child, elt, stack[eltPos - 1]->node);
+ }
+ 
+ PRBool 
+@@ -3288,33 +3366,33 @@ nsHtml5TreeBuilder::popOnEof()
+   elementPopped(node->ns, node->popName, node->node);
+   markMalformedIfScript(node->node);
+   node->release();
+ }
+ 
+ void 
+ nsHtml5TreeBuilder::appendHtmlElementToDocumentAndPush(nsHtml5HtmlAttributes* attributes)
+ {
+-  nsIContent* elt = createHtmlElementSetAsRoot(attributes);
++  nsIContent** elt = createHtmlElementSetAsRoot(attributes);
+   nsHtml5StackNode* node = new nsHtml5StackNode(kNameSpaceID_XHTML, nsHtml5ElementName::ELT_HTML, elt);
+   push(node);
+   nsHtml5Portability::releaseElement(elt);
+ }
+ 
+ void 
+ nsHtml5TreeBuilder::appendHtmlElementToDocumentAndPush()
+ {
+   appendHtmlElementToDocumentAndPush(tokenizer->emptyAttributes());
+ }
+ 
+ void 
+ nsHtml5TreeBuilder::appendToCurrentNodeAndPushHeadElement(nsHtml5HtmlAttributes* attributes)
+ {
+   flushCharacters();
+-  nsIContent* elt = createElement(kNameSpaceID_XHTML, nsHtml5Atoms::head, attributes);
++  nsIContent** elt = createElement(kNameSpaceID_XHTML, nsHtml5Atoms::head, attributes);
+   appendElement(elt, stack[currentPtr]->node);
+   headPointer = elt;
+   nsHtml5Portability::retainElement(headPointer);
+   nsHtml5StackNode* node = new nsHtml5StackNode(kNameSpaceID_XHTML, nsHtml5ElementName::ELT_HEAD, elt);
+   push(node);
+   nsHtml5Portability::releaseElement(elt);
+ }
+ 
+@@ -3329,17 +3407,17 @@ nsHtml5TreeBuilder::appendToCurrentNodeA
+ {
+   appendToCurrentNodeAndPushBodyElement(tokenizer->emptyAttributes());
+ }
+ 
+ void 
+ nsHtml5TreeBuilder::appendToCurrentNodeAndPushFormElementMayFoster(nsHtml5HtmlAttributes* attributes)
+ {
+   flushCharacters();
+-  nsIContent* elt = createElement(kNameSpaceID_XHTML, nsHtml5Atoms::form, attributes);
++  nsIContent** elt = createElement(kNameSpaceID_XHTML, nsHtml5Atoms::form, attributes);
+   formPointer = elt;
+   nsHtml5Portability::retainElement(formPointer);
+   nsHtml5StackNode* current = stack[currentPtr];
+   if (current->fosterParenting) {
+ 
+     insertIntoFosterParent(elt);
+   } else {
+     appendElement(elt, current->node);
+@@ -3348,17 +3426,17 @@ nsHtml5TreeBuilder::appendToCurrentNodeA
+   push(node);
+   nsHtml5Portability::releaseElement(elt);
+ }
+ 
+ void 
+ nsHtml5TreeBuilder::appendToCurrentNodeAndPushFormattingElementMayFoster(PRInt32 ns, nsHtml5ElementName* elementName, nsHtml5HtmlAttributes* attributes)
+ {
+   flushCharacters();
+-  nsIContent* elt = createElement(ns, elementName->name, attributes);
++  nsIContent** elt = createElement(ns, elementName->name, attributes);
+   nsHtml5StackNode* current = stack[currentPtr];
+   if (current->fosterParenting) {
+ 
+     insertIntoFosterParent(elt);
+   } else {
+     appendElement(elt, current->node);
+   }
+   nsHtml5StackNode* node = new nsHtml5StackNode(ns, elementName, elt, attributes->cloneAttributes());
+@@ -3367,29 +3445,29 @@ nsHtml5TreeBuilder::appendToCurrentNodeA
+   node->retain();
+   nsHtml5Portability::releaseElement(elt);
+ }
+ 
+ void 
+ nsHtml5TreeBuilder::appendToCurrentNodeAndPushElement(PRInt32 ns, nsHtml5ElementName* elementName, nsHtml5HtmlAttributes* attributes)
+ {
+   flushCharacters();
+-  nsIContent* elt = createElement(ns, elementName->name, attributes);
++  nsIContent** elt = createElement(ns, elementName->name, attributes);
+   appendElement(elt, stack[currentPtr]->node);
+   nsHtml5StackNode* node = new nsHtml5StackNode(ns, elementName, elt);
+   push(node);
+   nsHtml5Portability::releaseElement(elt);
+ }
+ 
+ void 
+ nsHtml5TreeBuilder::appendToCurrentNodeAndPushElementMayFoster(PRInt32 ns, nsHtml5ElementName* elementName, nsHtml5HtmlAttributes* attributes)
+ {
+   flushCharacters();
+   nsIAtom* popName = elementName->name;
+-  nsIContent* elt = createElement(ns, popName, attributes);
++  nsIContent** elt = createElement(ns, popName, attributes);
+   nsHtml5StackNode* current = stack[currentPtr];
+   if (current->fosterParenting) {
+ 
+     insertIntoFosterParent(elt);
+   } else {
+     appendElement(elt, current->node);
+   }
+   nsHtml5StackNode* node = new nsHtml5StackNode(ns, elementName, elt, popName);
+@@ -3397,17 +3475,17 @@ nsHtml5TreeBuilder::appendToCurrentNodeA
+   nsHtml5Portability::releaseElement(elt);
+ }
+ 
+ void 
+ nsHtml5TreeBuilder::appendToCurrentNodeAndPushElementMayFosterNoScoping(PRInt32 ns, nsHtml5ElementName* elementName, nsHtml5HtmlAttributes* attributes)
+ {
+   flushCharacters();
+   nsIAtom* popName = elementName->name;
+-  nsIContent* elt = createElement(ns, popName, attributes);
++  nsIContent** elt = createElement(ns, popName, attributes);
+   nsHtml5StackNode* current = stack[currentPtr];
+   if (current->fosterParenting) {
+ 
+     insertIntoFosterParent(elt);
+   } else {
+     appendElement(elt, current->node);
+   }
+   nsHtml5StackNode* node = new nsHtml5StackNode(ns, elementName, elt, popName, PR_FALSE);
+@@ -3415,51 +3493,51 @@ nsHtml5TreeBuilder::appendToCurrentNodeA
+   nsHtml5Portability::releaseElement(elt);
+ }
+ 
+ void 
+ nsHtml5TreeBuilder::appendToCurrentNodeAndPushElementMayFosterCamelCase(PRInt32 ns, nsHtml5ElementName* elementName, nsHtml5HtmlAttributes* attributes)
+ {
+   flushCharacters();
+   nsIAtom* popName = elementName->camelCaseName;
+-  nsIContent* elt = createElement(ns, popName, attributes);
++  nsIContent** elt = createElement(ns, popName, attributes);
+   nsHtml5StackNode* current = stack[currentPtr];
+   if (current->fosterParenting) {
+ 
+     insertIntoFosterParent(elt);
+   } else {
+     appendElement(elt, current->node);
+   }
+   nsHtml5StackNode* node = new nsHtml5StackNode(ns, elementName, elt, popName, nsHtml5ElementName::ELT_FOREIGNOBJECT == elementName);
+   push(node);
+   nsHtml5Portability::releaseElement(elt);
+ }
+ 
+ void 
+-nsHtml5TreeBuilder::appendToCurrentNodeAndPushElementMayFoster(PRInt32 ns, nsHtml5ElementName* elementName, nsHtml5HtmlAttributes* attributes, nsIContent* form)
++nsHtml5TreeBuilder::appendToCurrentNodeAndPushElementMayFoster(PRInt32 ns, nsHtml5ElementName* elementName, nsHtml5HtmlAttributes* attributes, nsIContent** form)
+ {
+   flushCharacters();
+-  nsIContent* elt = createElement(ns, elementName->name, attributes, form);
++  nsIContent** elt = createElement(ns, elementName->name, attributes, form);
+   nsHtml5StackNode* current = stack[currentPtr];
+   if (current->fosterParenting) {
+ 
+     insertIntoFosterParent(elt);
+   } else {
+     appendElement(elt, current->node);
+   }
+   nsHtml5StackNode* node = new nsHtml5StackNode(ns, elementName, elt);
+   push(node);
+   nsHtml5Portability::releaseElement(elt);
+ }
+ 
+ void 
+-nsHtml5TreeBuilder::appendVoidElementToCurrentMayFoster(PRInt32 ns, nsIAtom* name, nsHtml5HtmlAttributes* attributes, nsIContent* form)
++nsHtml5TreeBuilder::appendVoidElementToCurrentMayFoster(PRInt32 ns, nsIAtom* name, nsHtml5HtmlAttributes* attributes, nsIContent** form)
+ {
+   flushCharacters();
+-  nsIContent* elt = createElement(ns, name, attributes, form);
++  nsIContent** elt = createElement(ns, name, attributes, form);
+   nsHtml5StackNode* current = stack[currentPtr];
+   if (current->fosterParenting) {
+ 
+     insertIntoFosterParent(elt);
+   } else {
+     appendElement(elt, current->node);
+   }
+   elementPushed(ns, name, elt);
+@@ -3467,17 +3545,17 @@ nsHtml5TreeBuilder::appendVoidElementToC
+   nsHtml5Portability::releaseElement(elt);
+ }
+ 
+ void 
+ nsHtml5TreeBuilder::appendVoidElementToCurrentMayFoster(PRInt32 ns, nsHtml5ElementName* elementName, nsHtml5HtmlAttributes* attributes)
+ {
+   flushCharacters();
+   nsIAtom* popName = elementName->name;
+-  nsIContent* elt = createElement(ns, popName, attributes);
++  nsIContent** elt = createElement(ns, popName, attributes);
+   nsHtml5StackNode* current = stack[currentPtr];
+   if (current->fosterParenting) {
+ 
+     insertIntoFosterParent(elt);
+   } else {
+     appendElement(elt, current->node);
+   }
+   elementPushed(ns, popName, elt);
+@@ -3485,34 +3563,34 @@ nsHtml5TreeBuilder::appendVoidElementToC
+   nsHtml5Portability::releaseElement(elt);
+ }
+ 
+ void 
+ nsHtml5TreeBuilder::appendVoidElementToCurrentMayFosterCamelCase(PRInt32 ns, nsHtml5ElementName* elementName, nsHtml5HtmlAttributes* attributes)
+ {
+   flushCharacters();
+   nsIAtom* popName = elementName->camelCaseName;
+-  nsIContent* elt = createElement(ns, popName, attributes);
++  nsIContent** elt = createElement(ns, popName, attributes);
+   nsHtml5StackNode* current = stack[currentPtr];
+   if (current->fosterParenting) {
+ 
+     insertIntoFosterParent(elt);
+   } else {
+     appendElement(elt, current->node);
+   }
+   elementPushed(ns, popName, elt);
+   elementPopped(ns, popName, elt);
+   nsHtml5Portability::releaseElement(elt);
+ }
+ 
+ void 
+-nsHtml5TreeBuilder::appendVoidElementToCurrent(PRInt32 ns, nsIAtom* name, nsHtml5HtmlAttributes* attributes, nsIContent* form)
++nsHtml5TreeBuilder::appendVoidElementToCurrent(PRInt32 ns, nsIAtom* name, nsHtml5HtmlAttributes* attributes, nsIContent** form)
+ {
+   flushCharacters();
+-  nsIContent* elt = createElement(ns, name, attributes, form);
++  nsIContent** elt = createElement(ns, name, attributes, form);
+   nsHtml5StackNode* current = stack[currentPtr];
+   appendElement(elt, current->node);
+   elementPushed(ns, name, elt);
+   elementPopped(ns, name, elt);
+   nsHtml5Portability::releaseElement(elt);
+ }
+ 
+ void 
+@@ -3531,28 +3609,28 @@ nsHtml5TreeBuilder::accumulateCharacter(
+ 
+ void 
+ nsHtml5TreeBuilder::requestSuspension()
+ {
+   tokenizer->requestSuspension();
+ }
+ 
+ void 
+-nsHtml5TreeBuilder::setFragmentContext(nsIAtom* context, PRInt32 ns, nsIContent* node, PRBool quirks)
++nsHtml5TreeBuilder::setFragmentContext(nsIAtom* context, PRInt32 ns, nsIContent** node, PRBool quirks)
+ {
+   this->contextName = context;
+   nsHtml5Portability::retainLocal(context);
+   this->contextNamespace = ns;
+   this->contextNode = node;
+   nsHtml5Portability::retainElement(node);
+   this->fragment = (!!contextName);
+   this->quirks = quirks;
+ }
+ 
+-nsIContent* 
++nsIContent** 
+ nsHtml5TreeBuilder::currentNode()
+ {
+   return stack[currentPtr]->node;
+ }
+ 
+ PRBool 
+ nsHtml5TreeBuilder::isScriptingEnabled()
+ {
+@@ -3575,17 +3653,17 @@ void
+ nsHtml5TreeBuilder::flushCharacters()
+ {
+   if (charBufferLen > 0) {
+     nsHtml5StackNode* current = stack[currentPtr];
+     if (current->fosterParenting && charBufferContainsNonWhitespace()) {
+ 
+       PRInt32 eltPos = findLastOrRoot(NS_HTML5TREE_BUILDER_TABLE);
+       nsHtml5StackNode* node = stack[eltPos];
+-      nsIContent* elt = node->node;
++      nsIContent** elt = node->node;
+       if (!eltPos) {
+         appendCharacters(elt, charBuffer, 0, charBufferLen);
+         charBufferLen = 0;
+         return;
+       }
+       insertFosterParentedCharacters(charBuffer, 0, charBufferLen, elt, stack[eltPos - 1]->node);
+       charBufferLen = 0;
+       return;
+diff --git a/parser/html/nsHtml5TreeBuilder.h b/parser/html/nsHtml5TreeBuilder.h
+--- a/parser/html/nsHtml5TreeBuilder.h
++++ b/parser/html/nsHtml5TreeBuilder.h
+@@ -76,23 +76,23 @@ class nsHtml5TreeBuilder
+   protected:
+     nsHtml5Tokenizer* tokenizer;
+   private:
+     PRBool scriptingEnabled;
+     PRBool needToDropLF;
+     PRBool fragment;
+     nsIAtom* contextName;
+     PRInt32 contextNamespace;
+-    nsIContent* contextNode;
++    nsIContent** contextNode;
+     jArray<nsHtml5StackNode*,PRInt32> stack;
+     PRInt32 currentPtr;
+     jArray<nsHtml5StackNode*,PRInt32> listOfActiveFormattingElements;
+     PRInt32 listPtr;
+-    nsIContent* formPointer;
+-    nsIContent* headPointer;
++    nsIContent** formPointer;
++    nsIContent** headPointer;
+   protected:
+     jArray<PRUnichar,PRInt32> charBuffer;
+     PRInt32 charBufferLen;
+   private:
+     PRBool quirks;
+   public:
+     void startTokenization(nsHtml5Tokenizer* self);
+     void doctype(nsIAtom* name, nsString* publicIdentifier, nsString* systemIdentifier, PRBool forceQuirks);
+@@ -149,63 +149,63 @@ class nsHtml5TreeBuilder
+     PRInt32 findInListOfActiveFormattingElements(nsHtml5StackNode* node);
+     PRInt32 findInListOfActiveFormattingElementsContainsBetweenEndAndLastMarker(nsIAtom* name);
+     PRInt32 findLastOrRoot(nsIAtom* name);
+     PRInt32 findLastOrRoot(PRInt32 group);
+     void addAttributesToBody(nsHtml5HtmlAttributes* attributes);
+     void addAttributesToHtml(nsHtml5HtmlAttributes* attributes);
+     void pushHeadPointerOntoStack();
+     void reconstructTheActiveFormattingElements();
+-    void insertIntoFosterParent(nsIContent* child);
++    void insertIntoFosterParent(nsIContent** child);
+     PRBool isInStack(nsHtml5StackNode* node);
+     void pop();
+     void popOnEof();
+     void appendHtmlElementToDocumentAndPush(nsHtml5HtmlAttributes* attributes);
+     void appendHtmlElementToDocumentAndPush();
+     void appendToCurrentNodeAndPushHeadElement(nsHtml5HtmlAttributes* attributes);
+     void appendToCurrentNodeAndPushBodyElement(nsHtml5HtmlAttributes* attributes);
+     void appendToCurrentNodeAndPushBodyElement();
+     void appendToCurrentNodeAndPushFormElementMayFoster(nsHtml5HtmlAttributes* attributes);
+     void appendToCurrentNodeAndPushFormattingElementMayFoster(PRInt32 ns, nsHtml5ElementName* elementName, nsHtml5HtmlAttributes* attributes);
+     void appendToCurrentNodeAndPushElement(PRInt32 ns, nsHtml5ElementName* elementName, nsHtml5HtmlAttributes* attributes);
+     void appendToCurrentNodeAndPushElementMayFoster(PRInt32 ns, nsHtml5ElementName* elementName, nsHtml5HtmlAttributes* attributes);
+     void appendToCurrentNodeAndPushElementMayFosterNoScoping(PRInt32 ns, nsHtml5ElementName* elementName, nsHtml5HtmlAttributes* attributes);
+     void appendToCurrentNodeAndPushElementMayFosterCamelCase(PRInt32 ns, nsHtml5ElementName* elementName, nsHtml5HtmlAttributes* attributes);
+-    void appendToCurrentNodeAndPushElementMayFoster(PRInt32 ns, nsHtml5ElementName* elementName, nsHtml5HtmlAttributes* attributes, nsIContent* form);
+-    void appendVoidElementToCurrentMayFoster(PRInt32 ns, nsIAtom* name, nsHtml5HtmlAttributes* attributes, nsIContent* form);
++    void appendToCurrentNodeAndPushElementMayFoster(PRInt32 ns, nsHtml5ElementName* elementName, nsHtml5HtmlAttributes* attributes, nsIContent** form);
++    void appendVoidElementToCurrentMayFoster(PRInt32 ns, nsIAtom* name, nsHtml5HtmlAttributes* attributes, nsIContent** form);
+     void appendVoidElementToCurrentMayFoster(PRInt32 ns, nsHtml5ElementName* elementName, nsHtml5HtmlAttributes* attributes);
+     void appendVoidElementToCurrentMayFosterCamelCase(PRInt32 ns, nsHtml5ElementName* elementName, nsHtml5HtmlAttributes* attributes);
+-    void appendVoidElementToCurrent(PRInt32 ns, nsIAtom* name, nsHtml5HtmlAttributes* attributes, nsIContent* form);
++    void appendVoidElementToCurrent(PRInt32 ns, nsIAtom* name, nsHtml5HtmlAttributes* attributes, nsIContent** form);
+   protected:
+     void accumulateCharacters(PRUnichar* buf, PRInt32 start, PRInt32 length);
+     void accumulateCharacter(PRUnichar c);
+     void requestSuspension();
+-    nsIContent* createElement(PRInt32 ns, nsIAtom* name, nsHtml5HtmlAttributes* attributes);
+-    nsIContent* createElement(PRInt32 ns, nsIAtom* name, nsHtml5HtmlAttributes* attributes, nsIContent* form);
+-    nsIContent* createHtmlElementSetAsRoot(nsHtml5HtmlAttributes* attributes);
+-    void detachFromParent(nsIContent* element);
+-    PRBool hasChildren(nsIContent* element);
+-    void appendElement(nsIContent* child, nsIContent* newParent);
+-    void appendChildrenToNewParent(nsIContent* oldParent, nsIContent* newParent);
+-    void insertFosterParentedChild(nsIContent* child, nsIContent* table, nsIContent* stackParent);
+-    void insertFosterParentedCharacters(PRUnichar* buf, PRInt32 start, PRInt32 length, nsIContent* table, nsIContent* stackParent);
+-    void appendCharacters(nsIContent* parent, PRUnichar* buf, PRInt32 start, PRInt32 length);
+-    void appendComment(nsIContent* parent, PRUnichar* buf, PRInt32 start, PRInt32 length);
++    nsIContent** createElement(PRInt32 ns, nsIAtom* name, nsHtml5HtmlAttributes* attributes);
++    nsIContent** createElement(PRInt32 ns, nsIAtom* name, nsHtml5HtmlAttributes* attributes, nsIContent** form);
++    nsIContent** createHtmlElementSetAsRoot(nsHtml5HtmlAttributes* attributes);
++    void detachFromParent(nsIContent** element);
++    PRBool hasChildren(nsIContent** element);
++    void appendElement(nsIContent** child, nsIContent** newParent);
++    void appendChildrenToNewParent(nsIContent** oldParent, nsIContent** newParent);
++    void insertFosterParentedChild(nsIContent** child, nsIContent** table, nsIContent** stackParent);
++    void insertFosterParentedCharacters(PRUnichar* buf, PRInt32 start, PRInt32 length, nsIContent** table, nsIContent** stackParent);
++    void appendCharacters(nsIContent** parent, PRUnichar* buf, PRInt32 start, PRInt32 length);
++    void appendComment(nsIContent** parent, PRUnichar* buf, PRInt32 start, PRInt32 length);
+     void appendCommentToDocument(PRUnichar* buf, PRInt32 start, PRInt32 length);
+-    void addAttributesToElement(nsIContent* element, nsHtml5HtmlAttributes* attributes);
+-    void markMalformedIfScript(nsIContent* elt);
++    void addAttributesToElement(nsIContent** element, nsHtml5HtmlAttributes* attributes);
++    void markMalformedIfScript(nsIContent** elt);
+     void start(PRBool fragment);
+     void end();
+     void appendDoctypeToDocument(nsIAtom* name, nsString* publicIdentifier, nsString* systemIdentifier);
+-    void elementPushed(PRInt32 ns, nsIAtom* name, nsIContent* node);
+-    void elementPopped(PRInt32 ns, nsIAtom* name, nsIContent* node);
++    void elementPushed(PRInt32 ns, nsIAtom* name, nsIContent** node);
++    void elementPopped(PRInt32 ns, nsIAtom* name, nsIContent** node);
+   public:
+-    void setFragmentContext(nsIAtom* context, PRInt32 ns, nsIContent* node, PRBool quirks);
++    void setFragmentContext(nsIAtom* context, PRInt32 ns, nsIContent** node, PRBool quirks);
+   protected:
+-    nsIContent* currentNode();
++    nsIContent** currentNode();
+   public:
+     PRBool isScriptingEnabled();
+     void setScriptingEnabled(PRBool scriptingEnabled);
+     PRBool inForeign();
+   private:
+     void flushCharacters();
+     PRBool charBufferContainsNonWhitespace();
+   public:
+diff --git a/parser/html/nsHtml5TreeBuilderCppSupplement.h b/parser/html/nsHtml5TreeBuilderCppSupplement.h
+--- a/parser/html/nsHtml5TreeBuilderCppSupplement.h
++++ b/parser/html/nsHtml5TreeBuilderCppSupplement.h
+@@ -34,211 +34,198 @@
+  * decision by deleting the provisions above and replace them with the notice
+  * and other provisions required by the GPL or the LGPL. If you do not delete
+  * the provisions above, a recipient may use your version of this file under
+  * the terms of any one of the MPL, the GPL or the LGPL.
+  *
+  * ***** END LICENSE BLOCK ***** */
+ 
+ #include "nsContentErrors.h"
+-#include "nsContentCreatorFunctions.h"
+-#include "nsIDOMDocumentType.h"
+ #include "nsIPresShell.h"
+ #include "nsPresContext.h"
+ #include "nsEvent.h"
+ #include "nsGUIEvent.h"
+ #include "nsEventDispatcher.h"
+ #include "nsContentUtils.h"
+-#include "nsIDOMHTMLFormElement.h"
+-#include "nsIFormControl.h"
+ #include "nsNodeUtils.h"
+-#include "nsIStyleSheetLinkingElement.h"
+-#include "nsTraceRefcnt.h"
+-#include "mozAutoDocUpdate.h"
+-#include "nsIScriptElement.h"
+-#include "nsIDTD.h"
+ 
+ // this really should be autogenerated...
+ jArray<PRUnichar,PRInt32> nsHtml5TreeBuilder::ISINDEX_PROMPT = jArray<PRUnichar,PRInt32>();
+ nsHtml5TreeBuilder::nsHtml5TreeBuilder(nsHtml5TreeOpExecutor* aExec)
+   : scriptingEnabled(PR_FALSE)
+   , fragment(PR_FALSE)
+   , contextNode(nsnull)
+   , formPointer(nsnull)
+   , headPointer(nsnull)
+   , mExecutor(aExec)
++  , mHandles(new nsIContent*[NS_HTML5_TREE_BUILDER_HANDLE_ARRAY_LENGTH])
++  , mHandlesUsed(0)
+ #ifdef DEBUG
+   , mActive(PR_FALSE)
+ #endif
+ {
+   MOZ_COUNT_CTOR(nsHtml5TreeBuilder);
+ }
+ 
+ nsHtml5TreeBuilder::~nsHtml5TreeBuilder()
+ {
+   MOZ_COUNT_DTOR(nsHtml5TreeBuilder);
+   NS_ASSERTION(!mActive, "nsHtml5TreeBuilder deleted without ever calling end() on it!");
+   mOpQueue.Clear();
+ }
+ 
+-nsIContent*
++nsIContent**
+ nsHtml5TreeBuilder::createElement(PRInt32 aNamespace, nsIAtom* aName, nsHtml5HtmlAttributes* aAttributes)
+ {
+-  nsIContent* newContent;
+-  nsCOMPtr<nsINodeInfo> nodeInfo = mExecutor->GetNodeInfoManager()->GetNodeInfo(aName, nsnull, aNamespace);
+-  NS_ASSERTION(nodeInfo, "Got null nodeinfo.");
+-  NS_NewElement(&newContent, nodeInfo->NamespaceID(), nodeInfo, PR_TRUE);
+-  NS_ASSERTION(newContent, "Element creation created null pointer.");
+-  PRInt32 len = aAttributes->getLength();
+-  for (PRInt32 i = 0; i < len; ++i) {
+-    newContent->SetAttr(aAttributes->getURI(i), aAttributes->getLocalName(i), aAttributes->getPrefix(i), *(aAttributes->getValue(i)), PR_FALSE);
+-    // XXX what to do with nsresult?
+-  }
+-  if (aNamespace != kNameSpaceID_MathML && (aName == nsHtml5Atoms::style || (aNamespace == kNameSpaceID_XHTML && aName == nsHtml5Atoms::link))) {
+-    nsCOMPtr<nsIStyleSheetLinkingElement> ssle(do_QueryInterface(newContent));
+-    if (ssle) {
+-      ssle->InitStyleLinkElement(PR_FALSE);
+-      ssle->SetEnableUpdates(PR_FALSE);
+-#if 0
+-      if (!aNodeInfo->Equals(nsGkAtoms::link, kNameSpaceID_XHTML)) {
+-        ssle->SetLineNumber(aLineNumber);
+-      }
+-#endif
+-    }
+-  }
+-  return newContent;
++  nsIContent** content = AllocateContentHandle();
++  nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
++  // XXX if null, OOM!
++  treeOp->Init(aNamespace, aName, aAttributes, content);
++  return content;
+ }
+ 
+-nsIContent*
+-nsHtml5TreeBuilder::createElement(PRInt32 aNamespace, nsIAtom* aName, nsHtml5HtmlAttributes* aAttributes, nsIContent* aFormElement)
++nsIContent**
++nsHtml5TreeBuilder::createElement(PRInt32 aNamespace, nsIAtom* aName, nsHtml5HtmlAttributes* aAttributes, nsIContent** aFormElement)
+ {
+-  nsIContent* content = createElement(aNamespace, aName, aAttributes);
++  nsIContent** content = createElement(aNamespace, aName, aAttributes);
+   if (aFormElement) {
+-    nsCOMPtr<nsIFormControl> formControl(do_QueryInterface(content));
+-    NS_ASSERTION(formControl, "Form-associated element did not implement nsIFormControl.");
+-    nsCOMPtr<nsIDOMHTMLFormElement> formElement(do_QueryInterface(aFormElement));
+-    NS_ASSERTION(formElement, "The form element doesn't implement nsIDOMHTMLFormElement.");
+-    if (formControl) { // avoid crashing on <output>
+-      formControl->SetForm(formElement);
+-    }
++    nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
++    // XXX if null, OOM!
++    treeOp->Init(eTreeOpSetFormElement, content, aFormElement);
+   }
+   return content;
+ }
+ 
+-nsIContent*
++nsIContent**
+ nsHtml5TreeBuilder::createHtmlElementSetAsRoot(nsHtml5HtmlAttributes* aAttributes)
+ {
+-  nsIContent* content = createElement(kNameSpaceID_XHTML, nsHtml5Atoms::html, aAttributes);
++  nsIContent** content = createElement(kNameSpaceID_XHTML, nsHtml5Atoms::html, aAttributes);
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   // XXX if null, OOM!
+   treeOp->Init(eTreeOpAppendToDocument, content);
+   return content;
+ }
+ 
+ void
+-nsHtml5TreeBuilder::detachFromParent(nsIContent* aElement)
++nsHtml5TreeBuilder::detachFromParent(nsIContent** aElement)
+ {
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   // XXX if null, OOM!
+   treeOp->Init(eTreeOpDetach, aElement);
+ }
+ 
+ void
+-nsHtml5TreeBuilder::appendElement(nsIContent* aChild, nsIContent* aParent)
++nsHtml5TreeBuilder::appendElement(nsIContent** aChild, nsIContent** aParent)
+ {
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   // XXX if null, OOM!
+   treeOp->Init(aChild, aParent);
+ }
+ 
+ void
+-nsHtml5TreeBuilder::appendChildrenToNewParent(nsIContent* aOldParent, nsIContent* aNewParent)
++nsHtml5TreeBuilder::appendChildrenToNewParent(nsIContent** aOldParent, nsIContent** aNewParent)
+ {
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   // XXX if null, OOM!
+   treeOp->Init(eTreeOpAppendChildrenToNewParent, aOldParent, aNewParent);
+ }
+ 
+ void
+-nsHtml5TreeBuilder::insertFosterParentedCharacters(PRUnichar* aBuffer, PRInt32 aStart, PRInt32 aLength, nsIContent* aTable, nsIContent* aStackParent)
++nsHtml5TreeBuilder::insertFosterParentedCharacters(PRUnichar* aBuffer, PRInt32 aStart, PRInt32 aLength, nsIContent** aTable, nsIContent** aStackParent)
+ {
+-  nsCOMPtr<nsIContent> text;
+-  NS_NewTextNode(getter_AddRefs(text), mExecutor->GetNodeInfoManager());
+-  // XXX nsresult and comment null check?
+-  text->SetText(aBuffer + aStart, aLength, PR_FALSE);
+-  // XXX nsresult
++  PRUnichar* bufferCopy = new PRUnichar[aLength];
++  memcpy(bufferCopy, aBuffer, aLength * sizeof(PRUnichar));
++  
++  nsIContent** text = AllocateContentHandle();
++
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   // XXX if null, OOM!
++  treeOp->Init(eTreeOpCreateTextNode, bufferCopy, aLength, text);
++
++  treeOp = mOpQueue.AppendElement();
++  // XXX if null, OOM!
+   treeOp->Init(eTreeOpFosterParent, text, aStackParent, aTable);
+ }
+ 
+ void
+-nsHtml5TreeBuilder::insertFosterParentedChild(nsIContent* aChild, nsIContent* aTable, nsIContent* aStackParent)
++nsHtml5TreeBuilder::insertFosterParentedChild(nsIContent** aChild, nsIContent** aTable, nsIContent** aStackParent)
+ {
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   // XXX if null, OOM!
+   treeOp->Init(eTreeOpFosterParent, aChild, aStackParent, aTable);
+ }
+ 
+ void
+-nsHtml5TreeBuilder::appendCharacters(nsIContent* aParent, PRUnichar* aBuffer, PRInt32 aStart, PRInt32 aLength)
++nsHtml5TreeBuilder::appendCharacters(nsIContent** aParent, PRUnichar* aBuffer, PRInt32 aStart, PRInt32 aLength)
+ {
+-  nsCOMPtr<nsIContent> text;
+-  NS_NewTextNode(getter_AddRefs(text), mExecutor->GetNodeInfoManager());
+-  // XXX nsresult and comment null check?
+-  text->SetText(aBuffer + aStart, aLength, PR_FALSE);
+-  // XXX nsresult
++  PRUnichar* bufferCopy = new PRUnichar[aLength];
++  memcpy(bufferCopy, aBuffer, aLength * sizeof(PRUnichar));
++  
++  nsIContent** text = AllocateContentHandle();
++
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   // XXX if null, OOM!
++  treeOp->Init(eTreeOpCreateTextNode, bufferCopy, aLength, text);
++
++  treeOp = mOpQueue.AppendElement();
++  // XXX if null, OOM!
+   treeOp->Init(text, aParent);
+ }
+ 
+ void
+-nsHtml5TreeBuilder::appendComment(nsIContent* aParent, PRUnichar* aBuffer, PRInt32 aStart, PRInt32 aLength)
++nsHtml5TreeBuilder::appendComment(nsIContent** aParent, PRUnichar* aBuffer, PRInt32 aStart, PRInt32 aLength)
+ {
+-  nsCOMPtr<nsIContent> comment;
+-  NS_NewCommentNode(getter_AddRefs(comment), mExecutor->GetNodeInfoManager());
+-  // XXX nsresult and comment null check?
+-  comment->SetText(aBuffer + aStart, aLength, PR_FALSE);
+-  // XXX nsresult
++  PRUnichar* bufferCopy = new PRUnichar[aLength];
++  memcpy(bufferCopy, aBuffer, aLength * sizeof(PRUnichar));
++  
++  nsIContent** comment = AllocateContentHandle();
++
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   // XXX if null, OOM!
++  treeOp->Init(eTreeOpCreateComment, bufferCopy, aLength, comment);
++
++  treeOp = mOpQueue.AppendElement();
++  // XXX if null, OOM!
+   treeOp->Init(comment, aParent);
+ }
+ 
+ void
+ nsHtml5TreeBuilder::appendCommentToDocument(PRUnichar* aBuffer, PRInt32 aStart, PRInt32 aLength)
+ {
+-  nsCOMPtr<nsIContent> comment;
+-  NS_NewCommentNode(getter_AddRefs(comment), mExecutor->GetNodeInfoManager());
+-  // XXX nsresult and comment null check?
+-  comment->SetText(aBuffer + aStart, aLength, PR_FALSE);
+-  // XXX nsresult
++  PRUnichar* bufferCopy = new PRUnichar[aLength];
++  memcpy(bufferCopy, aBuffer, aLength * sizeof(PRUnichar));
++  
++  nsIContent** comment = AllocateContentHandle();
++
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   // XXX if null, OOM!
++  treeOp->Init(eTreeOpCreateComment, bufferCopy, aLength, comment);
++
++  treeOp = mOpQueue.AppendElement();
++  // XXX if null, OOM!
+   treeOp->Init(eTreeOpAppendToDocument, comment);
+ }
+ 
+ void
+-nsHtml5TreeBuilder::addAttributesToElement(nsIContent* aElement, nsHtml5HtmlAttributes* aAttributes)
++nsHtml5TreeBuilder::addAttributesToElement(nsIContent** aElement, nsHtml5HtmlAttributes* aAttributes)
+ {
+-  nsIContent* holder = createElement(kNameSpaceID_XHTML, nsHtml5Atoms::div, aAttributes);
++  if (aAttributes == nsHtml5HtmlAttributes::EMPTY_ATTRIBUTES) {
++    return;
++  }
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   // XXX if null, OOM!
+-  treeOp->Init(eTreeOpAddAttributes, holder, aElement);
++  treeOp->Init(aElement, aAttributes);
+ }
+ 
+ void
+-nsHtml5TreeBuilder::markMalformedIfScript(nsIContent* elt)
++nsHtml5TreeBuilder::markMalformedIfScript(nsIContent** elt)
+ {
+-  nsCOMPtr<nsIScriptElement> sele = do_QueryInterface(elt);
+-  if (sele) {
+-    // Make sure to serialize this script correctly, for nice round tripping.
+-    sele->SetIsMalformed();
+-  }
++  nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
++  // XXX if null, OOM!
++  treeOp->Init(eTreeOpMarkMalformedIfScript, elt);
+ }
+ 
+ void
+ nsHtml5TreeBuilder::start(PRBool fragment)
+ {
+   // XXX check that timer creation didn't fail in constructor
+   if (!fragment) {
+     /*
+@@ -262,42 +249,31 @@ nsHtml5TreeBuilder::end()
+ #ifdef DEBUG
+   mActive = PR_FALSE;
+ #endif
+ }
+ 
+ void
+ nsHtml5TreeBuilder::appendDoctypeToDocument(nsIAtom* aName, nsString* aPublicId, nsString* aSystemId)
+ {
+-  // Adapted from nsXMLContentSink
+-  // Create a new doctype node
+-  nsCOMPtr<nsIDOMDocumentType> docType;
+-  nsAutoString voidString;
+-  voidString.SetIsVoid(PR_TRUE);
+-  NS_NewDOMDocumentType(getter_AddRefs(docType),
+-                        mExecutor->GetNodeInfoManager(),
+-                        nsnull,
+-                        aName,
+-                        nsnull,
+-                        nsnull,
+-                        *aPublicId,
+-                        *aSystemId,
+-                        voidString);
+-  NS_ASSERTION(docType, "Doctype creation failed.");
+-  nsCOMPtr<nsIContent> content = do_QueryInterface(docType);
+-  NS_ASSERTION(content, "doctype isn't content?");
++  nsIContent** content = AllocateContentHandle();
++
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   // XXX if null, OOM!
++  treeOp->Init(aName, *aPublicId, *aSystemId, content);
++  
++  treeOp = mOpQueue.AppendElement();
++  // XXX if null, OOM!
+   treeOp->Init(eTreeOpAppendToDocument, content);
+   // nsXMLContentSink can flush here, but what's the point?
+   // It can also interrupt here, but we can't.
+ }
+ 
+ void
+-nsHtml5TreeBuilder::elementPushed(PRInt32 aNamespace, nsIAtom* aName, nsIContent* aElement)
++nsHtml5TreeBuilder::elementPushed(PRInt32 aNamespace, nsIAtom* aName, nsIContent** aElement)
+ {
+   NS_ASSERTION(aNamespace == kNameSpaceID_XHTML || aNamespace == kNameSpaceID_SVG || aNamespace == kNameSpaceID_MathML, "Element isn't HTML, SVG or MathML!");
+   NS_ASSERTION(aName, "Element doesn't have local name!");
+   NS_ASSERTION(aElement, "No element!");
+   // Give autoloading links a chance to fire
+   if (aNamespace == kNameSpaceID_XHTML) {
+     if (aName == nsHtml5Atoms::body) {
+       nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+@@ -309,29 +285,31 @@ nsHtml5TreeBuilder::elementPushed(PRInt3
+       treeOp->Init(eTreeOpProcessOfflineManifest, aElement);
+       return;
+     }
+   }
+   mExecutor->MaybeSuspend();
+ }
+ 
+ void
+-nsHtml5TreeBuilder::elementPopped(PRInt32 aNamespace, nsIAtom* aName, nsIContent* aElement)
++nsHtml5TreeBuilder::elementPopped(PRInt32 aNamespace, nsIAtom* aName, nsIContent** aElement)
+ {
+   NS_ASSERTION(aNamespace == kNameSpaceID_XHTML || aNamespace == kNameSpaceID_SVG || aNamespace == kNameSpaceID_MathML, "Element isn't HTML, SVG or MathML!");
+   NS_ASSERTION(aName, "Element doesn't have local name!");
+   NS_ASSERTION(aElement, "No element!");
+   mExecutor->MaybeSuspend();
+   if (aNamespace == kNameSpaceID_MathML) {
+     return;
+   }
+   // we now have only SVG and HTML
+   if (aName == nsHtml5Atoms::script) {
+     requestSuspension();
+-    mExecutor->SetScriptElement(aElement);
++    nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
++    // XXX if null, OOM!
++    treeOp->Init(eTreeOpRunScript, aElement);
+     return;
+   }
+   if (aName == nsHtml5Atoms::title) {
+     nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+     // XXX if null, OOM!
+     treeOp->Init(eTreeOpDoneAddingChildren, aElement);
+     return;
+   }
+@@ -410,69 +388,35 @@ nsHtml5TreeBuilder::accumulateCharacters
+     memcpy(newBuf, charBuffer, sizeof(PRUnichar) * charBufferLen);
+     charBuffer.release();
+     charBuffer = newBuf;
+   }
+   memcpy(charBuffer + charBufferLen, aBuf + aStart, sizeof(PRUnichar) * aLength);
+   charBufferLen = newFillLen;
+ }
+ 
+-void
+-nsHtml5TreeBuilder::DoUnlink()
++nsIContent**
++nsHtml5TreeBuilder::AllocateContentHandle()
+ {
+-  nsHtml5TreeBuilder* tmp = this;
+-  NS_IF_RELEASE(contextNode);
+-  NS_IF_RELEASE(formPointer);
+-  NS_IF_RELEASE(headPointer);
+-  while (currentPtr > -1) {
+-    stack[currentPtr]->release();
+-    currentPtr--;
++  if (mHandlesUsed == NS_HTML5_TREE_BUILDER_HANDLE_ARRAY_LENGTH) {
++    mOldHandles.AppendElement(mHandles.forget());
++    mHandles = new nsIContent*[NS_HTML5_TREE_BUILDER_HANDLE_ARRAY_LENGTH];
++    mHandlesUsed = 0;
+   }
+-  while (listPtr > -1) {
+-    if (listOfActiveFormattingElements[listPtr]) {
+-      listOfActiveFormattingElements[listPtr]->release();
+-    }
+-    listPtr--;
+-  }
+-  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSTARRAY(mOpQueue);
++  return &mHandles[mHandlesUsed++];
+ }
+ 
+-void
+-nsHtml5TreeBuilder::DoTraverse(nsCycleCollectionTraversalCallback &cb)
++PRBool
++nsHtml5TreeBuilder::HasScript()
+ {
+-  nsHtml5TreeBuilder* tmp = this;
+-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_RAWPTR(contextNode);
+-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_RAWPTR(formPointer);
+-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_RAWPTR(headPointer);
+-  if (stack) {
+-    for (PRInt32 i = 0; i <= currentPtr; i++) {
+-#ifdef DEBUG_CC
+-      NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "stack[i]");
+-#endif
+-      cb.NoteNativeChild(stack[i], &NS_CYCLE_COLLECTION_NAME(nsHtml5StackNode));
+-    }
++  PRUint32 len = mOpQueue.Length();
++  if (!len) {
++    return PR_FALSE;
+   }
+-  if (listOfActiveFormattingElements) {
+-    for (PRInt32 i = 0; i <= listPtr; i++) {
+-      if (listOfActiveFormattingElements[i]) {
+-#ifdef DEBUG_CC
+-        NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "listOfActiveFormattingElements[i]");
+-#endif
+-        cb.NoteNativeChild(listOfActiveFormattingElements[i], &NS_CYCLE_COLLECTION_NAME(nsHtml5StackNode));
+-      }
+-    }
+-  }
+-  const nsHtml5TreeOperation* start = mOpQueue.Elements();
+-  const nsHtml5TreeOperation* end = start + mOpQueue.Length();
+-  for (nsHtml5TreeOperation* iter = (nsHtml5TreeOperation*)start; iter < end; ++iter) {
+-#ifdef DEBUG_CC
+-    NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mOpQueue[i]");
+-#endif
+-    iter->DoTraverse(cb);
+-  }
++  return mOpQueue.ElementAt(len - 1).IsRunScript();
+ }
+ 
+ // DocumentModeHandler
+ void
+ nsHtml5TreeBuilder::documentMode(nsHtml5DocumentMode m)
+ {
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   // XXX if null, OOM!
+diff --git a/parser/html/nsHtml5TreeBuilderHSupplement.h b/parser/html/nsHtml5TreeBuilderHSupplement.h
+--- a/parser/html/nsHtml5TreeBuilderHSupplement.h
++++ b/parser/html/nsHtml5TreeBuilderHSupplement.h
+@@ -30,43 +30,49 @@
+  * use your version of this file under the terms of the MPL, indicate your
+  * decision by deleting the provisions above and replace them with the notice
+  * and other provisions required by the GPL or the LGPL. If you do not delete
+  * the provisions above, a recipient may use your version of this file under
+  * the terms of any one of the MPL, the GPL or the LGPL.
+  *
+  * ***** END LICENSE BLOCK ***** */
+ 
++#define NS_HTML5_TREE_BUILDER_HANDLE_ARRAY_LENGTH 512
++
+   private:
+ 
+-    nsTArray<nsHtml5TreeOperation>       mOpQueue;
+-    nsHtml5TreeOpExecutor*               mExecutor;
++    nsTArray<nsHtml5TreeOperation>         mOpQueue;
++    nsHtml5TreeOpExecutor*                 mExecutor;
++    nsAutoArrayPtr<nsIContent*>            mHandles;
++    PRInt32                                mHandlesUsed;
++    nsTArray<nsAutoArrayPtr<nsIContent*> > mOldHandles;              
+ #ifdef DEBUG
+-    PRBool                               mActive;
++    PRBool                                 mActive;
+ #endif
+ 
++    // DocumentModeHandler
++    /**
++     * Tree builder uses this to report quirkiness of the document
++     */
++    void documentMode(nsHtml5DocumentMode m);
++
++    nsIContent** AllocateContentHandle();
++    
+   public:
+ 
+     nsHtml5TreeBuilder(nsHtml5TreeOpExecutor* aExec);
+ 
+     ~nsHtml5TreeBuilder();
+ 
+-    void DoUnlink();
+-
+-    void DoTraverse(nsCycleCollectionTraversalCallback &cb);
+-
+-    // DocumentModeHandler
+-    /**
+-     * Tree builder uses this to report quirkiness of the document
+-     */
+-    void documentMode(nsHtml5DocumentMode m);
+-    
+     inline PRUint32 GetOpQueueLength() {
+       return mOpQueue.Length();
+     }
+     
+     inline void SwapQueue(nsTArray<nsHtml5TreeOperation>& aOtherQueue) {
+       mOpQueue.SwapElements(aOtherQueue);
+     }
+     
+     inline void ReqSuspension() {
+       requestSuspension();
+     }
++    
++    PRBool HasScript();
++    
+diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpExecutor.cpp
+--- a/parser/html/nsHtml5TreeOpExecutor.cpp
++++ b/parser/html/nsHtml5TreeOpExecutor.cpp
+@@ -69,29 +69,32 @@ NS_INTERFACE_TABLE_HEAD_CYCLE_COLLECTION
+                                 nsIContentSink)
+ NS_INTERFACE_TABLE_TAIL_INHERITING(nsContentSink)
+ 
+ NS_IMPL_ADDREF_INHERITED(nsHtml5TreeOpExecutor, nsContentSink)
+ 
+ NS_IMPL_RELEASE_INHERITED(nsHtml5TreeOpExecutor, nsContentSink)
+ 
+ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(nsHtml5TreeOpExecutor, nsContentSink)
+-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mFlushTimer);
++  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mFlushTimer)
+   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mScriptElement)
++  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMARRAY(mOwnedElements)
++  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMARRAY(mOwnedNonElements)
+ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+ 
+ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(nsHtml5TreeOpExecutor, nsContentSink)
+   if (tmp->mFlushTimer) {
+     tmp->mFlushTimer->Cancel();
+   }
+-  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mFlushTimer);
++  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mFlushTimer)
+   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mScriptElement)
++  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMARRAY(mOwnedElements)
++  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMARRAY(mOwnedNonElements)
+ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+ 
+-
+ nsHtml5TreeOpExecutor::nsHtml5TreeOpExecutor()
+   : mSuppressEOF(PR_FALSE)
+   , mHasProcessedBase(PR_FALSE)
+   , mNeedsFlush(PR_FALSE)
+   , mFlushTimer(do_CreateInstance("@mozilla.org/timer;1"))
+   , mNeedsCharsetSwitch(PR_FALSE)
+ {
+ 
+@@ -499,22 +502,24 @@ nsHtml5TreeOpExecutor::MaybeSuspend() {
+     // long to flush in one go it it grows further.
+     static_cast<nsHtml5Parser*>(mParser.get())->Suspend();
+     mTreeBuilder->ReqSuspension();
+   }
+ }
+ 
+ void
+ nsHtml5TreeOpExecutor::MaybeExecuteScript() {
+-  if (mScriptElement) {
+-    // mUninterruptibleDocWrite = PR_FALSE;
+-    ExecuteScript();
+-    if (mStreamParser) {
+-      mStreamParser->Suspend();
+-    }
++  if (!mTreeBuilder->HasScript()) {
++    return;
++  }
++  Flush(); // Let the doc update end before we start executing the script
++  NS_ASSERTION(mScriptElement, "No script to run");
++  ExecuteScript();
++  if (mStreamParser) {
++    mStreamParser->Suspend();
+   }
+ }
+ 
+ void
+ nsHtml5TreeOpExecutor::DeferredTimerFlush() {
+   if (mTreeBuilder->GetOpQueueLength() > 0) {
+     mNeedsFlush = PR_TRUE;
+   }
+diff --git a/parser/html/nsHtml5TreeOpExecutor.h b/parser/html/nsHtml5TreeOpExecutor.h
+--- a/parser/html/nsHtml5TreeOpExecutor.h
++++ b/parser/html/nsHtml5TreeOpExecutor.h
+@@ -48,16 +48,17 @@
+ #include "nsHtml5PendingNotification.h"
+ #include "nsTArray.h"
+ #include "nsContentSink.h"
+ #include "nsNodeInfoManager.h"
+ #include "nsHtml5DocumentMode.h"
+ #include "nsITimer.h"
+ #include "nsIScriptElement.h"
+ #include "nsIParser.h"
++#include "nsCOMArray.h"
+ 
+ class nsHtml5TreeBuilder;
+ class nsHtml5Tokenizer;
+ class nsHtml5StreamParser;
+ 
+ enum eHtml5ParserLifecycle {
+   /**
+    * The parser has told the tokenizer to start yet.
+@@ -107,16 +108,22 @@ class nsHtml5TreeOpExecutor : public nsI
+     
+     PRBool                               mHasProcessedBase;
+     PRBool                               mNeedsFlush;
+     nsCOMPtr<nsITimer>                   mFlushTimer;
+     nsTArray<nsHtml5TreeOperation>       mOpQueue;
+     nsTArray<nsIContentPtr>              mElementsSeenInThisAppendBatch;
+     nsTArray<nsHtml5PendingNotification> mPendingNotifications;
+     nsHtml5StreamParser*                 mStreamParser;
++    nsCOMArray<nsIContent>               mOwnedElements;
++    
++    // This could be optimized away by introducing more tree ops so that 
++    // non-elements wouldn't use the handle setup but the text node / comment
++    // / doctype operand would be remembered by the tree op executor.
++    nsCOMArray<nsIContent>               mOwnedNonElements;
+ 
+     /**
+      * The character encoding to which to switch in a late <meta> renavigation
+      */
+     nsCString                     mPendingCharset;
+ 
+     /**
+      * Call to PerformCharsetSwitch() needed
+@@ -239,16 +246,20 @@ class nsHtml5TreeOpExecutor : public nsI
+       mStreamParser = aStreamParser;
+     }
+     
+     /**
+      * Renavigates to the document with a different charset
+      */
+     nsresult MaybePerformCharsetSwitch();
+ 
++    inline void SetScriptElement(nsIContent* aScript) {
++      mScriptElement = aScript;
++    }
++
+     /**
+      * Runs mScriptElement
+      */
+     void ExecuteScript();
+     
+     PRBool IsScriptEnabled();
+ 
+     void PostPendingAppendNotification(nsIContent* aParent, nsIContent* aChild) {
+@@ -371,29 +382,30 @@ class nsHtml5TreeOpExecutor : public nsI
+     void MaybePreventExecution() {
+       if (mScriptElement) {
+         nsCOMPtr<nsIScriptElement> script = do_QueryInterface(mScriptElement);
+         NS_ASSERTION(script, "mScriptElement didn't QI to nsIScriptElement!");
+         script->PreventExecution();
+         mScriptElement = nsnull;
+       }    
+     }
+-    
+-    /**
+-     * Request execution of the script element when the tokenizer returns
+-     */
+-    void SetScriptElement(nsIContent* aScript) { 
+-      mScriptElement = aScript;
+-    }
+-    
++        
+     void SetTreeBuilder(nsHtml5TreeBuilder* aBuilder) {
+       mTreeBuilder = aBuilder;
+     }
+     
+     void Reset();
++    
++    inline void HoldElement(nsIContent* aContent) {
++      mOwnedElements.AppendObject(aContent);
++    }
++
++    inline void HoldNonElement(nsIContent* aContent) {
++      mOwnedNonElements.AppendObject(aContent);
++    }
+ 
+   private:
+ 
+     nsHtml5Tokenizer* GetTokenizer();
+     
+     void FillQueue();
+     
+ };
+diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOperation.cpp
+--- a/parser/html/nsHtml5TreeOperation.cpp
++++ b/parser/html/nsHtml5TreeOperation.cpp
+@@ -43,167 +43,329 @@
+ #include "nsNodeUtils.h"
+ #include "nsAttrName.h"
+ #include "nsHtml5TreeBuilder.h"
+ #include "nsIDOMMutationEvent.h"
+ #include "mozAutoDocUpdate.h"
+ #include "nsBindingManager.h"
+ #include "nsXBLBinding.h"
+ #include "nsHtml5DocumentMode.h"
++#include "nsHtml5HtmlAttributes.h"
++#include "nsContentCreatorFunctions.h"
++#include "nsIScriptElement.h"
++#include "nsIDTD.h"
++#include "nsTraceRefcnt.h"
++#include "nsIDOMHTMLFormElement.h"
++#include "nsIFormControl.h"
++#include "nsIStyleSheetLinkingElement.h"
++#include "nsIDOMDocumentType.h"
+ 
+ nsHtml5TreeOperation::nsHtml5TreeOperation()
+  : mOpCode(eTreeOpAppend)
+ {
+   MOZ_COUNT_CTOR(nsHtml5TreeOperation);
+ }
+ 
+ nsHtml5TreeOperation::~nsHtml5TreeOperation()
+ {
+   MOZ_COUNT_DTOR(nsHtml5TreeOperation);
++  switch(mOpCode) {
++    case eTreeOpAddAttributes:
++      delete mTwo.attributes;
++      break;
++    case eTreeOpCreateElement:
++      delete mThree.attributes;
++      break;
++    case eTreeOpCreateDoctype:
++      delete mTwo.stringPair;
++      break;
++    case eTreeOpCreateTextNode:
++    case eTreeOpCreateComment:
++      delete[] mTwo.unicharPtr;
++      break;
++    default: // keep the compiler happy
++      break;
++  }
+ }
+ 
+ nsresult
+ nsHtml5TreeOperation::Perform(nsHtml5TreeOpExecutor* aBuilder)
+ {
+   nsresult rv = NS_OK;
+   switch(mOpCode) {
+     case eTreeOpAppend: {
+-      aBuilder->PostPendingAppendNotification(mParent, mNode);
+-      rv = mParent->AppendChildTo(mNode, PR_FALSE);
++      nsIContent* node = *(mOne.node);
++      nsIContent* parent = *(mTwo.node);
++      aBuilder->PostPendingAppendNotification(parent, node);
++      rv = parent->AppendChildTo(node, PR_FALSE);
+       return rv;
+     }
+     case eTreeOpDetach: {
++      nsIContent* node = *(mOne.node);
+       aBuilder->FlushPendingAppendNotifications();
+-      nsIContent* parent = mNode->GetParent();
++      nsIContent* parent = node->GetParent();
+       if (parent) {
+-        PRUint32 pos = parent->IndexOf(mNode);
++        PRUint32 pos = parent->IndexOf(node);
+         NS_ASSERTION((pos >= 0), "Element not found as child of its parent");
+         rv = parent->RemoveChildAt(pos, PR_TRUE, PR_FALSE);
+         NS_ENSURE_SUCCESS(rv, rv);
+       }
+       return rv;
+     }
+     case eTreeOpAppendChildrenToNewParent: {
++      nsIContent* node = *(mOne.node);
++      nsIContent* parent = *(mTwo.node);
+       aBuilder->FlushPendingAppendNotifications();
+-      PRUint32 childCount = mParent->GetChildCount();
++      PRUint32 childCount = parent->GetChildCount();
+       PRBool didAppend = PR_FALSE;
+-      while (mNode->GetChildCount()) {
+-        nsCOMPtr<nsIContent> child = mNode->GetChildAt(0);
+-        rv = mNode->RemoveChildAt(0, PR_TRUE, PR_FALSE);
++      while (node->GetChildCount()) {
++        nsCOMPtr<nsIContent> child = node->GetChildAt(0);
++        rv = node->RemoveChildAt(0, PR_TRUE, PR_FALSE);
+         NS_ENSURE_SUCCESS(rv, rv);
+-        rv = mParent->AppendChildTo(child, PR_FALSE);
++        rv = parent->AppendChildTo(child, PR_FALSE);
+         NS_ENSURE_SUCCESS(rv, rv);
+         didAppend = PR_TRUE;
+       }
+       if (didAppend) {
+-        nsNodeUtils::ContentAppended(mParent, childCount);
++        nsNodeUtils::ContentAppended(parent, childCount);
+       }
+       return rv;
+     }
+     case eTreeOpFosterParent: {
+-      nsIContent* parent = mTable->GetParent();
+-      if (parent && parent->IsNodeOfType(nsINode::eELEMENT)) {
++      nsIContent* node = *(mOne.node);
++      nsIContent* parent = *(mTwo.node);
++      nsIContent* table = *(mThree.node);
++      nsIContent* foster = table->GetParent();
++      if (foster && foster->IsNodeOfType(nsINode::eELEMENT)) {
+         aBuilder->FlushPendingAppendNotifications();
+-        PRUint32 pos = parent->IndexOf(mTable);
+-        rv = parent->InsertChildAt(mNode, pos, PR_FALSE);
++        PRUint32 pos = foster->IndexOf(table);
++        rv = foster->InsertChildAt(node, pos, PR_FALSE);
+         NS_ENSURE_SUCCESS(rv, rv);
+-        nsNodeUtils::ContentInserted(parent, mNode, pos);
++        nsNodeUtils::ContentInserted(foster, node, pos);
+       } else {
+-        aBuilder->PostPendingAppendNotification(mParent, mNode);
+-        rv = mParent->AppendChildTo(mNode, PR_FALSE);
++        aBuilder->PostPendingAppendNotification(parent, node);
++        rv = parent->AppendChildTo(node, PR_FALSE);
+       }
+       return rv;
+     }
+     case eTreeOpAppendToDocument: {
++      nsIContent* node = *(mOne.node);
+       aBuilder->FlushPendingAppendNotifications();
+       nsIDocument* doc = aBuilder->GetDocument();
+       PRUint32 childCount = doc->GetChildCount();
+-      rv = doc->AppendChildTo(mNode, PR_FALSE);
++      rv = doc->AppendChildTo(node, PR_FALSE);
+       NS_ENSURE_SUCCESS(rv, rv);
+-      nsNodeUtils::ContentInserted(doc, mNode, childCount);
++      nsNodeUtils::ContentInserted(doc, node, childCount);
+       return rv;
+     }
+     case eTreeOpAddAttributes: {
+-      // mNode holds the new attributes and mParent is the target
+-      nsIDocument* document = mParent->GetCurrentDoc();
+-      
+-      PRUint32 len = mNode->GetAttrCount();
+-      for (PRUint32 i = 0; i < len; ++i) {
+-        const nsAttrName* attrName = mNode->GetAttrNameAt(i);
+-        nsIAtom* localName = attrName->LocalName();
+-        PRInt32 nsuri = attrName->NamespaceID();
+-        if (!mParent->HasAttr(nsuri, localName)) {
+-          nsAutoString value;
+-          mNode->GetAttr(nsuri, localName, value);
+-          
++      nsIContent* node = *(mOne.node);
++      nsHtml5HtmlAttributes* attributes = mTwo.attributes;
++
++      nsIDocument* document = node->GetCurrentDoc();
++
++      PRInt32 len = attributes->getLength();
++      for (PRInt32 i = 0; i < len; ++i) {
++        // prefix doesn't need regetting. it is always null or a static atom
++        // local name is never null
++        nsCOMPtr<nsIAtom> localName = Reget(attributes->getLocalName(i));
++        PRInt32 nsuri = attributes->getURI(i);
++        if (!node->HasAttr(nsuri, localName)) {
++
+           // the manual notification code is based on nsGenericElement
+           
+-          PRUint32 stateMask = PRUint32(mParent->IntrinsicState());
+-          nsNodeUtils::AttributeWillChange(mParent, 
++          PRUint32 stateMask = PRUint32(node->IntrinsicState());
++          nsNodeUtils::AttributeWillChange(node, 
+                                            nsuri,
+                                            localName,
+                                            static_cast<PRUint8>(nsIDOMMutationEvent::ADDITION));
++
++          // prefix doesn't need regetting. it is always null or a static atom
++          // local name is never null
++          node->SetAttr(nsuri, localName, attributes->getPrefix(i), *(attributes->getValue(i)), PR_FALSE);
++          // XXX what to do with nsresult?
+           
+-          mParent->SetAttr(nsuri, localName, attrName->GetPrefix(), value, PR_FALSE);
+-          
+-          if (document || mParent->HasFlag(NODE_FORCE_XBL_BINDINGS)) {
+-            nsIDocument* ownerDoc = mParent->GetOwnerDoc();
++          if (document || node->HasFlag(NODE_FORCE_XBL_BINDINGS)) {
++            nsIDocument* ownerDoc = node->GetOwnerDoc();
+             if (ownerDoc) {
+               nsRefPtr<nsXBLBinding> binding =
+-                ownerDoc->BindingManager()->GetBinding(mParent);
++                ownerDoc->BindingManager()->GetBinding(node);
+               if (binding) {
+                 binding->AttributeChanged(localName, nsuri, PR_FALSE, PR_FALSE);
+               }
+             }
+           }
+           
+-          stateMask = stateMask ^ PRUint32(mParent->IntrinsicState());
++          stateMask ^= PRUint32(node->IntrinsicState());
+           if (stateMask && document) {
+             MOZ_AUTO_DOC_UPDATE(document, UPDATE_CONTENT_STATE, PR_TRUE);
+-            document->ContentStatesChanged(mParent, nsnull, stateMask);
++            document->ContentStatesChanged(node, nsnull, stateMask);
+           }
+-          nsNodeUtils::AttributeChanged(mParent, 
++          nsNodeUtils::AttributeChanged(node, 
+                                         nsuri, 
+                                         localName, 
+                                         static_cast<PRUint8>(nsIDOMMutationEvent::ADDITION),
+                                         stateMask);
+         }
+       }
++      
++      return rv;
++    }
++    case eTreeOpCreateElement: {
++      nsIContent** target = mOne.node;
++      PRInt32 ns = mInt;
++      nsCOMPtr<nsIAtom> name = Reget(mTwo.atom);
++      nsHtml5HtmlAttributes* attributes = mThree.attributes;
++      
++      nsCOMPtr<nsIContent> newContent;
++      nsCOMPtr<nsINodeInfo> nodeInfo = aBuilder->GetNodeInfoManager()->GetNodeInfo(name, nsnull, ns);
++      NS_ASSERTION(nodeInfo, "Got null nodeinfo.");
++      NS_NewElement(getter_AddRefs(newContent), nodeInfo->NamespaceID(), nodeInfo, PR_TRUE);
++      NS_ASSERTION(newContent, "Element creation created null pointer.");
++
++      aBuilder->HoldElement(*target = newContent);      
++
++      if (!attributes) {
++        return rv;
++      }
++
++      PRInt32 len = attributes->getLength();
++      for (PRInt32 i = 0; i < len; ++i) {
++        // prefix doesn't need regetting. it is always null or a static atom
++        // local name is never null
++        nsCOMPtr<nsIAtom> localName = Reget(attributes->getLocalName(i));
++        newContent->SetAttr(attributes->getURI(i), localName, attributes->getPrefix(i), *(attributes->getValue(i)), PR_FALSE);
++        // XXX what to do with nsresult?
++      }
++      if (ns != kNameSpaceID_MathML && (name == nsHtml5Atoms::style || (ns == kNameSpaceID_XHTML && name == nsHtml5Atoms::link))) {
++        nsCOMPtr<nsIStyleSheetLinkingElement> ssle(do_QueryInterface(newContent));
++        if (ssle) {
++          ssle->InitStyleLinkElement(PR_FALSE);
++          ssle->SetEnableUpdates(PR_FALSE);
++        }
++      }
++      return rv;
++    }
++    case eTreeOpSetFormElement: {
++      nsIContent* node = *(mOne.node);
++      nsIContent* parent = *(mTwo.node);
++      nsCOMPtr<nsIFormControl> formControl(do_QueryInterface(node));
++      NS_ASSERTION(formControl, "Form-associated element did not implement nsIFormControl.");
++      nsCOMPtr<nsIDOMHTMLFormElement> formElement(do_QueryInterface(parent));
++      NS_ASSERTION(formElement, "The form element doesn't implement nsIDOMHTMLFormElement.");
++      if (formControl) { // avoid crashing on <output>
++        formControl->SetForm(formElement);
++      }
++      return rv;
++    }
++    case eTreeOpCreateTextNode: {
++      nsIContent** target = mOne.node;
++      PRUnichar* buffer = mTwo.unicharPtr;
++      PRInt32 length = mInt;
++      
++      nsCOMPtr<nsIContent> text;
++      NS_NewTextNode(getter_AddRefs(text), aBuilder->GetNodeInfoManager());
++      // XXX nsresult and comment null check?
++      text->SetText(buffer, length, PR_FALSE);
++      // XXX nsresult
++      
++      aBuilder->HoldNonElement(*target = text);
++      return rv;
++    }
++    case eTreeOpCreateComment: {
++      nsIContent** target = mOne.node;
++      PRUnichar* buffer = mTwo.unicharPtr;
++      PRInt32 length = mInt;
++      
++      nsCOMPtr<nsIContent> comment;
++      NS_NewCommentNode(getter_AddRefs(comment), aBuilder->GetNodeInfoManager());
++      // XXX nsresult and comment null check?
++      comment->SetText(buffer, length, PR_FALSE);
++      // XXX nsresult
++      
++      aBuilder->HoldNonElement(*target = comment);
++      return rv;
++    }
++    case eTreeOpCreateDoctype: {
++      nsCOMPtr<nsIAtom> name = Reget(mOne.atom);
++      nsHtml5TreeOperationStringPair* pair = mTwo.stringPair;
++      nsString publicId;
++      nsString systemId;
++      pair->Get(publicId, systemId);
++      nsIContent** target = mThree.node;
++      
++      // Adapted from nsXMLContentSink
++      // Create a new doctype node
++      nsCOMPtr<nsIDOMDocumentType> docType;
++      nsAutoString voidString;
++      voidString.SetIsVoid(PR_TRUE);
++      NS_NewDOMDocumentType(getter_AddRefs(docType),
++                            aBuilder->GetNodeInfoManager(),
++                            nsnull,
++                            name,
++                            nsnull,
++                            nsnull,
++                            publicId,
++                            systemId,
++                            voidString);
++      NS_ASSERTION(docType, "Doctype creation failed.");
++      nsCOMPtr<nsIContent> asContent = do_QueryInterface(docType);
++      aBuilder->HoldNonElement(*target = asContent);      
++      return rv;
++    }
++    case eTreeOpRunScript: {
++      nsIContent* node = *(mOne.node);
++      aBuilder->SetScriptElement(node);
+       return rv;
+     }
+     case eTreeOpDoneAddingChildren: {
+-      mNode->DoneAddingChildren(PR_FALSE);
++      nsIContent* node = *(mOne.node);
++      node->DoneAddingChildren(PR_FALSE);
+       return rv;
+     }
+     case eTreeOpDoneCreatingElement: {
+-      mNode->DoneCreatingElement();
++      nsIContent* node = *(mOne.node);
++      node->DoneCreatingElement();
+       return rv;
+     }
+     case eTreeOpUpdateStyleSheet: {
+-      aBuilder->UpdateStyleSheet(mNode);
++      nsIContent* node = *(mOne.node);
++      aBuilder->UpdateStyleSheet(node);
+       return rv;
+     }
+     case eTreeOpProcessBase: {
+-      rv = aBuilder->ProcessBASETag(mNode);
++      nsIContent* node = *(mOne.node);
++      rv = aBuilder->ProcessBASETag(node);
+       return rv;
+     }
+     case eTreeOpProcessMeta: {
+-      rv = aBuilder->ProcessMETATag(mNode);
++      nsIContent* node = *(mOne.node);
++      rv = aBuilder->ProcessMETATag(node);
+       return rv;
+     }
+     case eTreeOpProcessOfflineManifest: {
+-      aBuilder->ProcessOfflineManifest(mNode);
++      nsIContent* node = *(mOne.node);
++      aBuilder->ProcessOfflineManifest(node);
++      return rv;
++    }
++    case eTreeOpMarkMalformedIfScript: {
++      nsIContent* node = *(mOne.node);
++      nsCOMPtr<nsIScriptElement> sele = do_QueryInterface(node);
++      if (sele) {
++        // Make sure to serialize this script correctly, for nice round tripping.
++        sele->SetIsMalformed();
++      }
+       return rv;
+     }
+     case eTreeOpStartLayout: {
+       aBuilder->StartLayout(); // this causes a flush anyway
+       return rv;
+     }
+     case eTreeOpDocumentMode: {
+-      aBuilder->DocumentMode(mMode);
++      aBuilder->DocumentMode(mOne.mode);
+       return rv;
+     }
+     default: {
+       NS_NOTREACHED("Bogus tree op");
+     }
+   }
+   return rv; // keep compiler happy
+ }
+diff --git a/parser/html/nsHtml5TreeOperation.h b/parser/html/nsHtml5TreeOperation.h
+--- a/parser/html/nsHtml5TreeOperation.h
++++ b/parser/html/nsHtml5TreeOperation.h
+@@ -35,88 +35,177 @@
+  *
+  * ***** END LICENSE BLOCK ***** */
+  
+ #ifndef nsHtml5TreeOperation_h__
+ #define nsHtml5TreeOperation_h__
+ 
+ #include "nsIContent.h"
+ #include "nsHtml5DocumentMode.h"
++#include "nsHtml5HtmlAttributes.h"
+ 
+ class nsHtml5TreeOpExecutor;
+ 
+ enum eHtml5TreeOperation {
+   // main HTML5 ops
+   eTreeOpAppend,
+   eTreeOpDetach,
+   eTreeOpAppendChildrenToNewParent,
+   eTreeOpFosterParent,
+   eTreeOpAppendToDocument,
+   eTreeOpAddAttributes,
+   eTreeOpDocumentMode,
++  eTreeOpCreateElement,
++  eTreeOpSetFormElement,
++  eTreeOpCreateTextNode,
++  eTreeOpCreateComment,
++  eTreeOpCreateDoctype,
+   // Gecko-specific on-pop ops
++  eTreeOpRunScript,
+   eTreeOpDoneAddingChildren,
+   eTreeOpDoneCreatingElement,
+   eTreeOpUpdateStyleSheet,
+   eTreeOpProcessBase,
+   eTreeOpProcessMeta,
+   eTreeOpProcessOfflineManifest,
++  eTreeOpMarkMalformedIfScript,
+   eTreeOpStartLayout
+ };
+ 
++class nsHtml5TreeOperationStringPair {
++  private:
++    nsString mPublicId;
++    nsString mSystemId;
++  public:
++    nsHtml5TreeOperationStringPair(const nsAString& aPublicId, 
++                                   const nsAString& aSystemId)
++      : mPublicId(aPublicId)
++      , mSystemId(aSystemId) {
++      MOZ_COUNT_CTOR(nsHtml5TreeOperationStringPair);
++    }
++    
++    ~nsHtml5TreeOperationStringPair() {
++      MOZ_COUNT_DTOR(nsHtml5TreeOperationStringPair);    
++    }
++    
++    inline void Get(nsAString& aPublicId, nsAString& aSystemId) {
++      aPublicId.Assign(mPublicId);
++      aSystemId.Assign(mSystemId);
++    }
++};
++
+ class nsHtml5TreeOperation {
+ 
+   public:
+     nsHtml5TreeOperation();
+ 
+     ~nsHtml5TreeOperation();
+ 
+-    inline void Init(nsIContent* aNode, nsIContent* aParent) {
+-      mNode = aNode;
+-      mParent = aParent;
++    inline void Init(nsIContent** aNode, nsIContent** aParent) {
++      mOne.node = aNode;
++      mTwo.node = aParent;
+     }
+ 
+-    inline void Init(eHtml5TreeOperation aOpCode, nsIContent* aNode) {
++    inline void Init(eHtml5TreeOperation aOpCode, nsIContent** aNode) {
+       mOpCode = aOpCode;
+-      mNode = aNode;
++      mOne.node = aNode;
+     }
+ 
+     inline void Init(eHtml5TreeOperation aOpCode, 
+-                     nsIContent* aNode,
+-                     nsIContent* aParent) {
++                     nsIContent** aNode,
++                     nsIContent** aParent) {
+       mOpCode = aOpCode;
+-      mNode = aNode;
+-      mParent = aParent;
++      mOne.node = aNode;
++      mTwo.node = aParent;
+     }
+ 
+     inline void Init(eHtml5TreeOperation aOpCode,
+-                     nsIContent* aNode,
+-                     nsIContent* aParent, 
+-                     nsIContent* aTable) {
++                     nsIContent** aNode,
++                     nsIContent** aParent, 
++                     nsIContent** aTable) {
+       mOpCode = aOpCode;
+-      mNode = aNode;
+-      mParent = aParent;
+-      mTable = aTable;
++      mOne.node = aNode;
++      mTwo.node = aParent;
++      mThree.node = aTable;
+     }
+ 
+     inline void Init(nsHtml5DocumentMode aMode) {
+       mOpCode = eTreeOpDocumentMode;
+-      mMode = aMode;
++      mOne.mode = aMode;
++    }
++    
++    inline void Init(PRInt32 aNamespace, 
++                     nsIAtom* aName, 
++                     nsHtml5HtmlAttributes* aAttributes,
++                     nsIContent** aTarget) {
++      mOpCode = eTreeOpCreateElement;
++      mInt = aNamespace;
++      mOne.node = aTarget;
++      mTwo.atom = aName;
++      if (aAttributes == nsHtml5HtmlAttributes::EMPTY_ATTRIBUTES) {
++        mThree.attributes = nsnull;
++      } else {
++        mThree.attributes = aAttributes;
++      }
+     }
+ 
+-    inline void DoTraverse(nsCycleCollectionTraversalCallback &cb) {
+-      nsHtml5TreeOperation* tmp = this;
+-      NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mNode);
+-      NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mParent);
+-      NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mTable);
++    inline void Init(eHtml5TreeOperation aOpCode, 
++                     PRUnichar* aBuffer, 
++                     PRInt32 aLength, 
++                     nsIContent** aTarget) {
++      mOpCode = aOpCode;
++      mOne.node = aTarget;
++      mTwo.unicharPtr = aBuffer;
++      mInt = aLength;
++    }
++    
++    inline void Init(nsIContent** aElement,
++                     nsHtml5HtmlAttributes* aAttributes) {
++      mOpCode = eTreeOpAddAttributes;
++      mOne.node = aElement;
++      mTwo.attributes = aAttributes;
++    }
++    
++    inline void Init(nsIAtom* aName, 
++                     const nsAString& aPublicId, 
++                     const nsAString& aSystemId, nsIContent** aTarget) {
++      mOpCode = eTreeOpCreateDoctype;
++      mOne.atom = aName;
++      mTwo.stringPair = new nsHtml5TreeOperationStringPair(aPublicId, aSystemId);
++      mThree.node = aTarget;
++    }
++
++    inline PRBool IsRunScript() {
++      return mOpCode == eTreeOpRunScript;
+     }
+ 
+     nsresult Perform(nsHtml5TreeOpExecutor* aBuilder);
+ 
++    inline already_AddRefed<nsIAtom> Reget(nsIAtom* aAtom) {
++      if (!aAtom || aAtom->IsStaticAtom()) {
++        return aAtom;
++      }
++      nsAutoString str;
++      aAtom->ToString(str);
++      return do_GetAtom(str);
++    }
++
+   private:
++  
++    // possible optimization:
++    // Make the queue take items the size of pointer and make the op code
++    // decide how many operands it dequeues after it.
+     eHtml5TreeOperation mOpCode;
+-    nsCOMPtr<nsIContent> mNode;
+-    nsCOMPtr<nsIContent> mParent;
+-    nsCOMPtr<nsIContent> mTable;
+-    nsHtml5DocumentMode  mMode; // space-wasting temporary solution
++    union {
++      nsIContent**                    node;
++      nsIAtom*                        atom;
++      nsHtml5HtmlAttributes*          attributes;
++      nsHtml5DocumentMode             mode;
++      PRUnichar*                      unicharPtr;
++      nsHtml5TreeOperationStringPair* stringPair;
++    }                   mOne, mTwo, mThree;
++    PRInt32             mInt; // optimize this away later by using an end 
++                              // pointer instead of string length and distinct
++                              // element creation opcodes for HTML, MathML and
++                              // SVG.
+ };
+ 
+ #endif // nsHtml5TreeOperation_h__
+diff --git a/parser/html/nsHtml5UTF16Buffer.cpp b/parser/html/nsHtml5UTF16Buffer.cpp
+--- a/parser/html/nsHtml5UTF16Buffer.cpp
++++ b/parser/html/nsHtml5UTF16Buffer.cpp
+@@ -24,16 +24,17 @@
+  * THIS IS A GENERATED FILE. PLEASE DO NOT EDIT.
+  * Please edit UTF16Buffer.java instead and regenerate.
+  */
+ 
+ #define nsHtml5UTF16Buffer_cpp__
+ 
+ #include "prtypes.h"
+ #include "nsIAtom.h"
++#include "nsHtml5AtomTable.h"
+ #include "nsString.h"
+ #include "nsINameSpaceManager.h"
+ #include "nsIContent.h"
+ #include "nsIDocument.h"
+ #include "nsTraceRefcnt.h"
+ #include "jArray.h"
+ #include "nsHtml5DocumentMode.h"
+ #include "nsHtml5ArrayCopy.h"
+diff --git a/parser/html/nsHtml5UTF16Buffer.h b/parser/html/nsHtml5UTF16Buffer.h
+--- a/parser/html/nsHtml5UTF16Buffer.h
++++ b/parser/html/nsHtml5UTF16Buffer.h
+@@ -25,16 +25,17 @@
+  * Please edit UTF16Buffer.java instead and regenerate.
+  */
+ 
+ #ifndef nsHtml5UTF16Buffer_h__
+ #define nsHtml5UTF16Buffer_h__
+ 
+ #include "prtypes.h"
+ #include "nsIAtom.h"
++#include "nsHtml5AtomTable.h"
+ #include "nsString.h"
+ #include "nsINameSpaceManager.h"
+ #include "nsIContent.h"
+ #include "nsIDocument.h"
+ #include "nsTraceRefcnt.h"
+ #include "jArray.h"
+ #include "nsHtml5DocumentMode.h"
+ #include "nsHtml5ArrayCopy.h"

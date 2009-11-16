@@ -1,0 +1,659 @@
+diff --git a/parser/html/nsHtml5Parser.cpp b/parser/html/nsHtml5Parser.cpp
+--- a/parser/html/nsHtml5Parser.cpp
++++ b/parser/html/nsHtml5Parser.cpp
+@@ -82,16 +82,17 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(ns
+ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+ 
+ nsHtml5Parser::nsHtml5Parser()
+   : mFirstBuffer(new nsHtml5UTF16Buffer(0))
+   , mLastBuffer(mFirstBuffer)
+   , mExecutor(new nsHtml5TreeOpExecutor())
+   , mTreeBuilder(new nsHtml5TreeBuilder(mExecutor))
+   , mTokenizer(new nsHtml5Tokenizer(mTreeBuilder))
++  , mRootContextLineNumber(1)
+ {
+   mAtomTable.Init(); // we aren't checking for OOM anyway...
+   mTokenizer->setInterner(&mAtomTable);
+   // There's a zeroing operator new for everything else
+ }
+ 
+ nsHtml5Parser::~nsHtml5Parser()
+ {
+@@ -288,22 +289,22 @@ nsHtml5Parser::Parse(const nsAString& aS
+       ParseUntilBlocked();
+     }
+     return NS_OK;
+   }
+ 
+   NS_PRECONDITION(IsInsertionPointDefined(), 
+                   "Document.write called when insertion point not defined.");
+ 
++  NS_PRECONDITION(!(mStreamParser && !aKey), "Got a null key in a non-script-created parser");
++
+   if (aSourceBuffer.IsEmpty()) {
+     return NS_OK;
+   }
+ 
+-  PRInt32 lineNumberSave = mTokenizer->getLineNumber();
+-
+   nsRefPtr<nsHtml5UTF16Buffer> buffer = new nsHtml5UTF16Buffer(aSourceBuffer.Length());
+   memcpy(buffer->getBuffer(), aSourceBuffer.BeginReading(), aSourceBuffer.Length() * sizeof(PRUnichar));
+   buffer->setEnd(aSourceBuffer.Length());
+ 
+   // The buffer is inserted to the stream here in case it won't be parsed
+   // to completion.
+   // The script is identified by aKey. If there's nothing in the buffer
+   // chain for that key, we'll insert at the head of the queue.
+@@ -341,39 +342,57 @@ nsHtml5Parser::Parse(const nsAString& aS
+   }
+ 
+   if (!mBlocked) {
+     // mExecutor->WillResume();
+     while (buffer->hasMore()) {
+       buffer->adjust(mLastWasCR);
+       mLastWasCR = PR_FALSE;
+       if (buffer->hasMore()) {
++
++        PRInt32 lineNumberSave;
++        PRBool inRootContext = (!mStreamParser && (aKey == mRootContextKey));
++        if (inRootContext) {
++          mTokenizer->setLineNumber(mRootContextLineNumber);
++        } else {
++          // we aren't the root context, so save the line number on the 
++          // *stack* so that we can restore it.
++          lineNumberSave = mTokenizer->getLineNumber();
++        }
++
+         mLastWasCR = mTokenizer->tokenizeBuffer(buffer);
++
++        if (inRootContext) {
++          mRootContextLineNumber = mTokenizer->getLineNumber();
++        } else {
++          mTokenizer->setLineNumber(lineNumberSave);
++        }
++
+         if (mTreeBuilder->HasScript()) {
+           // No need to flush characters, because an end tag was tokenized last
+           mTreeBuilder->Flush(); // Move ops to the executor
+           mExecutor->Flush(); // run the ops    
+         }
+         if (mBlocked) {
+           // mExecutor->WillInterrupt();
+           break;
+         }
+         // Ignore suspension requests
+       }
+     }
+   }
+ 
+   if (!mBlocked) { // buffer was tokenized to completion
++    NS_ASSERTION(!buffer->hasMore(), "Buffer wasn't tokenized to completion?");  
+     // Scripting semantics require a forced tree builder flush here
+     mTreeBuilder->flushCharacters(); // Flush trailing characters
+     mTreeBuilder->Flush(); // Move ops to the executor
+     mExecutor->Flush(); // run the ops    
+   }
+ 
+-  mTokenizer->setLineNumber(lineNumberSave);
+   return NS_OK;
+ }
+ 
+ /**
+  * This magic value is passed to the previous method on document.close()
+  */
+ NS_IMETHODIMP_(void *)
+ nsHtml5Parser::GetRootContextKey()
+@@ -487,16 +506,17 @@ void
+ nsHtml5Parser::Reset()
+ {
+   mExecutor->Reset();
+   mLastWasCR = PR_FALSE;
+   mFragmentMode = PR_FALSE;
+   UnblockParser();
+   mDocumentClosed = PR_FALSE;
+   mStreamParser = nsnull;
++  mRootContextLineNumber = 1;
+   mParserInsertedScriptsBeingEvaluated = 0;
+   mRootContextKey = nsnull;
+   mAtomTable.Clear(); // should be already cleared in the fragment case anyway
+   // Portable parser objects
+   mFirstBuffer->next = nsnull;
+   mFirstBuffer->setStart(0);
+   mFirstBuffer->setEnd(0);
+ }
+@@ -598,17 +618,24 @@ nsHtml5Parser::ParseUntilBlocked()
+     if (mBlocked || mExecutor->IsComplete()) {
+       return;
+     }
+ 
+     // now we have a non-empty buffer
+     mFirstBuffer->adjust(mLastWasCR);
+     mLastWasCR = PR_FALSE;
+     if (mFirstBuffer->hasMore()) {
++      PRBool inRootContext = (!mStreamParser && (mFirstBuffer->key == mRootContextKey));
++      if (inRootContext) {
++        mTokenizer->setLineNumber(mRootContextLineNumber);
++      }
+       mLastWasCR = mTokenizer->tokenizeBuffer(mFirstBuffer);
++      if (inRootContext) {
++        mRootContextLineNumber = mTokenizer->getLineNumber();
++      }
+       if (mTreeBuilder->HasScript()) {
+         mTreeBuilder->Flush();
+         mExecutor->Flush();   
+       }
+       if (mBlocked) {
+         // mExecutor->WillInterrupt();
+         return;
+       }
+@@ -631,19 +658,20 @@ nsHtml5Parser::Initialize(nsIDocument* a
+ 
+ void
+ nsHtml5Parser::StartTokenizer(PRBool aScriptingEnabled) {
+   mTreeBuilder->setScriptingEnabled(aScriptingEnabled);
+   mTokenizer->start();
+ }
+ 
+ void
+-nsHtml5Parser::InitializeDocWriteParserState(nsAHtml5TreeBuilderState* aState)
++nsHtml5Parser::InitializeDocWriteParserState(nsAHtml5TreeBuilderState* aState, PRInt32 aLine)
+ {
+   mTokenizer->resetToDataState();
++  mTokenizer->setLineNumber(aLine);
+   mTreeBuilder->loadState(aState, &mAtomTable);
+   mLastWasCR = PR_FALSE;
+   mReturnToStreamParserPermitted = PR_TRUE;
+ }
+ 
+ void
+ nsHtml5Parser::ContinueAfterFailedCharsetSwitch()
+ {
+diff --git a/parser/html/nsHtml5Parser.h b/parser/html/nsHtml5Parser.h
+--- a/parser/html/nsHtml5Parser.h
++++ b/parser/html/nsHtml5Parser.h
+@@ -289,17 +289,17 @@ class nsHtml5Parser : public nsIParser,
+                         nsIURI* aURI,
+                         nsISupports* aContainer,
+                         nsIChannel* aChannel);
+ 
+     inline nsHtml5Tokenizer* GetTokenizer() {
+       return mTokenizer;
+     }
+ 
+-    void InitializeDocWriteParserState(nsAHtml5TreeBuilderState* aState);
++    void InitializeDocWriteParserState(nsAHtml5TreeBuilderState* aState, PRInt32 aLine);
+ 
+     void DropStreamParser() {
+       mStreamParser = nsnull;
+     }
+     
+     void StartTokenizer(PRBool aScriptingEnabled);
+     
+     void ContinueAfterFailedCharsetSwitch();
+@@ -373,16 +373,21 @@ class nsHtml5Parser : public nsIParser,
+      * The HTML5 tokenizer
+      */
+     const nsAutoPtr<nsHtml5Tokenizer>   mTokenizer;
+ 
+     /**
+      * The stream parser.
+      */
+     nsRefPtr<nsHtml5StreamParser>       mStreamParser;
++
++    /**
++     *
++     */
++    PRInt32                             mRootContextLineNumber;
+     
+     /**
+      * Whether it's OK to transfer parsing back to the stream parser
+      */
+     PRBool                              mReturnToStreamParserPermitted;
+ 
+     /**
+      * The scoped atom table
+diff --git a/parser/html/nsHtml5Speculation.cpp b/parser/html/nsHtml5Speculation.cpp
+--- a/parser/html/nsHtml5Speculation.cpp
++++ b/parser/html/nsHtml5Speculation.cpp
+@@ -34,19 +34,21 @@
+  * the terms of any one of the MPL, the GPL or the LGPL.
+  *
+  * ***** END LICENSE BLOCK ***** */
+ 
+ #include "nsHtml5Speculation.h"
+ 
+ nsHtml5Speculation::nsHtml5Speculation(nsHtml5UTF16Buffer* aBuffer, 
+                                        PRInt32 aStart, 
++                                       PRInt32 aStartLineNumber, 
+                                        nsAHtml5TreeBuilderState* aSnapshot)
+   : mBuffer(aBuffer)
+   , mStart(aStart)
++  , mStartLineNumber(aStartLineNumber)
+   , mSnapshot(aSnapshot)
+ {
+   MOZ_COUNT_CTOR(nsHtml5Speculation);
+ }
+ 
+ nsHtml5Speculation::~nsHtml5Speculation()
+ {
+   MOZ_COUNT_DTOR(nsHtml5Speculation);
+diff --git a/parser/html/nsHtml5Speculation.h b/parser/html/nsHtml5Speculation.h
+--- a/parser/html/nsHtml5Speculation.h
++++ b/parser/html/nsHtml5Speculation.h
+@@ -45,27 +45,32 @@
+ #include "nsTArray.h"
+ #include "nsAutoPtr.h"
+ 
+ class nsHtml5Speculation : public nsAHtml5TreeOpSink
+ {
+   public:
+     nsHtml5Speculation(nsHtml5UTF16Buffer* aBuffer, 
+                        PRInt32 aStart, 
++                       PRInt32 aStartLineNumber, 
+                        nsAHtml5TreeBuilderState* aSnapshot);
+     
+     ~nsHtml5Speculation();
+ 
+     nsHtml5UTF16Buffer* GetBuffer() {
+       return mBuffer;
+     }
+     
+     PRInt32 GetStart() {
+       return mStart;
+     }
++
++    PRInt32 GetStartLineNumber() {
++      return mStartLineNumber;
++    }
+     
+     nsAHtml5TreeBuilderState* GetSnapshot() {
+       return mSnapshot;
+     }
+ 
+     /**
+      * No-op.
+      */
+@@ -84,15 +89,20 @@ class nsHtml5Speculation : public nsAHtm
+      * The first buffer in the pending UTF-16 buffer queue
+      */
+     nsRefPtr<nsHtml5UTF16Buffer>        mBuffer;
+     
+     /**
+      * The start index of this speculation in the first buffer
+      */
+     PRInt32                             mStart;
++
++    /**
++     * The current line number at the start of the speculation
++     */
++    PRInt32                             mStartLineNumber;
+     
+     nsAutoPtr<nsAHtml5TreeBuilderState> mSnapshot;
+ 
+     nsTArray<nsHtml5TreeOperation>      mOpQueue;
+ };
+ 
+ #endif // nsHtml5Speculation_h__
+\ No newline at end of file
+diff --git a/parser/html/nsHtml5StreamParser.cpp b/parser/html/nsHtml5StreamParser.cpp
+--- a/parser/html/nsHtml5StreamParser.cpp
++++ b/parser/html/nsHtml5StreamParser.cpp
+@@ -752,18 +752,20 @@ nsHtml5StreamParser::ParseAvailableData(
+       // Terminate, but that never happens together with script.
+       // Can't assert that here, though, because it's possible that the main
+       // thread has called Terminate() while this thread was parsing.
+       if (mTreeBuilder->HasScript()) {
+         mozilla::MutexAutoLock speculationAutoLock(mSpeculationMutex);
+         nsHtml5Speculation* speculation = 
+           new nsHtml5Speculation(mFirstBuffer,
+                                  mFirstBuffer->getStart(),
++                                 mTokenizer->getLineNumber(),
+                                  mTreeBuilder->newSnapshot());
+-        mTreeBuilder->AddSnapshotToScript(speculation->GetSnapshot());
++        mTreeBuilder->AddSnapshotToScript(speculation->GetSnapshot(), 
++                                          speculation->GetStartLineNumber());
+         mTreeBuilder->Flush();
+         if (NS_FAILED(NS_DispatchToMainThread(mExecutorFlusher))) {
+           NS_WARNING("failed to dispatch executor flush event");
+         }
+         mTreeBuilder->SetOpSink(speculation);
+         mSpeculations.AppendElement(speculation); // adopts the pointer
+         mSpeculating = PR_TRUE;
+       }
+@@ -850,16 +852,17 @@ nsHtml5StreamParser::ContinueAfterScript
+     // when it has also acquired the tokenizer mutex and we are already
+     // holding the tokenizer mutex.
+     if (speculationFailed) {
+       // Rewind the stream
+       mAtEOF = PR_FALSE;
+       nsHtml5Speculation* speculation = mSpeculations.ElementAt(0);
+       mFirstBuffer = speculation->GetBuffer();
+       mFirstBuffer->setStart(speculation->GetStart());
++      mTokenizer->setLineNumber(speculation->GetStartLineNumber());
+       nsHtml5UTF16Buffer* buffer = mFirstBuffer->next;
+       while (buffer) {
+         buffer->setStart(0);
+         buffer = buffer->next;
+       }
+       
+       mSpeculations.Clear(); // potentially a huge number of destructors 
+                              // run here synchronously on the main thread...
+diff --git a/parser/html/nsHtml5TreeBuilderCppSupplement.h b/parser/html/nsHtml5TreeBuilderCppSupplement.h
+--- a/parser/html/nsHtml5TreeBuilderCppSupplement.h
++++ b/parser/html/nsHtml5TreeBuilderCppSupplement.h
+@@ -135,28 +135,37 @@ public:
+     return NS_OK;
+   }
+ };
+ 
+ nsIContent**
+ nsHtml5TreeBuilder::createElement(PRInt32 aNamespace, nsIAtom* aName, nsHtml5HtmlAttributes* aAttributes)
+ {
+   NS_PRECONDITION(aAttributes, "Got null attributes.");
++
++  nsIContent** content = AllocateContentHandle();
++  nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
++  // XXX if null, OOM!
++  treeOp->Init(aNamespace, aName, aAttributes, content);
+   
+-  // Start wall of code for speculative loading
++  // Start wall of code for speculative loading and line numbers
+   
+   if (mSpeculativeLoader) {
+     switch (aNamespace) {
+       case kNameSpaceID_XHTML:
+         if (nsHtml5Atoms::img == aName) {
+           nsString* url = aAttributes->getValue(nsHtml5AttributeName::ATTR_SRC);
+           if (url) {
+             Dispatch(new nsHtml5SpeculativeImage(mSpeculativeLoader, *url));
+           }
+         } else if (nsHtml5Atoms::script == aName) {
++          nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
++          // XXX if null, OOM!
++          treeOp->Init(eTreeOpSetScriptLineNumber, content, tokenizer->getLineNumber());
++
+           nsString* url = aAttributes->getValue(nsHtml5AttributeName::ATTR_SRC);
+           if (url) {
+             nsString* charset = aAttributes->getValue(nsHtml5AttributeName::ATTR_CHARSET);
+             nsString* type = aAttributes->getValue(nsHtml5AttributeName::ATTR_TYPE);
+             Dispatch(new nsHtml5SpeculativeScript(mSpeculativeLoader, 
+                                                   *url,
+                                                   (charset) ? *charset : EmptyString(),
+                                                   (type) ? *type : EmptyString()));
+@@ -174,51 +183,70 @@ nsHtml5TreeBuilder::createElement(PRInt3
+                                                    (charset) ? *charset : EmptyString()));
+             }
+           }
+         } else if (nsHtml5Atoms::video == aName) {
+           nsString* url = aAttributes->getValue(nsHtml5AttributeName::ATTR_POSTER);
+           if (url) {
+             Dispatch(new nsHtml5SpeculativeImage(mSpeculativeLoader, *url));
+           }
++        } else if (nsHtml5Atoms::style == aName) {
++          nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
++          // XXX if null, OOM!
++          treeOp->Init(eTreeOpSetStyleLineNumber, content, tokenizer->getLineNumber());
+         }
+         break;
+       case kNameSpaceID_SVG:
+         if (nsHtml5Atoms::image == aName) {
+           nsString* url = aAttributes->getValue(nsHtml5AttributeName::ATTR_XLINK_HREF);
+           if (url) {
+             Dispatch(new nsHtml5SpeculativeImage(mSpeculativeLoader, *url));
+           }
+         } else if (nsHtml5Atoms::script == aName) {
++          nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
++          // XXX if null, OOM!
++          treeOp->Init(eTreeOpSetScriptLineNumber, content, tokenizer->getLineNumber());
++
+           nsString* url = aAttributes->getValue(nsHtml5AttributeName::ATTR_XLINK_HREF);
+           if (url) {
+             nsString* type = aAttributes->getValue(nsHtml5AttributeName::ATTR_TYPE);
+             Dispatch(new nsHtml5SpeculativeScript(mSpeculativeLoader, 
+                                                   *url,
+                                                   EmptyString(),
+                                                   (type) ? *type : EmptyString()));
+           }
+         } else if (nsHtml5Atoms::style == aName) {
++          nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
++          // XXX if null, OOM!
++          treeOp->Init(eTreeOpSetStyleLineNumber, content, tokenizer->getLineNumber());
++
+           nsString* url = aAttributes->getValue(nsHtml5AttributeName::ATTR_XLINK_HREF);
+           if (url) {
+             Dispatch(new nsHtml5SpeculativeStyle(mSpeculativeLoader, 
+                                                  *url,
+                                                  EmptyString()));
+           }
+         }        
+         break;
+     }
++  } else if (aNamespace != kNameSpaceID_MathML) {
++    // No speculative loader--just line numbers
++    if (nsHtml5Atoms::style == aName) {
++      nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
++      // XXX if null, OOM!
++      treeOp->Init(eTreeOpSetStyleLineNumber, content, tokenizer->getLineNumber());
++    } else if (nsHtml5Atoms::script == aName) {
++      nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
++      // XXX if null, OOM!
++      treeOp->Init(eTreeOpSetScriptLineNumber, content, tokenizer->getLineNumber());
++    }
+   }
+ 
+   // End wall of code for speculative loading
+   
+-  nsIContent** content = AllocateContentHandle();
+-  nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+-  // XXX if null, OOM!
+-  treeOp->Init(aNamespace, aName, aAttributes, content);
+   return content;
+ }
+ 
+ nsIContent**
+ nsHtml5TreeBuilder::createElement(PRInt32 aNamespace, nsIAtom* aName, nsHtml5HtmlAttributes* aAttributes, nsIContent** aFormElement)
+ {
+   nsIContent** content = createElement(aNamespace, aName, aAttributes);
+   if (aFormElement) {
+@@ -579,21 +607,21 @@ void
+ nsHtml5TreeBuilder::NeedsCharsetSwitchTo(const nsACString& aCharset)
+ {
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   // XXX if null, OOM!
+   treeOp->Init(eTreeOpNeedsCharsetSwitchTo, aCharset);  
+ }
+ 
+ void
+-nsHtml5TreeBuilder::AddSnapshotToScript(nsAHtml5TreeBuilderState* aSnapshot)
++nsHtml5TreeBuilder::AddSnapshotToScript(nsAHtml5TreeBuilderState* aSnapshot, PRInt32 aLine)
+ {
+   NS_PRECONDITION(HasScript(), "No script to add a snapshot to!");
+   NS_PRECONDITION(aSnapshot, "Got null snapshot.");
+-  mOpQueue.ElementAt(mOpQueue.Length() - 1).SetSnapshot(aSnapshot);
++  mOpQueue.ElementAt(mOpQueue.Length() - 1).SetSnapshot(aSnapshot, aLine);
+ }
+ 
+ void
+ nsHtml5TreeBuilder::SetSpeculativeLoaderWithDocument(nsIDocument* aDocument) {
+   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+   mSpeculativeLoader = new nsHtml5SpeculativeLoader(aDocument);
+ }
+ 
+diff --git a/parser/html/nsHtml5TreeBuilderHSupplement.h b/parser/html/nsHtml5TreeBuilderHSupplement.h
+--- a/parser/html/nsHtml5TreeBuilderHSupplement.h
++++ b/parser/html/nsHtml5TreeBuilderHSupplement.h
+@@ -78,15 +78,15 @@
+     void MaybeFlush();
+     
+     void SetDocumentCharset(nsACString& aCharset);
+ 
+     void StreamEnded();
+ 
+     void NeedsCharsetSwitchTo(const nsACString& aEncoding);
+ 
+-    void AddSnapshotToScript(nsAHtml5TreeBuilderState* aSnapshot);
++    void AddSnapshotToScript(nsAHtml5TreeBuilderState* aSnapshot, PRInt32 aLine);
+ 
+     inline void Dispatch(nsIRunnable* aEvent) {
+       if (NS_FAILED(NS_DispatchToMainThread(aEvent))) {
+         NS_WARNING("Failed to dispatch speculative load runnable.");
+       }
+     }
+diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpExecutor.cpp
+--- a/parser/html/nsHtml5TreeOpExecutor.cpp
++++ b/parser/html/nsHtml5TreeOpExecutor.cpp
+@@ -573,19 +573,19 @@ nsHtml5TreeOpExecutor::ForcedFlush(nsTAr
+   if (mOpQueue.IsEmpty()) {
+     mOpQueue.SwapElements(aOpQueue);
+     return;
+   }
+   mOpQueue.MoveElementsFrom(aOpQueue);
+ }
+ 
+ void
+-nsHtml5TreeOpExecutor::InitializeDocWriteParserState(nsAHtml5TreeBuilderState* aState)
++nsHtml5TreeOpExecutor::InitializeDocWriteParserState(nsAHtml5TreeBuilderState* aState, PRInt32 aLine)
+ {
+-  static_cast<nsHtml5Parser*> (mParser.get())->InitializeDocWriteParserState(aState);
++  static_cast<nsHtml5Parser*> (mParser.get())->InitializeDocWriteParserState(aState, aLine);
+ }
+ 
+ void
+ nsHtml5TreeOpExecutor::StreamEnded()
+ {
+   mCallDidBuildModel = PR_TRUE;
+ }
+ 
+diff --git a/parser/html/nsHtml5TreeOpExecutor.h b/parser/html/nsHtml5TreeOpExecutor.h
+--- a/parser/html/nsHtml5TreeOpExecutor.h
++++ b/parser/html/nsHtml5TreeOpExecutor.h
+@@ -219,17 +219,17 @@ class nsHtml5TreeOpExecutor : public nsC
+     void SetStreamParser(nsHtml5StreamParser* aStreamParser) {
+       mStreamParser = aStreamParser;
+     }
+     
+     inline void SetScriptElement(nsIContent* aScript) {
+       mScriptElement = aScript;
+     }
+     
+-    void InitializeDocWriteParserState(nsAHtml5TreeBuilderState* aState);
++    void InitializeDocWriteParserState(nsAHtml5TreeBuilderState* aState, PRInt32 aLine);
+ 
+     PRBool IsScriptEnabled();
+ 
+     inline void BeginDocUpdate() {
+       NS_PRECONDITION(!mInDocumentUpdate, "Tried to double-open update.");
+       NS_PRECONDITION(mParser, "Started update without parser.");
+       mInDocumentUpdate = PR_TRUE;
+       mDocument->BeginUpdate(UPDATE_CONTENT_MODEL);
+diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOperation.cpp
+--- a/parser/html/nsHtml5TreeOperation.cpp
++++ b/parser/html/nsHtml5TreeOperation.cpp
+@@ -319,17 +319,17 @@ nsHtml5TreeOperation::Perform(nsHtml5Tre
+       nsCOMPtr<nsIContent> asContent = do_QueryInterface(docType);
+       aBuilder->HoldNonElement(*target = asContent);      
+       return rv;
+     }
+     case eTreeOpRunScript: {
+       nsIContent* node = *(mOne.node);
+       nsAHtml5TreeBuilderState* snapshot = mTwo.state;
+       if (snapshot) {
+-        aBuilder->InitializeDocWriteParserState(snapshot);
++        aBuilder->InitializeDocWriteParserState(snapshot, mInt);
+       }
+       aBuilder->SetScriptElement(node);
+       return rv;
+     }
+     case eTreeOpDoneAddingChildren: {
+       nsIContent* node = *(mOne.node);
+       node->DoneAddingChildren(PR_FALSE);
+       return rv;
+@@ -387,14 +387,28 @@ nsHtml5TreeOperation::Perform(nsHtml5Tre
+     case eTreeOpStartLayout: {
+       aBuilder->StartLayout(); // this causes a flush anyway
+       return rv;
+     }
+     case eTreeOpDocumentMode: {
+       aBuilder->DocumentMode(mOne.mode);
+       return rv;
+     }
++    case eTreeOpSetStyleLineNumber: {
++      nsIContent* node = *(mOne.node);
++      nsCOMPtr<nsIStyleSheetLinkingElement> ssle = do_QueryInterface(node);
++      NS_ASSERTION(ssle, "Node didn't QI to style.");
++      ssle->SetLineNumber(mInt);
++      return rv;
++    }
++    case eTreeOpSetScriptLineNumber: {
++      nsIContent* node = *(mOne.node);
++      nsCOMPtr<nsIScriptElement> sele = do_QueryInterface(node);
++      NS_ASSERTION(sele, "Node didn't QI to script.");
++      sele->SetScriptLineNumber(mInt);
++      return rv;
++    }
+     default: {
+       NS_NOTREACHED("Bogus tree op");
+     }
+   }
+   return rv; // keep compiler happy
+ }
+diff --git a/parser/html/nsHtml5TreeOperation.h b/parser/html/nsHtml5TreeOperation.h
+--- a/parser/html/nsHtml5TreeOperation.h
++++ b/parser/html/nsHtml5TreeOperation.h
+@@ -69,16 +69,18 @@ enum eHtml5TreeOperation {
+   eTreeOpSetDocumentCharset,
+   eTreeOpNeedsCharsetSwitchTo,
+   eTreeOpUpdateStyleSheet,
+   eTreeOpProcessBase,
+   eTreeOpProcessMeta,
+   eTreeOpProcessOfflineManifest,
+   eTreeOpMarkMalformedIfScript,
+   eTreeOpStreamEnded,
++  eTreeOpSetStyleLineNumber,
++  eTreeOpSetScriptLineNumber,
+   eTreeOpStartLayout
+ };
+ 
+ class nsHtml5TreeOperationStringPair {
+   private:
+     nsString mPublicId;
+     nsString mSystemId;
+   public:
+@@ -216,24 +218,36 @@ class nsHtml5TreeOperation {
+         str[i] = start[i];
+       }
+       str[len] = '\0';
+ 
+       mOpCode = aOpCode;
+       mOne.charPtr = str;
+     }
+ 
++    inline void Init(eHtml5TreeOperation aOpCode,
++                     nsIContent** aNode,
++                     PRInt32 aInt) {
++      NS_PRECONDITION(mOpCode == eTreeOpUninitialized,
++        "Op code must be uninitialized when initializing.");
++
++      mOpCode = aOpCode;
++      mOne.node = aNode;
++      mInt = aInt;
++    }
++
+     inline PRBool IsRunScript() {
+       return mOpCode == eTreeOpRunScript;
+     }
+     
+-    inline void SetSnapshot(nsAHtml5TreeBuilderState* aSnapshot) {
++    inline void SetSnapshot(nsAHtml5TreeBuilderState* aSnapshot, PRInt32 aLine) {
+       NS_ASSERTION(IsRunScript(), 
+         "Setting a snapshot for a tree operation other than eTreeOpRunScript!");
+       mTwo.state = aSnapshot;
++      mInt = aLine;
+     }
+ 
+     nsresult Perform(nsHtml5TreeOpExecutor* aBuilder);
+ 
+     inline already_AddRefed<nsIAtom> Reget(nsIAtom* aAtom) {
+       if (!aAtom || aAtom->IsStaticAtom()) {
+         return aAtom;
+       }

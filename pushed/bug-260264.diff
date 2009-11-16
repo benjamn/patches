@@ -1,8 +1,8 @@
 # HG changeset patch
 # User Ben Newman <bnewman@mozilla.com>
 # Date 1253126765 25200
-# Node ID 043a47f91a76c2db9a552effb82ee7cb182a9280
-# Parent  d761860c50c7a535148a1056e72b8022059b2b02
+# Node ID a892de1aa546ec4bc9f1af34d84446a0e631a032
+# Parent  75e7a30cf3851f934b092d9e4936f931c0dcf93e
 Bug 260264 - Popups from a Site that is in the "Allowed List" (whitelist) are blocked, starting with the n-th popup (dom.popup_maximum).
 
 diff --git a/dom/base/nsGlobalWindow.cpp b/dom/base/nsGlobalWindow.cpp
@@ -275,7 +275,7 @@ diff --git a/dom/base/nsGlobalWindow.h b/dom/base/nsGlobalWindow.h
 diff --git a/dom/tests/mochitest/bugs/Makefile.in b/dom/tests/mochitest/bugs/Makefile.in
 --- a/dom/tests/mochitest/bugs/Makefile.in
 +++ b/dom/tests/mochitest/bugs/Makefile.in
-@@ -97,12 +97,17 @@ _TEST_FILES	= \
+@@ -96,12 +96,17 @@ _TEST_FILES	= \
  		iframe_bug463000.html \
  		test_bug465263.html \
  		test_bug479143.html \
@@ -315,7 +315,7 @@ diff --git a/dom/tests/mochitest/bugs/grandchild_bug260264.html b/dom/tests/moch
 new file mode 100644
 --- /dev/null
 +++ b/dom/tests/mochitest/bugs/grandchild_bug260264.html
-@@ -0,0 +1,18 @@
+@@ -0,0 +1,17 @@
 +<html>
 +  <head>
 +    <script type="application/javascript" src="utils_bug260264.js"></script>
@@ -325,10 +325,9 @@ new file mode 100644
 +    <script type="application/javascript">
 +      var event = location.hash.split("#").pop();
 +      send(document.getElementById("nested link"), event, function() {
-+        var win = window,
-+            popup = win.open("http://example.com");
-+        netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
-+        try { window.top.report(popup) }
++        var popup = window.open("http://example.com"),
++            grandparent = window.open(null, "parent260264");
++        try { grandparent.report(popup) }
 +        finally { popup && popup.close() }
 +      });
 +    </script>
@@ -338,7 +337,7 @@ diff --git a/dom/tests/mochitest/bugs/test_bug260264.html b/dom/tests/mochitest/
 new file mode 100644
 --- /dev/null
 +++ b/dom/tests/mochitest/bugs/test_bug260264.html
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,146 @@
 +<!DOCTYPE HTML>
 +<html>
 +<!--
@@ -402,17 +401,19 @@ new file mode 100644
 + * closing the popup window immediately allows another to open.
 + */
 +function testProbablyIntentional(event) {
-+  hold(popupMax, 2, function() {
-+    send(a, event, checkOpened);
-+    send(a, event, checkOpened);
++  var max = 3;
++  hold(popupMax, max, function() {
++    for (var count = 0, n = 0; n < max; n++)
++      send(a, event, function() { if (window.open("http://example.com")) count++ });
 +    send(a, event, checkBlocked);
 +    window.open.close(1);
 +    send(a, event, checkOpened);
 +    send(a, event, checkBlocked);
 +    send(a, event, checkBlocked);
 +    window.open.close();
-+    send(a, event, checkOpened);
-+    send(a, event, checkOpened);
++    ok(count > 0, "Windows left open by previous tests?");
++    while (count --> 0)
++      send(a, event, checkOpened);
 +    send(a, event, checkBlocked);
 +  });
 +  window.open.close();
@@ -487,7 +488,7 @@ diff --git a/dom/tests/mochitest/bugs/test_bug260264_nested.html b/dom/tests/moc
 new file mode 100644
 --- /dev/null
 +++ b/dom/tests/mochitest/bugs/test_bug260264_nested.html
-@@ -0,0 +1,116 @@
+@@ -0,0 +1,123 @@
 +<!DOCTYPE HTML>
 +<html>
 +<!--
@@ -521,6 +522,11 @@ new file mode 100644
 +
 +function test_nested_frames() {
 +
++  var savedBlockPopups = blockPopups(true);
++
++  // Grandchild will use this name to refer to the current window:
++  window.name = "parent260264";
++
 +  function performer(event) {
 +    $("display").appendChild(document.createElement("iframe")).src =
 +      alter_file(alter_host(location.href, "example.com"),
@@ -532,7 +538,7 @@ new file mode 100644
 +    ownPopupPriv(old.ownPriv);
 +    ecPopupPriv(old.ecPriv);
 +  }
-+  
++
 +  function should_have_blocked(popup) {
 +    ok(!popup, "popup should have been blocked");
 +  }
@@ -562,7 +568,7 @@ new file mode 100644
 +    };
 +  };
 +
-+  var old, tests = [
++  var tests = [
 +    makeTest("mouseup",    DENY_ACTION, should_not_have_blocked),
 +    makeTest("mouseup",   ALLOW_ACTION, should_not_have_blocked),
 +    makeTest("mouseup",   ALLOW_ACTION, should_not_have_blocked, "click"),
@@ -573,24 +579,26 @@ new file mode 100644
 +    makeTest("click",     ALLOW_ACTION, should_not_have_blocked)
 +  ];
 +
++  function resume() {
++    var options = tests[0];
++    if (options) {
++      netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
++      options.setup(tests[0].old = {});
++      options.perform(options.event);
++    } else {
++      blockPopups(savedBlockPopups);
++      SimpleTest.finish();
++    }
++  }
++
 +  // Visible to child windows:
 +  window.report = function(popup) {
 +    netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
 +    try { tests[0].report(popup) }
 +    finally {
-+      tests.shift().finish(old);
++      tests[0].finish(tests[0].old);
++      tests.shift();
 +      resume();
-+    }
-+  }
-+
-+  function resume() {
-+    var options = tests[0];
-+    if (options) {
-+      netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
-+      options.setup(old = {});
-+      options.perform(options.event);
-+    } else {
-+      SimpleTest.finish();
 +    }
 +  }
 +
@@ -754,4 +762,3 @@ new file mode 100644
 +      throw [accessor, value, old_value];
 +  }
 +}
-\ No newline at end of file

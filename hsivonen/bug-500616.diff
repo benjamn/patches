@@ -1,0 +1,300 @@
+diff --git a/parser/html/nsHtml5Parser.cpp b/parser/html/nsHtml5Parser.cpp
+--- a/parser/html/nsHtml5Parser.cpp
++++ b/parser/html/nsHtml5Parser.cpp
+@@ -56,39 +56,16 @@
+ #include "nsIScriptSecurityManager.h"
+ #include "nsHtml5DocumentMode.h"
+ #include "nsHtml5Tokenizer.h"
+ #include "nsHtml5UTF16Buffer.h"
+ #include "nsHtml5TreeBuilder.h"
+ #include "nsHtml5Parser.h"
+ #include "nsHtml5AtomTable.h"
+ 
+-//-------------- Begin ParseContinue Event Definition ------------------------
+-/*
+-The parser can be explicitly interrupted by calling Suspend(). This will cause
+-the parser to stop processing and allow the application to return to the event
+-loop. The parser will schedule a nsHtml5ParserContinueEvent which will call
+-the parser to process the remaining data after returning to the event loop.
+-*/
+-class nsHtml5ParserContinueEvent : public nsRunnable
+-{
+-public:
+-  nsRefPtr<nsHtml5Parser> mParser;
+-  nsHtml5ParserContinueEvent(nsHtml5Parser* aParser)
+-    : mParser(aParser)
+-  {}
+-  NS_IMETHODIMP Run()
+-  {
+-    mParser->HandleParserContinueEvent(this);
+-    return NS_OK;
+-  }
+-};
+-//-------------- End ParseContinue Event Definition ------------------------
+-
+-
+ NS_INTERFACE_TABLE_HEAD(nsHtml5Parser)
+   NS_INTERFACE_TABLE2(nsHtml5Parser, nsIParser, nsISupportsWeakReference)
+   NS_INTERFACE_TABLE_TO_MAP_SEGUE_CYCLE_COLLECTION(nsHtml5Parser)
+ NS_INTERFACE_MAP_END
+ 
+ NS_IMPL_CYCLE_COLLECTING_ADDREF(nsHtml5Parser)
+ NS_IMPL_CYCLE_COLLECTING_RELEASE(nsHtml5Parser)
+ 
+@@ -198,24 +175,30 @@ NS_IMETHODIMP
+ nsHtml5Parser::ContinueInterruptedParsing()
+ {
+   // If there are scripts executing, then the content sink is jumping the gun
+   // (probably due to a synchronous XMLHttpRequest) and will re-enable us
+   // later, see bug 460706.
+   if (mExecutor->IsScriptExecuting()) {
+     return NS_OK;
+   }
++  if (mExecutor->IsFlushing()) {
++    // A nested event loop dequeued the continue event and there aren't
++    // scripts executing. What's currently causing the flush is running to 
++    // completion or there will be a script later and the script will cause
++    // another continue event.
++    return NS_OK;
++  }
+   // If the stream has already finished, there's a good chance
+   // that we might start closing things down when the parser
+   // is reenabled. To make sure that we're not deleted across
+   // the reenabling process, hold a reference to ourselves.
+   nsCOMPtr<nsIParser> kungFuDeathGrip(this);
+   nsRefPtr<nsHtml5StreamParser> streamKungFuDeathGrip(mStreamParser);
+   nsRefPtr<nsHtml5TreeOpExecutor> treeOpKungFuDeathGrip(mExecutor);
+-  CancelParsingEvents(); // If the executor caused us to continue, ignore event
+   ParseUntilBlocked();
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP_(void)
+ nsHtml5Parser::BlockParser()
+ {
+   mBlocked = PR_TRUE;
+@@ -378,21 +361,16 @@ nsHtml5Parser::Parse(const nsAString& aS
+     }
+   }
+ 
+   if (!mBlocked) { // buffer was tokenized to completion
+     // Scripting semantics require a forced tree builder flush here
+     mTreeBuilder->flushCharacters(); // Flush trailing characters
+     mTreeBuilder->Flush(); // Move ops to the executor
+     mExecutor->Flush(); // run the ops    
+-  } else if (!mStreamParser && buffer->hasMore() && aKey == mRootContextKey) {
+-    // The buffer wasn't parsed completely, the document was created by
+-    // document.open() and the script that wrote wasn't created by this parser. 
+-    // Can't rely on the executor causing the parser to continue.
+-    MaybePostContinueEvent();
+   }
+ 
+   mTokenizer->setLineNumber(lineNumberSave);
+   return NS_OK;
+ }
+ 
+ /**
+  * This magic value is passed to the previous method on document.close()
+@@ -496,32 +474,31 @@ nsHtml5Parser::BuildModel(void)
+ {
+   NS_NOTREACHED("Don't call this!");
+   return NS_ERROR_NOT_IMPLEMENTED;
+ }
+ 
+ NS_IMETHODIMP
+ nsHtml5Parser::CancelParsingEvents()
+ {
+-  mContinueEvent = nsnull;
+-  return NS_OK;
++  NS_NOTREACHED("Don't call this!");
++  return NS_ERROR_NOT_IMPLEMENTED;
+ }
+ 
+ void
+ nsHtml5Parser::Reset()
+ {
+   mExecutor->Reset();
+   mLastWasCR = PR_FALSE;
+   mFragmentMode = PR_FALSE;
+   UnblockParser();
+   mDocumentClosed = PR_FALSE;
+   mStreamParser = nsnull;
+   mParserInsertedScriptsBeingEvaluated = 0;
+   mRootContextKey = nsnull;
+-  mContinueEvent = nsnull;  // weak ref
+   mAtomTable.Clear(); // should be already cleared in the fragment case anyway
+   // Portable parser objects
+   mFirstBuffer->next = nsnull;
+   mFirstBuffer->setStart(0);
+   mFirstBuffer->setEnd(0);
+ }
+ 
+ PRBool
+@@ -561,27 +538,16 @@ nsHtml5Parser::IsScriptCreated()
+ {
+   return !mStreamParser;
+ }
+ 
+ /* End nsIParser  */
+ 
+ // not from interface
+ void
+-nsHtml5Parser::HandleParserContinueEvent(nsHtml5ParserContinueEvent* ev)
+-{
+-  // Ignore any revoked continue events...
+-  if (mContinueEvent != ev)
+-    return;
+-  mContinueEvent = nsnull;
+-  NS_ASSERTION(!mExecutor->IsScriptExecuting(), "Interrupted in the middle of a script?");
+-  ContinueInterruptedParsing();
+-}
+-
+-void
+ nsHtml5Parser::ParseUntilBlocked()
+ {
+   NS_PRECONDITION(!mFragmentMode, "ParseUntilBlocked called in fragment mode.");
+ 
+   if (mBlocked) {
+     return;
+   }
+ 
+@@ -646,34 +612,16 @@ nsHtml5Parser::ParseUntilBlocked()
+         // mExecutor->WillInterrupt();
+         return;
+       }
+     }
+     continue;
+   }
+ }
+ 
+-void
+-nsHtml5Parser::MaybePostContinueEvent()
+-{
+-  NS_PRECONDITION(!mExecutor->IsComplete(), 
+-                  "Tried to post continue event when the parser is done.");
+-  if (mContinueEvent) {
+-    return; // we already have a pending event
+-  }
+-  // This creates a reference cycle between this and the event that is
+-  // broken when the event fires.
+-  nsCOMPtr<nsIRunnable> event = new nsHtml5ParserContinueEvent(this);
+-  if (NS_FAILED(NS_DispatchToCurrentThread(event))) {
+-    NS_WARNING("failed to dispatch parser continuation event");
+-  } else {
+-    mContinueEvent = event;
+-  }
+-}
+-
+ nsresult
+ nsHtml5Parser::Initialize(nsIDocument* aDoc,
+                           nsIURI* aURI,
+                           nsISupports* aContainer,
+                           nsIChannel* aChannel)
+ {
+   if (mStreamParser && aDoc) {
+     mStreamParser->SetSpeculativeLoaderWithDocument(aDoc);
+diff --git a/parser/html/nsHtml5Parser.h b/parser/html/nsHtml5Parser.h
+--- a/parser/html/nsHtml5Parser.h
++++ b/parser/html/nsHtml5Parser.h
+@@ -230,17 +230,17 @@ class nsHtml5Parser : public nsIParser,
+                              PRBool aQuirks);
+ 
+     /**
+      * Don't call. For interface compat only.
+      */
+     NS_IMETHOD BuildModel(void);
+ 
+     /**
+-     *  Removes continue parsing events
++     * Don't call. For interface compat only.
+      */
+     NS_IMETHODIMP CancelParsingEvents();
+ 
+     /**
+      * Sets the state to initial values
+      */
+     virtual void Reset();
+     
+@@ -272,21 +272,16 @@ class nsHtml5Parser : public nsIParser,
+ 
+     /**
+      * True if this is a script-created HTML5 parser.
+      */
+     virtual PRBool IsScriptCreated();
+ 
+     /* End nsIParser  */
+ 
+-    /**
+-     *  Fired when the continue parse event is triggered.
+-     */
+-    void HandleParserContinueEvent(class nsHtml5ParserContinueEvent *);
+-
+     // Not from an external interface
+     // Non-inherited methods
+ 
+   public:
+ 
+     /**
+      * Initializes the parser to load from a channel.
+      */
+@@ -296,21 +291,16 @@ class nsHtml5Parser : public nsIParser,
+                         nsIChannel* aChannel);
+ 
+     inline nsHtml5Tokenizer* GetTokenizer() {
+       return mTokenizer;
+     }
+ 
+     void InitializeDocWriteParserState(nsAHtml5TreeBuilderState* aState);
+ 
+-    /**
+-     * Posts a continue event if there isn't one already
+-     */
+-    void MaybePostContinueEvent();
+-    
+     void DropStreamParser() {
+       mStreamParser = nsnull;
+     }
+     
+     void StartTokenizer(PRBool aScriptingEnabled);
+     
+     void ContinueAfterFailedCharsetSwitch();
+ 
+@@ -351,17 +341,16 @@ class nsHtml5Parser : public nsIParser,
+ 
+     /**
+      * True if document.close() has been called.
+      */
+     PRBool                        mDocumentClosed;
+ 
+     // Gecko integration
+     void*                         mRootContextKey;
+-    nsIRunnable*                  mContinueEvent;  // weak ref
+ 
+     // Portable parser objects
+     /**
+      * The first buffer in the pending UTF-16 buffer queue
+      */
+     nsRefPtr<nsHtml5UTF16Buffer>  mFirstBuffer;
+ 
+     /**
+diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpExecutor.cpp
+--- a/parser/html/nsHtml5TreeOpExecutor.cpp
++++ b/parser/html/nsHtml5TreeOpExecutor.cpp
+@@ -127,17 +127,16 @@ nsHtml5TreeOpExecutor::DidBuildModel(PRB
+                   "Bad life cycle.");
+   // This is comes from nsXMLContentSink
+   DidBuildModelImpl(aTerminated);
+   mDocument->ScriptLoader()->RemoveObserver(this);
+   ScrollToRef();
+   mDocument->RemoveObserver(this);
+   mDocument->EndLoad();
+   static_cast<nsHtml5Parser*> (mParser.get())->DropStreamParser();
+-  static_cast<nsHtml5Parser*> (mParser.get())->CancelParsingEvents();
+   DropParserAndPerfHint();
+ #ifdef GATHER_DOCWRITE_STATISTICS
+   printf("UNSAFE SCRIPTS: %d\n", sUnsafeDocWrites);
+   printf("TOKENIZER-SAFE SCRIPTS: %d\n", sTokenSafeDocWrites);
+   printf("TREEBUILDER-SAFE SCRIPTS: %d\n", sTreeSafeDocWrites);
+ #endif
+ #ifdef DEBUG_hsivonen
+   printf("MAX INSERTION BATCH LEN: %d\n", sInsertionBatchMaxLength);
