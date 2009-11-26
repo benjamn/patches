@@ -1,0 +1,58 @@
+diff --git a/content/base/public/nsContentUtils.h b/content/base/public/nsContentUtils.h
+--- a/content/base/public/nsContentUtils.h
++++ b/content/base/public/nsContentUtils.h
+@@ -568,16 +568,17 @@ public:
+   static nsAdoptingString GetStringPref(const char *aPref);
+   static void RegisterPrefCallback(const char *aPref,
+                                    PrefChangedFunc aCallback,
+                                    void * aClosure);
+   static void UnregisterPrefCallback(const char *aPref,
+                                      PrefChangedFunc aCallback,
+                                      void * aClosure);
+   static void AddBoolPrefVarCache(const char* aPref, PRBool* aVariable);
++  static void AddIntPrefVarCache(const char* aPref, PRInt32* aVariable);
+   static nsIPrefBranch *GetPrefBranch()
+   {
+     return sPrefBranch;
+   }
+ 
+   static nsILineBreaker* LineBreaker()
+   {
+     return sLineBreaker;
+diff --git a/content/base/src/nsContentUtils.cpp b/content/base/src/nsContentUtils.cpp
+--- a/content/base/src/nsContentUtils.cpp
++++ b/content/base/src/nsContentUtils.cpp
+@@ -2663,16 +2663,33 @@ BoolVarChanged(const char *aPref, void *
+ void
+ nsContentUtils::AddBoolPrefVarCache(const char *aPref,
+                                     PRBool* aCache)
+ {
+   *aCache = GetBoolPref(aPref, PR_FALSE);
+   RegisterPrefCallback(aPref, BoolVarChanged, aCache);
+ }
+ 
++static int
++IntVarChanged(const char *aPref, void *aClosure)
++{
++  PRInt32* cache = static_cast<PRInt32*>(aClosure);
++  *cache = nsContentUtils::GetIntPref(aPref, 0);
++  
++  return 0;
++}
++
++void
++nsContentUtils::AddIntPrefVarCache(const char *aPref,
++                                   PRInt32* aCache)
++{
++  *aCache = GetIntPref(aPref, PR_FALSE);
++  RegisterPrefCallback(aPref, IntVarChanged, aCache);
++}
++
+ static const char *gEventNames[] = {"event"};
+ static const char *gSVGEventNames[] = {"evt"};
+ // for b/w compat, the first name to onerror is still 'event', even though it
+ // is actually the error message.  (pre this code, the other 2 were not avail.)
+ // XXXmarkh - a quick lxr shows no affected code - should we correct this?
+ static const char *gOnErrorNames[] = {"event", "source", "lineno"};
+ 
+ // static
