@@ -1,3 +1,10 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1258408991 28800
+# Node ID 3efedc221d1c6214e221a9436daef1628586d389
+# Parent  05aecdd7a7e67afaea498fa153df11cce3710eb2
+imported patch hsivonen/bug-513194-bis.diff
+
 diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpExecutor.cpp
 --- a/parser/html/nsHtml5TreeOpExecutor.cpp
 +++ b/parser/html/nsHtml5TreeOpExecutor.cpp

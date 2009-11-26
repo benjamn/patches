@@ -1,7 +1,14 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1258408992 28800
+# Node ID 8c9609dbfcc9893ed7dcece54b8adbc92acc5fee
+# Parent  593a8987eb8e970b8004a360cde309d6ddc303ff
+imported patch hsivonen/bug-525229.diff
+
 diff --git a/parser/html/nsHtml5Parser.cpp b/parser/html/nsHtml5Parser.cpp
 --- a/parser/html/nsHtml5Parser.cpp
 +++ b/parser/html/nsHtml5Parser.cpp
-@@ -592,16 +592,18 @@ nsHtml5Parser::ParseUntilBlocked()
+@@ -597,16 +597,18 @@ nsHtml5Parser::ParseUntilBlocked()
            // never release the last buffer.
            NS_ASSERTION(!mLastBuffer->getStart(), 
              "Sentinel buffer had its indeces changed.");

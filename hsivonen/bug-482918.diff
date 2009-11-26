@@ -1,3 +1,10 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1258408990 28800
+# Node ID d5e926928c5ad260c14aed149ccbee9d75bd607a
+# Parent  31179cf662ac40a1b8ffd81db6cd333cb77b5e6a
+imported patch hsivonen/bug-482918.diff
+
 diff --git a/intl/uconv/src/nsCharsetAlias.h b/intl/uconv/src/nsCharsetAlias.h
 --- a/intl/uconv/src/nsCharsetAlias.h
 +++ b/intl/uconv/src/nsCharsetAlias.h
@@ -367,7 +374,7 @@ diff --git a/intl/uconv/util/nsUCSupport.h b/intl/uconv/util/nsUCSupport.h
 diff --git a/modules/libpref/src/init/all.js b/modules/libpref/src/init/all.js
 --- a/modules/libpref/src/init/all.js
 +++ b/modules/libpref/src/init/all.js
-@@ -2803,8 +2803,10 @@ pref("mozilla.widget.disable-native-them
+@@ -2808,8 +2808,10 @@ pref("mozilla.widget.disable-native-them
  pref("gfx.color_management.mode", 0);
  #endif
  

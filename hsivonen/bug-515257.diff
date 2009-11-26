@@ -1,3 +1,10 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1258408991 28800
+# Node ID ce3b2de6cb7c9aa4251591c1e2068bb51df41ee2
+# Parent  534a97cc2ffb65924a899a6ab4acb49f52001a80
+imported patch hsivonen/bug-515257.diff
+
 diff --git a/content/html/content/src/nsHTMLOptGroupElement.cpp b/content/html/content/src/nsHTMLOptGroupElement.cpp
 --- a/content/html/content/src/nsHTMLOptGroupElement.cpp
 +++ b/content/html/content/src/nsHTMLOptGroupElement.cpp

@@ -1,3 +1,10 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1258408992 28800
+# Node ID d57ba292ba30bbd4a1e96e754bcfdda630eaa7f2
+# Parent  e15437a1734cdb61315e5f278b435372744ae764
+imported patch hsivonen/bug-527896.diff
+
 diff --git a/content/base/public/nsIScriptElement.h b/content/base/public/nsIScriptElement.h
 --- a/content/base/public/nsIScriptElement.h
 +++ b/content/base/public/nsIScriptElement.h

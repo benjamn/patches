@@ -1,3 +1,10 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1258408992 28800
+# Node ID 593a8987eb8e970b8004a360cde309d6ddc303ff
+# Parent  ef73a0986e5903336b50e045eb7051b3ff8f9b51
+imported patch hsivonen/bug-525229-test.diff
+
 diff --git a/parser/htmlparser/tests/crashtests/525229-1.html b/parser/htmlparser/tests/crashtests/525229-1.html
 new file mode 100644
 --- /dev/null

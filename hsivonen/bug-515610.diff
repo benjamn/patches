@@ -1,3 +1,10 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1258408992 28800
+# Node ID d757244cec7687c28d2318aedf99462b64d191d2
+# Parent  2e6f3b2d92c0720c7cd09c8038d679ff5e95b316
+imported patch hsivonen/bug-515610.diff
+
 diff --git a/content/base/src/nsContentSink.cpp b/content/base/src/nsContentSink.cpp
 --- a/content/base/src/nsContentSink.cpp
 +++ b/content/base/src/nsContentSink.cpp
@@ -266,7 +273,7 @@ diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOpera
 +    }
      case eTreeOpDoneAddingChildren: {
        nsIContent* node = *(mOne.node);
-       node->DoneAddingChildren(PR_FALSE);
+       node->DoneAddingChildren(aBuilder->HaveNotified(node));
        return rv;
      }
      case eTreeOpDoneCreatingElement: {

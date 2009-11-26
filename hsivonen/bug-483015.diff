@@ -1,3 +1,10 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1258408992 28800
+# Node ID ef73a0986e5903336b50e045eb7051b3ff8f9b51
+# Parent  f651c82baef6d0c118c70463a408ce8eb291ccf5
+imported patch hsivonen/bug-483015.diff
+
 diff --git a/parser/html/nsHtml5Parser.cpp b/parser/html/nsHtml5Parser.cpp
 --- a/parser/html/nsHtml5Parser.cpp
 +++ b/parser/html/nsHtml5Parser.cpp
@@ -502,7 +509,7 @@ diff --git a/parser/html/nsHtml5TreeBuilderHSupplement.h b/parser/html/nsHtml5Tr
 diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpExecutor.cpp
 --- a/parser/html/nsHtml5TreeOpExecutor.cpp
 +++ b/parser/html/nsHtml5TreeOpExecutor.cpp
-@@ -573,19 +573,19 @@ nsHtml5TreeOpExecutor::ForcedFlush(nsTAr
+@@ -580,19 +580,19 @@ nsHtml5TreeOpExecutor::ForcedFlush(nsTAr
    if (mOpQueue.IsEmpty()) {
      mOpQueue.SwapElements(aOpQueue);
      return;
@@ -566,7 +573,7 @@ diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOpera
      }
      case eTreeOpDoneAddingChildren: {
        nsIContent* node = *(mOne.node);
-       node->DoneAddingChildren(PR_FALSE);
+       node->DoneAddingChildren(aBuilder->HaveNotified(node));
        return rv;
 @@ -387,14 +387,28 @@ nsHtml5TreeOperation::Perform(nsHtml5Tre
      case eTreeOpStartLayout: {

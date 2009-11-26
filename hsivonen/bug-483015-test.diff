@@ -1,7 +1,14 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1259002924 28800
+# Node ID f651c82baef6d0c118c70463a408ce8eb291ccf5
+# Parent  36b934bef74176501c58e70722d9bbd88e8bbbb1
+imported patch hsivonen/bug-483015-test.diff
+
 diff --git a/content/base/test/Makefile.in b/content/base/test/Makefile.in
 --- a/content/base/test/Makefile.in
 +++ b/content/base/test/Makefile.in
-@@ -306,16 +306,18 @@ _TEST_FILES = 	test_bug5141.html \
+@@ -304,16 +304,18 @@ _TEST_FILES = 	test_bug5141.html \
  		test_bug473162-1.html \
  		test_bug473162-2.html \
  		test_bug466751.xhtml \
@@ -24,7 +31,7 @@ diff --git a/content/base/test/test_bug483015-bis.html b/content/base/test/test_
 new file mode 100644
 --- /dev/null
 +++ b/content/base/test/test_bug483015-bis.html
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,86 @@
 +<!DOCTYPE HTML>
 +<html>
 +<!--
@@ -50,23 +57,21 @@ new file mode 100644
 +    Cc["@mozilla.org/consoleservice;1"].getService(Ci.nsIConsoleService);
 +
 +  var consoleListener = {
-+    seenError: false,
++    lineNumbers: [2, 4, 6],
 +
 +    observe: function(message) {
 +      netscape.security.PrivilegeManager.enablePrivilege('UniversalXPConnect');
 +
-+      ok(!this.seenError, "Seen too many errors!");
-+      
-+      this.seenError = true;
++      ok(this.lineNumbers.length > 0, "Seen too many errors!");
 +      
 +      var scriptErr = message.QueryInterface(Ci.nsIScriptError);
 +
-+      is(scriptErr.lineNumber, 2,
++      is(scriptErr.lineNumber, this.lineNumbers.shift(),
 +         "Wrong line");
 +    },
 +    
 +    finish: function() {
-+      ok(this.seenError , "Didn't get message.");
++      ok(this.lineNumbers.length == 0 , "Didn't the right number of messages.");
 +      SimpleTest.finish();
 +    },
 +
@@ -99,6 +104,11 @@ new file mode 100644
 +  iframe.contentWindow.document.open();
 +  iframe.contentWindow.document.writeln("<script>document.writeln();<\/script>");
 +  iframe.contentWindow.document.writeln("<style>qux { foo: bar; }<\/style>");
++  iframe.contentWindow.document.writeln("<style>");
++  iframe.contentWindow.document.writeln("qux { foo: bar; }");
++  iframe.contentWindow.document.writeln();
++  iframe.contentWindow.document.writeln("qux { foo: bar; }");
++  iframe.contentWindow.document.writeln("<\/style>");
 +  iframe.contentWindow.document.close();
 +
 +  setTimeout(done, 1);
@@ -112,7 +122,7 @@ diff --git a/content/base/test/test_bug483015.html b/content/base/test/test_bug4
 new file mode 100644
 --- /dev/null
 +++ b/content/base/test/test_bug483015.html
-@@ -0,0 +1,76 @@
+@@ -0,0 +1,81 @@
 +<!DOCTYPE HTML>
 +<html>
 +<!--
@@ -138,23 +148,21 @@ new file mode 100644
 +    Cc["@mozilla.org/consoleservice;1"].getService(Ci.nsIConsoleService);
 +
 +  var consoleListener = {
-+    seenError: false,
++    lineNumbers: [67, 70, 72],
 +
 +    observe: function(message) {
 +      netscape.security.PrivilegeManager.enablePrivilege('UniversalXPConnect');
 +
-+      ok(!this.seenError, "Seen too many errors!");
-+      
-+      this.seenError = true;
++      ok(this.lineNumbers.length > 0, "Seen too many errors!");
 +      
 +      var scriptErr = message.QueryInterface(Ci.nsIScriptError);
 +
-+      is(scriptErr.lineNumber, 69,
++      is(scriptErr.lineNumber, this.lineNumbers.shift(),
 +         "Wrong line");
 +    },
 +    
 +    finish: function() {
-+      ok(this.seenError , "Didn't get message.");
++      ok(this.lineNumbers.length == 0 , "Didn't the right number of messages.");
 +      SimpleTest.finish();
 +    },
 +
@@ -182,6 +190,13 @@ new file mode 100644
 +  document.write("\n\n");
 +</script>
 +<style>qux { foo: bar; }</style>
++
++<style>
++qux { foo: bar; }
++
++qux { foo: bar; }
++</style>
++
 +<script>
 +  setTimeout(done, 1);
 +</script>

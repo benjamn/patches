@@ -1,3 +1,10 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1258408991 28800
+# Node ID 05aecdd7a7e67afaea498fa153df11cce3710eb2
+# Parent  ce3b2de6cb7c9aa4251591c1e2068bb51df41ee2
+imported patch hsivonen/bug-513194-test.diff
+
 diff --git a/content/base/test/Makefile.in b/content/base/test/Makefile.in
 --- a/content/base/test/Makefile.in
 +++ b/content/base/test/Makefile.in

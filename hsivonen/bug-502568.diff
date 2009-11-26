@@ -1,3 +1,31 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1259197501 28800
+# Node ID f9ce1a631fbaa03807a3240698a1b4665d193d4c
+# Parent  d757244cec7687c28d2318aedf99462b64d191d2
+[mq]: hsivonen/bug-502568.diff
+
+diff --git a/modules/libpref/src/init/all.js b/modules/libpref/src/init/all.js
+--- a/modules/libpref/src/init/all.js
++++ b/modules/libpref/src/init/all.js
+@@ -2819,8 +2819,17 @@ pref("gfx.color_management.mode", 0);
+ 
+ // Enable/Disable the geolocation API for content
+ pref("geo.enabled", true);
+ 
+ // Enable/Disable HTML5 parser
+ pref("html5.enable", false);
+ // Toggle which thread the HTML5 parser uses for streama parsing
+ pref("html5.offmainthread", true);
++// Time in milliseconds between the start of the network stream and the 
++// first time the flush timer fires in the off-the-main-thread HTML5 parser.
++pref("html5.flushtimer.startdelay", 200);
++// Time in milliseconds between the return to non-speculating more and the 
++// first time the flush timer fires thereafter.
++pref("html5.flushtimer.continuedelay", 150);
++// Time in milliseconds between timer firings once the timer has starting 
++// firing.
++pref("html5.flushtimer.interval", 100);
 diff --git a/parser/html/nsAHtml5TreeOpSink.h b/parser/html/nsAHtml5TreeOpSink.h
 --- a/parser/html/nsAHtml5TreeOpSink.h
 +++ b/parser/html/nsAHtml5TreeOpSink.h
@@ -25,6 +53,27 @@ diff --git a/parser/html/nsAHtml5TreeOpSink.h b/parser/html/nsAHtml5TreeOpSink.h
  };
  
  #endif /* nsAHtml5TreeOpSink_h___ */
+diff --git a/parser/html/nsHtml5Module.cpp b/parser/html/nsHtml5Module.cpp
+--- a/parser/html/nsHtml5Module.cpp
++++ b/parser/html/nsHtml5Module.cpp
+@@ -64,16 +64,17 @@ nsHtml5Module::InitializeStatics()
+   nsHtml5ElementName::initializeStatics();
+   nsHtml5HtmlAttributes::initializeStatics();
+   nsHtml5NamedCharacters::initializeStatics();
+   nsHtml5Portability::initializeStatics();
+   nsHtml5StackNode::initializeStatics();
+   nsHtml5Tokenizer::initializeStatics();
+   nsHtml5TreeBuilder::initializeStatics();
+   nsHtml5UTF16Buffer::initializeStatics();
++  nsHtml5StreamParser::InitializeStatics();
+ #ifdef DEBUG
+   sNsHtml5ModuleInitialized = PR_TRUE;
+ #endif
+ }
+ 
+ // static
+ void
+ nsHtml5Module::ReleaseStatics()
 diff --git a/parser/html/nsHtml5Speculation.cpp b/parser/html/nsHtml5Speculation.cpp
 --- a/parser/html/nsHtml5Speculation.cpp
 +++ b/parser/html/nsHtml5Speculation.cpp
@@ -92,8 +141,118 @@ diff --git a/parser/html/nsHtml5Speculation.h b/parser/html/nsHtml5Speculation.h
 diff --git a/parser/html/nsHtml5StreamParser.cpp b/parser/html/nsHtml5StreamParser.cpp
 --- a/parser/html/nsHtml5StreamParser.cpp
 +++ b/parser/html/nsHtml5StreamParser.cpp
-@@ -713,18 +713,24 @@ nsHtml5StreamParser::ParseAvailableData(
-       if (mFirstBuffer == mLastBuffer) {
+@@ -49,29 +49,49 @@
+ #include "nsHtml5Parser.h"
+ #include "nsHtml5TreeBuilder.h"
+ #include "nsHtml5AtomTable.h"
+ #include "nsHtml5Module.h"
+ #include "nsHtml5RefPtr.h"
+ 
+ static NS_DEFINE_CID(kCharsetAliasCID, NS_CHARSETALIAS_CID);
+ 
++PRInt32 nsHtml5StreamParser::sTimerStartDelay = 200;
++PRInt32 nsHtml5StreamParser::sTimerContinueDelay = 150;
++PRInt32 nsHtml5StreamParser::sTimerInterval = 100;
++
++// static
++void
++nsHtml5StreamParser::InitializeStatics()
++{
++  nsContentUtils::AddIntPrefVarCache("html5.flushtimer.startdelay", 
++                                     &sTimerStartDelay);
++  nsContentUtils::AddIntPrefVarCache("html5.flushtimer.continuedelay", 
++                                     &sTimerContinueDelay);
++  nsContentUtils::AddIntPrefVarCache("html5.flushtimer.interval",
++                                     &sTimerInterval);
++}
++
+ NS_IMPL_CYCLE_COLLECTING_ADDREF(nsHtml5StreamParser)
+ NS_IMPL_CYCLE_COLLECTING_RELEASE(nsHtml5StreamParser)
+ 
+ NS_INTERFACE_TABLE_HEAD(nsHtml5StreamParser)
+   NS_INTERFACE_TABLE2(nsHtml5StreamParser, 
+                       nsIStreamListener, 
+                       nsICharsetDetectionObserver)
+   NS_INTERFACE_TABLE_TO_MAP_SEGUE_CYCLE_COLLECTION(nsHtml5StreamParser)
+ NS_INTERFACE_MAP_END
+ 
+ NS_IMPL_CYCLE_COLLECTION_CLASS(nsHtml5StreamParser)
+ 
+ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsHtml5StreamParser)
++  if (tmp->mFlushTimer) {
++    tmp->mFlushTimer->Cancel();
++    tmp->mFlushTimer = nsnull;
++  }
+   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mObserver)
+   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mRequest)
+   tmp->mOwner = nsnull;
+   tmp->mExecutorFlusher = nsnull;
+   tmp->mExecutor = nsnull;
+   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mDocument)
+   tmp->mTreeBuilder->DropSpeculativeLoader();
+ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+@@ -120,16 +140,17 @@ nsHtml5StreamParser::nsHtml5StreamParser
+   , mTreeBuilder(new nsHtml5TreeBuilder(mExecutor->GetStage()))
+   , mTokenizer(new nsHtml5Tokenizer(mTreeBuilder))
+   , mTokenizerMutex("nsHtml5StreamParser mTokenizerMutex")
+   , mOwner(aOwner)
+   , mSpeculationMutex("nsHtml5StreamParser mSpeculationMutex")
+   , mTerminatedMutex("nsHtml5StreamParser mTerminatedMutex")
+   , mThread(nsHtml5Module::GetStreamParserThread())
+   , mExecutorFlusher(new nsHtml5ExecutorFlusher(aExecutor))
++  , mFlushTimer(do_CreateInstance("@mozilla.org/timer;1"))
+ {
+   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+   mAtomTable.Init(); // we aren't checking for OOM anyway...
+   #ifdef DEBUG
+     mAtomTable.SetPermittedLookupThread(mThread);
+   #endif
+   mTokenizer->setInterner(&mAtomTable);
+   mTokenizer->setEncodingDeclarationHandler(this);
+@@ -145,16 +166,20 @@ nsHtml5StreamParser::~nsHtml5StreamParse
+   mUnicodeDecoder = nsnull;
+   mSniffingBuffer = nsnull;
+   mMetaScanner = nsnull;
+   mFirstBuffer = nsnull;
+   mExecutor = nsnull;
+   mTreeBuilder = nsnull;
+   mTokenizer = nsnull;
+   mOwner = nsnull;
++  if (mFlushTimer) {
++    mFlushTimer->Cancel();
++    mFlushTimer = nsnull;
++  }
+ }
+ 
+ void
+ nsHtml5StreamParser::SetSpeculativeLoaderWithDocument(nsIDocument* aDocument) {
+   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+   mDocument = aDocument;
+   mTreeBuilder->SetSpeculativeLoaderWithDocument(aDocument);
+ }
+@@ -478,16 +503,21 @@ nsHtml5StreamParser::OnStartRequest(nsIR
+   mExecutor->StartReadingFromStage();
+   /*
+    * If you move the following line, be very careful not to cause 
+    * WillBuildModel to be called before the document has had its 
+    * script global object set.
+    */
+   mExecutor->WillBuildModel(eDTDMode_unknown);
+   
++  mFlushTimer->InitWithFuncCallback(nsHtml5StreamParser::TimerCallback, 
++                                    static_cast<void*> (this), 
++                                    sTimerStartDelay, 
++                                    nsITimer::TYPE_ONE_SHOT);
++
+   nsresult rv = NS_OK;
+ 
+   mReparseForbidden = PR_FALSE;
+   nsCOMPtr<nsIHttpChannel> httpChannel(do_QueryInterface(mRequest, &rv));
+   if (NS_SUCCEEDED(rv)) {
+     nsCAutoString method;
+     httpChannel->GetRequestMethod(method);
+     // XXX does Necko have a way to renavigate POST, etc. without hitting
+@@ -714,17 +744,16 @@ nsHtml5StreamParser::ParseAvailableData(
          switch (mStreamState) {
            case STREAM_BEING_READ:
              // never release the last buffer.
@@ -101,13 +260,6 @@ diff --git a/parser/html/nsHtml5StreamParser.cpp b/parser/html/nsHtml5StreamPars
                // reuse buffer space if not speculating
                mFirstBuffer->setStart(0);
                mFirstBuffer->setEnd(0);
-+              // we aren't speculating and we don't know when new data is
-+              // going to arrive. Send data to the main thread.
-+              mTreeBuilder->flushCharacters();
-+              mTreeBuilder->Flush();
-+              if (NS_FAILED(NS_DispatchToMainThread(mExecutorFlusher))) {
-+                NS_WARNING("failed to dispatch executor flush event");
-+              }
              }
 -            mTreeBuilder->Flush();
              return; // no more data for now but expecting more
@@ -118,7 +270,7 @@ diff --git a/parser/html/nsHtml5StreamParser.cpp b/parser/html/nsHtml5StreamPars
              mAtEOF = PR_TRUE;
              mTokenizer->eof();
              mTreeBuilder->StreamEnded();
-@@ -767,17 +773,16 @@ nsHtml5StreamParser::ParseAvailableData(
+@@ -767,17 +796,16 @@ nsHtml5StreamParser::ParseAvailableData(
          }
          mTreeBuilder->SetOpSink(speculation);
          mSpeculations.AppendElement(speculation); // adopts the pointer
@@ -136,6 +288,265 @@ diff --git a/parser/html/nsHtml5StreamParser.cpp b/parser/html/nsHtml5StreamPars
  class nsHtml5StreamParserContinuation : public nsRunnable
  {
  private:
+@@ -868,16 +896,21 @@ nsHtml5StreamParser::ContinueAfterScript
+                              // run here synchronously on the main thread...
+ 
+       mTreeBuilder->flushCharacters(); // empty the pending buffer
+       mTreeBuilder->ClearOps(); // now get rid of the failed ops
+ 
+       mTreeBuilder->SetOpSink(mExecutor->GetStage());
+       mExecutor->StartReadingFromStage();
+       mSpeculating = PR_FALSE;
++      mFlushTimer->Cancel(); // just in case
++      mFlushTimer->InitWithFuncCallback(nsHtml5StreamParser::TimerCallback, 
++                                        static_cast<void*> (this), 
++                                        sTimerContinueDelay, 
++                                        nsITimer::TYPE_ONE_SHOT);
+       // Copy state over
+       mLastWasCR = aLastWasCR;
+       mTokenizer->loadState(aTokenizer);
+       mTreeBuilder->loadState(aTreeBuilder, &mAtomTable);
+     } else {    
+       // We've got a successful speculation and at least a moment ago it was
+       // the current speculation
+       mSpeculations.ElementAt(0)->FlushToSink(mExecutor);
+@@ -885,16 +918,21 @@ nsHtml5StreamParser::ContinueAfterScript
+         NS_WARNING("failed to dispatch executor flush event");
+       }
+       mSpeculations.RemoveElementAt(0);
+       if (mSpeculations.IsEmpty()) {
+         // yes, it was still the only speculation. Now stop speculating
+         mTreeBuilder->SetOpSink(mExecutor->GetStage());
+         mExecutor->StartReadingFromStage();
+         mSpeculating = PR_FALSE;
++        mFlushTimer->Cancel(); // just in case
++        mFlushTimer->InitWithFuncCallback(nsHtml5StreamParser::TimerCallback, 
++                                          static_cast<void*> (this), 
++                                          sTimerContinueDelay, 
++                                          nsITimer::TYPE_ONE_SHOT);
+       }
+     }
+     Uninterrupt();
+     nsCOMPtr<nsIRunnable> event = new nsHtml5StreamParserContinuation(this);
+     if (NS_FAILED(mThread->Dispatch(event, nsIThread::DISPATCH_NORMAL))) {
+       NS_WARNING("Failed to dispatch ParseAvailableData event");
+     }
+     // A stream event might run before this event runs, but that's harmless.
+@@ -907,11 +945,94 @@ nsHtml5StreamParser::ContinueAfterScript
+ void
+ nsHtml5StreamParser::ContinueAfterFailedCharsetSwitch()
+ {
+   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+   mozilla::MutexAutoLock tokenizerAutoLock(mTokenizerMutex);
+   Uninterrupt();
+   nsCOMPtr<nsIRunnable> event = new nsHtml5StreamParserContinuation(this);
+   if (NS_FAILED(mThread->Dispatch(event, nsIThread::DISPATCH_NORMAL))) {
+-    NS_WARNING("Failed to dispatch ParseAvailableData event");
+-  }  
++    NS_WARNING("Failed to dispatch nsHtml5StreamParserContinuation");
++  }
+ }
++
++// Using a static, because the method name Notify is taken by the chardet 
++// callback.
++void
++nsHtml5StreamParser::TimerCallback(nsITimer* aTimer, void* aClosure)
++{
++  (static_cast<nsHtml5StreamParser*> (aClosure))->PostTimerFlush();
++}
++
++void
++nsHtml5StreamParser::TimerFlush()
++{
++  NS_ASSERTION(IsParserThread(), "Wrong thread!");
++  mTokenizerMutex.AssertCurrentThreadOwns();
++
++  if (mSpeculating) {
++    return;
++  }
++
++  // we aren't speculating and we don't know when new data is
++  // going to arrive. Send data to the main thread.
++  // However, don't do if the current element on the stack is a 
++  // foster-parenting element and there's pending text, because flushing in 
++  // that case would make the tree shape dependent on where the flush points 
++  // fall.
++  if (mTreeBuilder->IsDiscretionaryFlushSafe()) {
++    mTreeBuilder->flushCharacters();
++    if (mTreeBuilder->Flush()) {
++      if (NS_FAILED(NS_DispatchToMainThread(mExecutorFlusher))) {
++        NS_WARNING("failed to dispatch executor flush event");
++      }
++    }
++  }
++}
++
++class nsHtml5StreamParserTimerFlusher : public nsRunnable
++{
++private:
++  nsHtml5RefPtr<nsHtml5StreamParser> mStreamParser;
++public:
++  nsHtml5StreamParserTimerFlusher(nsHtml5StreamParser* aStreamParser)
++    : mStreamParser(aStreamParser)
++  {}
++  NS_IMETHODIMP Run()
++  {
++    mozilla::MutexAutoLock autoLock(mStreamParser->mTokenizerMutex);
++    mStreamParser->TimerFlush();
++    return NS_OK;
++  }
++};
++
++void
++nsHtml5StreamParser::PostTimerFlush()
++{
++  NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
++
++  mFlushTimer->Cancel(); // just in case
++
++  // The following line reads a mutex-protected variable without acquiring 
++  // the mutex. This is OK, because failure to exit early here is harmless.
++  // The early exit here is merely an optimization. Note that parser thread
++  // may have set mSpeculating to true where it previously was false--not 
++  // the other way round. mSpeculating is set to false only on the main thread.
++  if (mSpeculating) {
++    // No need for timer flushes when speculating
++    return;
++  }
++
++  // Schedule the next timer shot
++  mFlushTimer->InitWithFuncCallback(nsHtml5StreamParser::TimerCallback, 
++                                    static_cast<void*> (this), 
++                                    sTimerInterval, 
++                                    nsITimer::TYPE_ONE_SHOT);
++
++  // TODO: (If mDocument isn't in the frontmost tab or If the user isn't 
++  // interacting with the browser) and this isn't every nth timer flush, return
++
++  nsCOMPtr<nsIRunnable> event = new nsHtml5StreamParserTimerFlusher(this);
++  if (NS_FAILED(mThread->Dispatch(event, nsIThread::DISPATCH_NORMAL))) {
++    NS_WARNING("Failed to dispatch nsHtml5StreamParserTimerFlusher");
++  }
++}
++
+diff --git a/parser/html/nsHtml5StreamParser.h b/parser/html/nsHtml5StreamParser.h
+--- a/parser/html/nsHtml5StreamParser.h
++++ b/parser/html/nsHtml5StreamParser.h
+@@ -47,16 +47,17 @@
+ #include "nsIUnicodeDecoder.h"
+ #include "nsHtml5TreeOpExecutor.h"
+ #include "nsHtml5UTF16Buffer.h"
+ #include "nsIInputStream.h"
+ #include "nsICharsetAlias.h"
+ #include "mozilla/Mutex.h"
+ #include "nsHtml5AtomTable.h"
+ #include "nsHtml5Speculation.h"
++#include "nsITimer.h"
+ 
+ class nsHtml5Parser;
+ 
+ #define NS_HTML5_STREAM_PARSER_READ_BUFFER_SIZE 1024
+ #define NS_HTML5_STREAM_PARSER_SNIFFING_BUFFER_SIZE 512
+ 
+ enum eBomState {
+   /**
+@@ -101,22 +102,25 @@ enum eHtml5StreamState {
+ };
+ 
+ class nsHtml5StreamParser : public nsIStreamListener,
+                             public nsICharsetDetectionObserver {
+ 
+   friend class nsHtml5RequestStopper;
+   friend class nsHtml5DataAvailable;
+   friend class nsHtml5StreamParserContinuation;
++  friend class nsHtml5StreamParserTimerFlusher;
+ 
+   public:
+     NS_DECL_AND_IMPL_ZEROING_OPERATOR_NEW
+     NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+     NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsHtml5StreamParser, nsIStreamListener)
+ 
++    static void InitializeStatics();
++
+     nsHtml5StreamParser(nsHtml5TreeOpExecutor* aExecutor,
+                         nsHtml5Parser* aOwner);
+                         
+     virtual ~nsHtml5StreamParser();
+ 
+     // nsIRequestObserver methods:
+     NS_DECL_NSIREQUESTOBSERVER
+     // nsIStreamListener methods:
+@@ -296,16 +300,33 @@ class nsHtml5StreamParser : public nsISt
+      *                     or UTF-8)
+      * @param aDecoderCharsetName The actual name for the decoder's charset
+      *                            (UTF-16BE, UTF-16LE or UTF-8; the BOM has
+      *                            been swallowed)
+      */
+     nsresult SetupDecodingFromBom(const char* aCharsetName,
+                                   const char* aDecoderCharsetName);
+ 
++    /**
++     * Callback for mFlushTimer.
++     */
++    static void TimerCallback(nsITimer* aTimer, void* aClosure);
++
++    /**
++     * Main thread entry point for (maybe) flushing the ops and posting
++     * a flush runnable back on the main thread.
++     */
++    void PostTimerFlush();
++
++    /**
++     * Parser thread entry point for (maybe) flushing the ops and posting
++     * a flush runnable back on the main thread.
++     */
++    void TimerFlush();
++
+     nsCOMPtr<nsIRequest>          mRequest;
+     nsCOMPtr<nsIRequestObserver>  mObserver;
+ 
+     /**
+      * The Unicode decoder
+      */
+     nsCOMPtr<nsIUnicodeDecoder>   mUnicodeDecoder;
+ 
+@@ -430,11 +451,36 @@ class nsHtml5StreamParser : public nsISt
+     nsCOMPtr<nsIThread>           mThread;
+     
+     nsCOMPtr<nsIRunnable>         mExecutorFlusher;
+     
+     /**
+      * The document wrapped by the speculative loader.
+      */
+     nsCOMPtr<nsIDocument>         mDocument;
++
++    /**
++     * Timer for flushing tree ops once in a while when not speculating.
++     */
++    nsCOMPtr<nsITimer>            mFlushTimer;
++
++    /**
++     * The pref html5.flushtimer.startdelay: Time in milliseconds between
++     * the start of the network stream and the first time the flush timer
++     * fires.
++     */
++    static PRInt32                sTimerStartDelay;
++
++    /**
++     * The pref html5.flushtimer.continuedelay: Time in milliseconds between
++     * the return to non-speculating more and the first time the flush timer
++     * fires thereafter.
++     */
++    static PRInt32                sTimerContinueDelay;
++
++    /**
++     * The pref html5.flushtimer.interval: Time in milliseconds between
++     * timer firings once the timer has starting firing.
++     */
++    static PRInt32                sTimerInterval;
+ };
+ 
+ #endif // nsHtml5StreamParser_h__
 diff --git a/parser/html/nsHtml5TreeBuilderCppSupplement.h b/parser/html/nsHtml5TreeBuilderCppSupplement.h
 --- a/parser/html/nsHtml5TreeBuilderCppSupplement.h
 +++ b/parser/html/nsHtml5TreeBuilderCppSupplement.h
@@ -261,13 +672,17 @@ diff --git a/parser/html/nsHtml5TreeBuilderCppSupplement.h b/parser/html/nsHtml5
  nsHtml5TreeBuilder::elementPushed(PRInt32 aNamespace, nsIAtom* aName, nsIContent** aElement)
  {
    NS_ASSERTION(aNamespace == kNameSpaceID_XHTML || aNamespace == kNameSpaceID_SVG || aNamespace == kNameSpaceID_MathML, "Element isn't HTML, SVG or MathML!");
-@@ -622,23 +592,17 @@ nsHtml5TreeBuilder::HasScript()
+@@ -619,26 +589,24 @@ nsHtml5TreeBuilder::HasScript()
+ {
+   PRUint32 len = mOpQueue.Length();
+   if (!len) {
      return PR_FALSE;
    }
    return mOpQueue.ElementAt(len - 1).IsRunScript();
  }
  
- void
+-void
++PRBool
  nsHtml5TreeBuilder::Flush()
  {
 -  mOpSink->ForcedFlush(mOpQueue);
@@ -277,7 +692,11 @@ diff --git a/parser/html/nsHtml5TreeBuilderCppSupplement.h b/parser/html/nsHtml5
 -nsHtml5TreeBuilder::MaybeFlush()
 -{
 -  mOpSink->MaybeFlush(mOpQueue);
-+  mOpSink->MoveOpsFrom(mOpQueue);
++  PRBool hasOps = !mOpQueue.IsEmpty();
++  if (hasOps) {
++    mOpSink->MoveOpsFrom(mOpQueue);
++  }
++  return hasOps;
  }
  
  void
@@ -286,20 +705,64 @@ diff --git a/parser/html/nsHtml5TreeBuilderCppSupplement.h b/parser/html/nsHtml5
    nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
    NS_ASSERTION(treeOp, "Tree op allocation failed.");
    treeOp->Init(eTreeOpSetDocumentCharset, aCharset);  
+@@ -681,16 +649,24 @@ nsHtml5TreeBuilder::SetSpeculativeLoader
+   mSpeculativeLoader = new nsHtml5SpeculativeLoader(aDocument);
+ }
+ 
+ void
+ nsHtml5TreeBuilder::DropSpeculativeLoader() {
+   mSpeculativeLoader = nsnull;
+ }
+ 
++PRBool 
++nsHtml5TreeBuilder::IsDiscretionaryFlushSafe()
++{
++  return !(charBufferLen && 
++           currentPtr >= 0 && 
++           stack[currentPtr]->fosterParenting);
++}
++
+ // DocumentModeHandler
+ void
+ nsHtml5TreeBuilder::documentMode(nsHtml5DocumentMode m)
+ {
+   nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement();
+   NS_ASSERTION(treeOp, "Tree op allocation failed.");
+   treeOp->Init(m);
+ }
 diff --git a/parser/html/nsHtml5TreeBuilderHSupplement.h b/parser/html/nsHtml5TreeBuilderHSupplement.h
 --- a/parser/html/nsHtml5TreeBuilderHSupplement.h
 +++ b/parser/html/nsHtml5TreeBuilderHSupplement.h
-@@ -75,18 +75,16 @@
+@@ -59,33 +59,33 @@
+     nsIContent** AllocateContentHandle();
+     
+   public:
+ 
+     nsHtml5TreeBuilder(nsAHtml5TreeOpSink* aOpSink);
+ 
+     ~nsHtml5TreeBuilder();
+     
++    PRBool IsDiscretionaryFlushSafe();
++
+     PRBool HasScript();
+     
+     void SetOpSink(nsAHtml5TreeOpSink* aOpSink) {
+       mOpSink = aOpSink;
+     }
+ 
+     void ClearOps() {
+       mOpQueue.Clear();
      }
      
      void SetSpeculativeLoaderWithDocument(nsIDocument* aDocument);
  
      void DropSpeculativeLoader();
  
-     void Flush();
-     
--    void MaybeFlush();
+-    void Flush();
 -    
+-    void MaybeFlush();
++    PRBool Flush();
+     
      void SetDocumentCharset(nsACString& aCharset);
  
      void StreamEnded();
@@ -307,11 +770,10 @@ diff --git a/parser/html/nsHtml5TreeBuilderHSupplement.h b/parser/html/nsHtml5Tr
      void NeedsCharsetSwitchTo(const nsACString& aEncoding);
  
      void AddSnapshotToScript(nsAHtml5TreeBuilderState* aSnapshot, PRInt32 aLine);
- 
 diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpExecutor.cpp
 --- a/parser/html/nsHtml5TreeOpExecutor.cpp
 +++ b/parser/html/nsHtml5TreeOpExecutor.cpp
-@@ -55,63 +55,46 @@
+@@ -55,63 +55,44 @@
  #include "nsHtml5Parser.h"
  #include "nsHtml5Tokenizer.h"
  #include "nsHtml5TreeBuilder.h"
@@ -337,7 +799,6 @@ diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpEx
 -  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mFlushTimer)
    NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMARRAY(mOwnedElements)
 -  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMARRAY(mOwnedNonElements)
-+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMPTR(mPreviousTextNode)
  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
  
  NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(nsHtml5TreeOpExecutor, nsContentSink)
@@ -347,7 +808,6 @@ diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpEx
 -  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mFlushTimer)
    NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMARRAY(mOwnedElements)
 -  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMARRAY(mOwnedNonElements)
-+  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mPreviousTextNode)
  NS_IMPL_CYCLE_COLLECTION_UNLINK_END
  
  nsHtml5TreeOpExecutor::nsHtml5TreeOpExecutor()
@@ -378,7 +838,7 @@ diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpEx
  {
    NS_NOTREACHED("No one should call this");
    return NS_ERROR_NOT_IMPLEMENTED;
-@@ -278,30 +261,29 @@ nsHtml5TreeOpExecutor::UpdateStyleSheet(
+@@ -278,30 +259,29 @@ nsHtml5TreeOpExecutor::UpdateStyleSheet(
    // Re-open update
    BeginDocUpdate();
  }
@@ -410,7 +870,7 @@ diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpEx
  
    PRIntervalTime flushStart = 0;
    PRUint32 opQueueLength = mOpQueue.Length();
-@@ -343,33 +325,21 @@ nsHtml5TreeOpExecutor::Flush()
+@@ -343,33 +323,21 @@ nsHtml5TreeOpExecutor::Flush()
    EndDocUpdate();
  
    mFlushState = eNotFlushing;
@@ -444,7 +904,7 @@ diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpEx
      return NS_OK;
    }
    mHasProcessedBase = PR_TRUE;
-@@ -523,17 +493,16 @@ nsHtml5TreeOpExecutor::Init(nsIDocument*
+@@ -523,17 +491,16 @@ nsHtml5TreeOpExecutor::Init(nsIDocument*
    return rv;
  }
  
@@ -462,16 +922,12 @@ diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpEx
    EndDocUpdate();
  
    if(NS_UNLIKELY(!mParser)) {
-@@ -578,26 +547,21 @@ nsHtml5TreeOpExecutor::GetTokenizer()
- void
- nsHtml5TreeOpExecutor::Reset() {
-   mHasProcessedBase = PR_FALSE;
+@@ -581,23 +548,17 @@ nsHtml5TreeOpExecutor::Reset() {
    mReadingFromStage = PR_FALSE;
    mOpQueue.Clear();
    mStarted = PR_FALSE;
    mFlushState = eNotFlushing;
    mFragmentMode = PR_FALSE;
-+  mPreviousTextNode = nsnull;
  }
  
  void
@@ -494,7 +950,25 @@ diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpEx
 diff --git a/parser/html/nsHtml5TreeOpExecutor.h b/parser/html/nsHtml5TreeOpExecutor.h
 --- a/parser/html/nsHtml5TreeOpExecutor.h
 +++ b/parser/html/nsHtml5TreeOpExecutor.h
-@@ -90,28 +90,23 @@ class nsHtml5TreeOpExecutor : public nsC
+@@ -45,17 +45,16 @@
+ #include "nsIDocument.h"
+ #include "nsTraceRefcnt.h"
+ #include "nsHtml5TreeOperation.h"
+ #include "nsHtml5PendingNotification.h"
+ #include "nsTArray.h"
+ #include "nsContentSink.h"
+ #include "nsNodeInfoManager.h"
+ #include "nsHtml5DocumentMode.h"
+-#include "nsITimer.h"
+ #include "nsIScriptElement.h"
+ #include "nsIParser.h"
+ #include "nsCOMArray.h"
+ #include "nsAHtml5TreeOpSink.h"
+ #include "nsHtml5TreeOpStage.h"
+ 
+ class nsHtml5TreeBuilder;
+ class nsHtml5Tokenizer;
+@@ -90,28 +89,22 @@ class nsHtml5TreeOpExecutor : public nsC
  
      /**
       * Whether EOF needs to be suppressed
@@ -509,7 +983,6 @@ diff --git a/parser/html/nsHtml5TreeOpExecutor.h b/parser/html/nsHtml5TreeOpExec
      nsTArray<nsHtml5PendingNotification> mPendingNotifications;
      nsHtml5StreamParser*                 mStreamParser;
      nsCOMArray<nsIContent>               mOwnedElements;
-+    nsCOMPtr<nsIContent>                 mPreviousTextNode;
      
 -    // This could be optimized away by introducing more tree ops so that 
 -    // non-elements wouldn't use the handle setup but the text node / comment
@@ -524,7 +997,44 @@ diff --git a/parser/html/nsHtml5TreeOpExecutor.h b/parser/html/nsHtml5TreeOpExec
      nsHtml5TreeOpStage            mStage;
  
      eHtml5FlushState              mFlushState;
-@@ -354,45 +349,42 @@ class nsHtml5TreeOpExecutor : public nsC
+@@ -295,31 +288,31 @@ class nsHtml5TreeOpExecutor : public nsC
+       if (mElementsSeenInThisAppendBatch.Length() > sAppendBatchMaxSize) {
+         sAppendBatchMaxSize = mElementsSeenInThisAppendBatch.Length();
+       }
+ #endif
+       mElementsSeenInThisAppendBatch.Clear();
+       mFlushState = eInDocUpdate;
+     }
+     
+-    inline PRBool HaveNotified(nsIContent* aElement) {
+-      NS_PRECONDITION(aElement, "HaveNotified called with null argument.");
++    inline PRBool HaveNotified(nsIContent* aNode) {
++      NS_PRECONDITION(aNode, "HaveNotified called with null argument.");
+       const nsHtml5PendingNotification* start = mPendingNotifications.Elements();
+       const nsHtml5PendingNotification* end = start + mPendingNotifications.Length();
+       for (;;) {
+-        nsIContent* parent = aElement->GetParent();
++        nsIContent* parent = aNode->GetParent();
+         if (!parent) {
+           return PR_TRUE;
+         }
+         for (nsHtml5PendingNotification* iter = (nsHtml5PendingNotification*)start; iter < end; ++iter) {
+           if (iter->Contains(parent)) {
+-            return iter->HaveNotifiedIndex(parent->IndexOf(aElement));
++            return iter->HaveNotifiedIndex(parent->IndexOf(aNode));
+           }
+         }
+-        aElement = parent;
++        aNode = parent;
+       }
+     }
+ 
+     void StartLayout() {
+       nsIDocument* doc = GetDocument();
+       if (doc) {
+         FlushPendingAppendNotifications();
+         nsContentSink::StartLayout(PR_FALSE);
+@@ -354,45 +347,34 @@ class nsHtml5TreeOpExecutor : public nsC
      void RunScript(nsIContent* aScriptElement);
      
      void Reset();
@@ -563,14 +1073,6 @@ diff --git a/parser/html/nsHtml5TreeOpExecutor.h b/parser/html/nsHtml5TreeOpExec
      
 -    void ScheduleTimer();
 -
-+    nsIContent* GetPreviousTextNode() {
-+      return mPreviousTextNode;
-+    }
-+    
-+    void SetPreviousTextNode(nsIContent* aText) {
-+      mPreviousTextNode = aText;
-+    }
-+    
  #ifdef DEBUG
      void AssertStageEmpty() {
        mStage.AssertEmpty();
@@ -661,7 +1163,25 @@ diff --git a/parser/html/nsHtml5TreeOpStage.h b/parser/html/nsHtml5TreeOpStage.h
 diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOperation.cpp
 --- a/parser/html/nsHtml5TreeOperation.cpp
 +++ b/parser/html/nsHtml5TreeOperation.cpp
-@@ -100,63 +100,113 @@ nsHtml5TreeOperation::~nsHtml5TreeOperat
+@@ -52,16 +52,17 @@
+ #include "nsContentCreatorFunctions.h"
+ #include "nsIScriptElement.h"
+ #include "nsIDTD.h"
+ #include "nsTraceRefcnt.h"
+ #include "nsIDOMHTMLFormElement.h"
+ #include "nsIFormControl.h"
+ #include "nsIStyleSheetLinkingElement.h"
+ #include "nsIDOMDocumentType.h"
++#include "nsIMutationObserver.h"
+ 
+ /**
+  * Helper class that opens a notification batch if the current doc
+  * is different from the executor doc.
+  */
+ class NS_STACK_CLASS nsHtml5OtherDocUpdate {
+   public:
+     nsHtml5OtherDocUpdate(nsIDocument* aCurrentDoc, nsIDocument* aExecutorDoc)
+@@ -100,63 +101,145 @@ nsHtml5TreeOperation::~nsHtml5TreeOperat
    NS_ASSERTION(mOpCode != eTreeOpUninitialized, "Uninitialized tree op.");
    switch(mOpCode) {
      case eTreeOpAddAttributes:
@@ -692,19 +1212,52 @@ diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOpera
  }
  
  nsresult
++nsHtml5TreeOperation::AppendTextToTextNode(PRUnichar* aBuffer,
++                                           PRInt32 aLength,
++                                           nsIContent* aTextNode,
++                                           nsHtml5TreeOpExecutor* aBuilder)
++{
++  NS_PRECONDITION(aTextNode, "Got null text node.");
++
++  if (aBuilder->HaveNotified(aTextNode)) {
++    // This text node has already been notified on, so it's necessary to
++    // notify on the append
++    nsresult rv = NS_OK;
++    PRUint32 oldLength = aTextNode->TextLength();
++    CharacterDataChangeInfo info = {
++      PR_TRUE,
++      oldLength,
++      oldLength,
++      aLength
++    };
++    nsNodeUtils::CharacterDataWillChange(aTextNode, &info);
++
++    rv = aTextNode->AppendText(aBuffer, aLength, PR_FALSE);
++    NS_ENSURE_SUCCESS(rv, rv);
++
++    nsNodeUtils::CharacterDataChanged(aTextNode, &info);
++    return rv;
++  }
++
++  return aTextNode->AppendText(aBuffer, aLength, PR_FALSE);
++}
++
++
++nsresult
 +nsHtml5TreeOperation::AppendText(PRUnichar* aBuffer,
 +                                 PRInt32 aLength,
 +                                 nsIContent* aParent,
 +                                 nsHtml5TreeOpExecutor* aBuilder)
 +{
 +  nsresult rv = NS_OK;
-+  nsIContent* previousTextNode = aBuilder->GetPreviousTextNode();
-+  if (aParent->GetLastChild() == previousTextNode) {
++  nsIContent* lastChild = aParent->GetLastChild();
++  if (lastChild && lastChild->IsNodeOfType(nsINode::eTEXT)) {
 +    nsHtml5OtherDocUpdate update(aParent->GetOwnerDoc(),
 +                                 aBuilder->GetDocument());
-+    // XXX notifications!
-+    rv = previousTextNode->AppendText(aBuffer, aLength, PR_FALSE);
-+    return rv;
++    return AppendTextToTextNode(aBuffer, 
++                                aLength, 
++                                lastChild, 
++                                aBuilder);
 +  }
 +
 +  nsCOMPtr<nsIContent> text;
@@ -712,8 +1265,6 @@ diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOpera
 +  NS_ASSERTION(text, "Infallible malloc failed?");
 +  rv = text->SetText(aBuffer, aLength, PR_FALSE);
 +  NS_ENSURE_SUCCESS(rv, rv);
-+
-+  aBuilder->SetPreviousTextNode(text);
 +
 +  return Append(text, aParent, aBuilder);
 +}
@@ -758,6 +1309,7 @@ diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOpera
 +  rv = doc->AppendChildTo(aNode, PR_FALSE);
 +  NS_ENSURE_SUCCESS(rv, rv);
 +  nsNodeUtils::ContentInserted(doc, aNode, childCount);
++  return rv;
 +}
 +
 +nsresult
@@ -800,7 +1352,7 @@ diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOpera
        if (parent) {
          nsHtml5OtherDocUpdate update(parent->GetOwnerDoc(),
                                       aBuilder->GetDocument());
-@@ -204,47 +254,21 @@ nsHtml5TreeOperation::Perform(nsHtml5Tre
+@@ -204,47 +287,21 @@ nsHtml5TreeOperation::Perform(nsHtml5Tre
  
          PRUint32 pos = foster->IndexOf(table);
          rv = foster->InsertChildAt(node, pos, PR_FALSE);
@@ -850,7 +1402,7 @@ diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOpera
        nsHtml5OtherDocUpdate update(node->GetOwnerDoc(),
                                     aBuilder->GetDocument());
  
-@@ -344,51 +368,92 @@ nsHtml5TreeOperation::Perform(nsHtml5Tre
+@@ -344,51 +401,91 @@ nsHtml5TreeOperation::Perform(nsHtml5Tre
        // TODO: uncomment the above line when <output> (bug 346485) and <keygen> (bug 101019) are supported by Gecko
        nsCOMPtr<nsIDOMHTMLFormElement> formElement(do_QueryInterface(parent));
        NS_ASSERTION(formElement, "The form element doesn't implement nsIDOMHTMLFormElement.");
@@ -888,11 +1440,12 @@ diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOpera
 +
 +        PRUint32 pos = foster->IndexOf(table);
 +        
-+        nsIContent* previousTextNode = aBuilder->GetPreviousTextNode();
-+        if (foster->GetChildAt(pos - 1) == previousTextNode) {
-+          // XXX notifications!
-+          rv = previousTextNode->AppendText(buffer, length, PR_FALSE);
-+          return rv;
++        nsIContent* previousSibling = foster->GetChildAt(pos - 1);
++        if (previousSibling && previousSibling->IsNodeOfType(nsINode::eTEXT)) {
++          return AppendTextToTextNode(buffer, 
++                                      length, 
++                                      previousSibling, 
++                                      aBuilder);
 +        }
 +        
 +        nsCOMPtr<nsIContent> text;
@@ -901,16 +1454,14 @@ diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOpera
 +        rv = text->SetText(buffer, length, PR_FALSE);
 +        NS_ENSURE_SUCCESS(rv, rv);
 +        
-+        aBuilder->SetPreviousTextNode(text);
-       
--      aBuilder->HoldNonElement(*target = text);
--      return rv;
 +        rv = foster->InsertChildAt(text, pos, PR_FALSE);
 +        NS_ENSURE_SUCCESS(rv, rv);
 +        nsNodeUtils::ContentInserted(foster, text, pos);
 +        return rv;
 +      }
-+      
+       
+-      aBuilder->HoldNonElement(*target = text);
+-      return rv;
 +      return AppendText(buffer, length, stackParent, aBuilder);
      }
 -    case eTreeOpCreateComment: {
@@ -961,7 +1512,7 @@ diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOpera
        voidString.SetIsVoid(PR_TRUE);
        NS_NewDOMDocumentType(getter_AddRefs(docType),
                              aBuilder->GetNodeInfoManager(),
-@@ -396,18 +461,17 @@ nsHtml5TreeOperation::Perform(nsHtml5Tre
+@@ -396,18 +493,17 @@ nsHtml5TreeOperation::Perform(nsHtml5Tre
                              name,
                              nsnull,
                              nsnull,
@@ -1085,7 +1636,7 @@ diff --git a/parser/html/nsHtml5TreeOperation.h b/parser/html/nsHtml5TreeOperati
  
        PRInt32 len = aString.Length();
        char* str = new char[len + 1];
-@@ -265,16 +292,28 @@ class nsHtml5TreeOperation {
+@@ -265,16 +292,33 @@ class nsHtml5TreeOperation {
          return aAtom;
        }
        nsAutoString str;
@@ -1094,6 +1645,11 @@ diff --git a/parser/html/nsHtml5TreeOperation.h b/parser/html/nsHtml5TreeOperati
      }
  
    private:
++
++    nsresult AppendTextToTextNode(PRUnichar* aBuffer,
++                                  PRInt32 aLength,
++                                  nsIContent* aTextNode,
++                                  nsHtml5TreeOpExecutor* aBuilder);
 +
 +    nsresult AppendText(PRUnichar* aBuffer,
 +                        PRInt32 aLength,

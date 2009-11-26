@@ -1,3 +1,10 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1258408990 28800
+# Node ID aa1930e7cf7fe626327b9dade3d3fbab1d3ec0e4
+# Parent  d5e926928c5ad260c14aed149ccbee9d75bd607a
+imported patch hsivonen/bug-482919.diff
+
 diff --git a/parser/html/Makefile.in b/parser/html/Makefile.in
 --- a/parser/html/Makefile.in
 +++ b/parser/html/Makefile.in

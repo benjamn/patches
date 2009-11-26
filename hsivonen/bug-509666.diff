@@ -1,3 +1,10 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1258408992 28800
+# Node ID e15437a1734cdb61315e5f278b435372744ae764
+# Parent  f055d2ea3f69a3180aa83e2a22cff2e43289a532
+imported patch hsivonen/bug-509666.diff
+
 diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOperation.cpp
 --- a/parser/html/nsHtml5TreeOperation.cpp
 +++ b/parser/html/nsHtml5TreeOperation.cpp

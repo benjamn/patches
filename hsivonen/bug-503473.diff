@@ -1,3 +1,10 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1258408991 28800
+# Node ID f09c46ef6e92397a08b194029e8306cd43b3ee93
+# Parent  650fc14f4aa9ae46b11f68917ad1bffffcbda708
+imported patch hsivonen/bug-503473.diff
+
 diff --git a/content/base/public/nsIScriptElement.h b/content/base/public/nsIScriptElement.h
 --- a/content/base/public/nsIScriptElement.h
 +++ b/content/base/public/nsIScriptElement.h
@@ -105,7 +112,7 @@ diff --git a/content/base/public/nsIScriptElement.h b/content/base/public/nsIScr
 diff --git a/content/base/src/nsScriptLoader.cpp b/content/base/src/nsScriptLoader.cpp
 --- a/content/base/src/nsScriptLoader.cpp
 +++ b/content/base/src/nsScriptLoader.cpp
-@@ -617,17 +617,19 @@ nsScriptLoader::ProcessRequest(nsScriptL
+@@ -642,17 +642,19 @@ nsScriptLoader::ProcessRequest(nsScriptL
  
      script = &textData;
    }

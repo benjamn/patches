@@ -1,3 +1,10 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1258408992 28800
+# Node ID f055d2ea3f69a3180aa83e2a22cff2e43289a532
+# Parent  8c9609dbfcc9893ed7dcece54b8adbc92acc5fee
+imported patch hsivonen/bug-497861.diff
+
 diff --git a/parser/html/nsHtml5Parser.cpp b/parser/html/nsHtml5Parser.cpp
 --- a/parser/html/nsHtml5Parser.cpp
 +++ b/parser/html/nsHtml5Parser.cpp
@@ -230,7 +237,7 @@ diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpEx
    }
  #endif
    mOpQueue.Clear();
-@@ -333,39 +337,26 @@ nsHtml5TreeOpExecutor::Flush()
+@@ -333,46 +337,26 @@ nsHtml5TreeOpExecutor::Flush()
      }
  #ifdef DEBUG_hsivonen
      printf("QUEUE MAX LENGTH: %d\n", sTreeOpQueueMaxLength);
@@ -257,12 +264,19 @@ diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpEx
 -      // The charset switch was unsuccessful.
 -      return (static_cast<nsHtml5Parser*> (mParser.get()))->ContinueAfterFailedCharsetSwitch();      
 -    }
--  } else if (mScriptElement) {
--    NS_ASSERTION(!mCallDidBuildModel, "Had a script element and DidBuildModel call");
--    RunScript();
 -  } else if (mCallDidBuildModel) {
 -    mCallDidBuildModel = PR_FALSE;
+-    // If we have a script element here, it must be malformed
+-    #ifdef DEBUG
+-    nsCOMPtr<nsIScriptElement> sele = do_QueryInterface(mScriptElement);
+-    if (sele) {
+-      NS_ASSERTION(sele->IsMalformed(), "Script wasn't marked as malformed.");
+-    }
+-    #endif
+-    mScriptElement = nsnull;
 -    DidBuildModel(PR_FALSE);
+-  } else if (mScriptElement) {
+-    RunScript();
 +  if (scriptElement) {
 +    RunScript(scriptElement); // must be tail call when mFlushState is eNotFlushing
    }
@@ -273,7 +287,7 @@ diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpEx
  {
    mFlushTimer->Cancel();
    mFlushTimer->InitWithFuncCallback(TimerCallbackFunc, 
-@@ -446,42 +437,56 @@ nsHtml5TreeOpExecutor::DocumentMode(nsHt
+@@ -453,42 +437,56 @@ nsHtml5TreeOpExecutor::DocumentMode(nsHt
    htmlDocument->SetCompatibilityMode(mode);
  }
  
@@ -337,7 +351,7 @@ diff --git a/parser/html/nsHtml5TreeOpExecutor.cpp b/parser/html/nsHtml5TreeOpEx
    } else {
      // This may have already happened if the script executed, but in case
      // it didn't then remove the element so that it doesn't get stuck forever.
-@@ -504,95 +509,95 @@ nsHtml5TreeOpExecutor::Init(nsIDocument*
+@@ -511,95 +509,95 @@ nsHtml5TreeOpExecutor::Init(nsIDocument*
    return rv;
  }
  
@@ -698,7 +712,7 @@ diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOpera
      }
      case eTreeOpDoneAddingChildren: {
        nsIContent* node = *(mOne.node);
-       node->DoneAddingChildren(PR_FALSE);
+       node->DoneAddingChildren(aBuilder->HaveNotified(node));
        return rv;
      }
      case eTreeOpDoneCreatingElement: {

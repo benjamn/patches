@@ -1,3 +1,10 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1258408991 28800
+# Node ID a507c7dd3996b27bf3091f35eb3ab9e596df3034
+# Parent  3ce5365bfcdb5bc97eb6ae16f2005ca0018ba928
+imported patch hsivonen/bug-523087.diff
+
 diff --git a/parser/html/nsHtml5Parser.cpp b/parser/html/nsHtml5Parser.cpp
 --- a/parser/html/nsHtml5Parser.cpp
 +++ b/parser/html/nsHtml5Parser.cpp

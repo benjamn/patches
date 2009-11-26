@@ -1,3 +1,10 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1258408991 28800
+# Node ID 52d7900cdb13d60dcc09d2965c866f8418a00a41
+# Parent  7ba3cd4baa1d142373bb727010036f92326d4d62
+imported patch hsivonen/bug-522326.diff
+
 diff --git a/parser/html/nsHtml5MetaScannerCppSupplement.h b/parser/html/nsHtml5MetaScannerCppSupplement.h
 --- a/parser/html/nsHtml5MetaScannerCppSupplement.h
 +++ b/parser/html/nsHtml5MetaScannerCppSupplement.h

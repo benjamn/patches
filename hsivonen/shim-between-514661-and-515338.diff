@@ -1,3 +1,10 @@
+# HG changeset patch
+# User Ben Newman <bnewman@mozilla.com>
+# Date 1258408982 28800
+# Node ID 439a83c3eb8eabfc2ded69a48ec27a1b203a1ce8
+# Parent  dbd8d7c3ac8fc85f38a95077d4e593fe910cf469
+imported patch hsivonen/shim-between-514661-and-515338.diff
+
 diff --git a/parser/html/nsHtml5TreeOperation.cpp b/parser/html/nsHtml5TreeOperation.cpp
 --- a/parser/html/nsHtml5TreeOperation.cpp
 +++ b/parser/html/nsHtml5TreeOperation.cpp
