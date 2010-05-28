@@ -1,5 +1,5 @@
 # HG changeset patch
-# Parent cb65f81d49c0d9bba6c832d90ef7666ca575eb3d
+# Parent 22f239687944fbab72957dd20bbc1133c55b5e16
 
 diff --git a/js/ipc/Handle.h b/js/ipc/Handle.h
 --- a/js/ipc/Handle.h
@@ -26,7 +26,7 @@ diff --git a/js/ipc/Handle.h b/js/ipc/Handle.h
 diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.cpp
 --- a/js/jetpack/JetpackActorCommon.cpp
 +++ b/js/jetpack/JetpackActorCommon.cpp
-@@ -31,85 +31,270 @@
+@@ -31,85 +31,290 @@
   * use your version of this file under the terms of the MPL, indicate your
   * decision by deleting the provisions above and replace them with the notice
   * and other provisions required by the GPL or the LGPL. If you do not delete
@@ -96,10 +96,8 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
 +      *to = hc;
 +      return true;
 +    }
++
 +    JSObject* obj = JSVAL_TO_OBJECT(from);
-+    js::AutoIdArray ida(cx, JS_Enumerate(cx, obj));
-+    if (!ida)
-+      return false;
 +
 +    js::LazilyConstructed<OpaqueSeenType> lost;
 +    if (!seen) {
@@ -111,6 +109,26 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
 +    OpaqueSeenType::SetType::AddPtr ap =
 +      seen->set.lookupForAdd(obj);
 +    if (ap || !seen->set.add(ap, obj))
++      return false;
++
++    if (JS_IsArrayObject(cx, obj)) {
++      nsTArray<Variant> elems;
++      jsuint len;
++      if (!JS_GetArrayLength(cx, obj, &len))
++        return false;
++      for (jsuint i = 0; i < len; ++i) {
++        jsval val;
++        Variant* vp = elems.AppendElement();
++        if (!JS_GetElement(cx, obj, i, &val) ||
++            !jsval_to_Variant(cx, val, vp, seen))
++          *vp = void_t();
++      }
++      *to = elems;
++      return true;
++    }
++
++    js::AutoIdArray ida(cx, JS_Enumerate(cx, obj));
++    if (!ida)
 +      return false;
 +
 +    nsTArray<KeyValue> kvs;
@@ -259,9 +277,8 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
    if (!snapshot.Length())
      return true;
 -  
-+  js::AutoArrayRooter snapshotRooter(cx,
-+                                     snapshot.Length(),
-+                                     snapshot.Elements());
++  js::AutoArrayRooter
++    snapshotRooter(cx, snapshot.Length(), snapshot.Elements());
    JSAutoRequest request(cx);
  
 -  jsval argv[3];
@@ -271,6 +288,8 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
 +  jsval* argv = args.AppendElements(argc);
 +  if (!argv)
 +    return false;
++  for (PRUint32 i = 0; i < argc; ++i)
++    argv[i] = JSVAL_VOID;
 +  js::AutoArrayRooter argvRooter(cx, argc, argv);
  
    JSString* msgNameStr =
@@ -319,8 +338,9 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
 -                       JS_GetStringLength(rstr));
 -    else
 -      elem->Truncate();
-+    if (!jsval_to_Variant(cx, rval, results->AppendElement()))
-+      break; // TODO?
++    Variant* vp = results->AppendElement();
++    if (!jsval_to_Variant(cx, rval, vp))
++      *vp = void_t();
    }
  
    return true;
@@ -940,7 +960,7 @@ diff --git a/js/jetpack/nsIJetpack.idl b/js/jetpack/nsIJetpack.idl
 diff --git a/js/jetpack/tests/unit/impl.js b/js/jetpack/tests/unit/impl.js
 --- a/js/jetpack/tests/unit/impl.js
 +++ b/js/jetpack/tests/unit/impl.js
-@@ -14,8 +14,13 @@ registerReceiver("gimmeHandle",
+@@ -14,8 +14,24 @@ registerReceiver("gimmeHandle",
                   function(msgName) {
                     sendMessage("recvHandle", "ok", createHandle());
                   });
@@ -954,10 +974,48 @@ diff --git a/js/jetpack/tests/unit/impl.js b/js/jetpack/tests/unit/impl.js
 +                 function(msgName, obj1, obj2) {
 +                   sendMessage("echo2", obj1, obj2);
 +                 });
++
++registerReceiver("multireturn begin",
++                 function() {
++                   var results = callMessage("multireturn");
++                   sendMessage.apply(null, ["multireturn check"].concat(results));
++                 });
++
++registerReceiver("testarray",
++                 function(msgName, array) {
++                   sendMessage("testarray", array.reverse());
++                 });
 diff --git a/js/jetpack/tests/unit/test_jetpack.js b/js/jetpack/tests/unit/test_jetpack.js
 --- a/js/jetpack/tests/unit/test_jetpack.js
 +++ b/js/jetpack/tests/unit/test_jetpack.js
-@@ -43,17 +43,44 @@ function run_test() {
+@@ -3,16 +3,26 @@ var jps = jps || Components.classes["@mo
+ 
+ function run_test() {
+   var jetpack = jps.createJetpack();
+   jetpack.loadImplementation(
+     "chrome://global/content/jetpack/test-impl.js");
+   jetpack.loadUserScript(
+     "chrome://global/content/jetpack/test-user.js");
+ 
++  var circ1 = {},
++      circ2 = {},
++      circ3 = {},
++      str = "circular references forbidden",
++      threw;
++  ((circ1.obj = circ2).obj = circ3).obj = circ1;
++  try { jetpack.sendMessage(str, circ3, circ1) }
++  catch (x) { threw = str }
++  do_check_eq(threw, str);
++
+   var echoHandle = jetpack.createHandle();
+   echoHandle.payload = { weight: 10 };
+   jetpack.registerReceiver("echo",
+                            function(msgName, data, handle) {
+                              do_check_eq(arguments.length, 3);
+                              do_check_eq(msgName, "echo");
+                              do_check_eq(data, "echo this");
+                              do_check_true(handle.isValid);
+@@ -43,17 +53,60 @@ function run_test() {
                               jetpack.sendMessage("kthx", data + data, handle.createHandle());
                             });
    jetpack.registerReceiver("recvHandleAgain",
@@ -982,23 +1040,39 @@ diff --git a/js/jetpack/tests/unit/test_jetpack.js b/js/jetpack/tests/unit/test_
 +                             do_test_finished();
 +                           });
  
-   do_test_pending();
-   do_test_pending();
-   do_test_pending();
++  var undefined;
++  jetpack.registerReceiver("multireturn", function() { return obj1 });
++  jetpack.registerReceiver("multireturn", function() { return circ1 });
++  jetpack.registerReceiver("multireturn", function() { return obj2 });
++  jetpack.registerReceiver("multireturn check",
++                           function(msgName, rval1, rval2, rval3) {
++                             do_check_eq(rval1.id, obj1.id);
++                             do_check_eq(rval2, undefined);
++                             do_check_eq(rval3.id, obj2.id);
++                             do_check_eq(rval3.obj.id, obj1.id);
++                             do_test_finished();
++                           });
++
++  var testarray = [1, 1, 2, 3, 5, 8, 13];
++  jetpack.registerReceiver("testarray",
++                           function(msgName, reversed) {
++                             for (var i = 0; i < testarray.length; ++i)
++                               do_check_eq(testarray[i],
++                                           reversed[reversed.length - i - 1]);
++                             do_test_finished();
++                           });
++
 +  do_test_pending();
++  do_test_pending();
++  do_test_pending();
+   do_test_pending();
+   do_test_pending();
+   do_test_pending();
  
    jetpack.sendMessage("echo", "echo this", echoHandle);
    jetpack.sendMessage("callback", "call me back", callbackHandle);
    jetpack.sendMessage("gimmeHandle");
 +  jetpack.sendMessage("echo2", obj1, obj2);
-+
-+  var circ1 = {},
-+      circ2 = {},
-+      circ3 = {},
-+      str = "circular references forbidden",
-+      threw;
-+  ((circ1.obj = circ2).obj = circ3).obj = circ1;
-+  try { jetpack.sendMessage(str, circ3, circ1) }
-+  catch (x) { threw = str }
-+  do_check_eq(threw, str);
++  jetpack.sendMessage("multireturn begin");
++  jetpack.sendMessage("testarray", testarray);
  }
