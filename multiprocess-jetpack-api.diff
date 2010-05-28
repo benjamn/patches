@@ -1,0 +1,1210 @@
+Bug 556846 - Investigate multi-process Jetpack.
+
+diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.cpp
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/JetpackActorCommon.cpp
+@@ -0,0 +1,150 @@
++/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is Mozilla Firefox.
++ *
++ * The Initial Developer of the Original Code is
++ * the Mozilla Foundation <http://www.mozilla.org>.
++ * Portions created by the Initial Developer are Copyright (C) 2010
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *   Ben Newman <b{enjam,newma}n@mozilla.com>
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++#include "jscntxt.h"
++
++#include "mozilla/jetpack/JetpackActorCommon.h"
++
++#include "jsapi.h"
++
++using mozilla::jetpack::JetpackActorCommon;
++
++bool
++JetpackActorCommon::RecvMessage(JSContext* cx,
++                                const nsString& messageName,
++                                const nsString& inData,
++                                nsTArray<nsString>* outData)
++{
++  if (outData)
++    outData->Clear();
++
++  nsAutoTArray<jsval, 4> snapshot;
++  TakeSnapshot(messageName, snapshot);
++  if (!snapshot.Length())
++    return true;
++  
++  JSAutoRequest request(cx);
++
++  jsval argv[2];
++  js::AutoArrayRooter argvRooter(cx, 2, argv);
++
++  JSString* msgNameStr =
++    JS_NewUCStringCopyN(cx,
++                        messageName.BeginReading(),
++                        messageName.Length());
++  if (!msgNameStr)
++    return false;
++  argv[0] = STRING_TO_JSVAL(msgNameStr);
++
++  if (inData.Length()) {
++    JSString* inDataStr =
++      JS_NewUCStringCopyN(cx,
++                          inData.BeginReading(),
++                          inData.Length());
++    if (!inDataStr)
++      return false;
++    argv[1] = STRING_TO_JSVAL(inDataStr);
++  } else {
++    argv[1] = JS_GetEmptyStringValue(cx);
++  }
++
++  JSObject* implGlobal = JS_GetGlobalObject(cx);
++  for (PRUint32 i = 0; i < snapshot.Length(); ++i) {
++    jsval rval;
++    if (!JS_CallFunctionValue(cx, implGlobal, snapshot.ElementAt(i), 2,
++                              argv, &rval))
++      break;
++
++    if (!outData)
++      continue;
++
++    nsString* elem = outData->AppendElement();
++    JSString* rstr = JS_ValueToString(cx, rval);
++
++    if (rstr)
++      *elem = nsString((PRUnichar*)JS_GetStringChars(rstr),
++                       JS_GetStringLength(rstr));
++    else
++      elem->Truncate();
++  }
++
++  return true;
++}
++
++nsresult
++JetpackActorCommon::RegisterReceiver(JSContext* cx,
++                                     const nsString& messageName,
++                                     jsval receiver)
++{
++  nsTArray<nsAutoJSValHolder>* vals;
++  while (!mReceivers.Get(messageName, &vals))
++    mReceivers.Put(messageName, new nsTArray<nsAutoJSValHolder>(1));
++  NS_ENSURE_TRUE(vals, NS_ERROR_OUT_OF_MEMORY);
++
++  if (!vals->Contains(receiver)) {
++    nsAutoJSValHolder* holder = vals->AppendElement();
++    holder->Hold(cx);
++    *holder = receiver;
++  }
++
++  return NS_OK;
++}
++
++void
++JetpackActorCommon::UnregisterReceiver(const nsString& messageName,
++                                       jsval receiver)
++{
++  nsTArray<nsAutoJSValHolder>* vals;
++  if (mReceivers.Get(messageName, &vals))
++    vals->RemoveElement(receiver);
++}
++
++void
++JetpackActorCommon::TakeSnapshot(const nsString& messageName,
++                                 nsTArray<jsval>& snapshot)
++{
++  snapshot.Clear();
++  nsTArray<nsAutoJSValHolder>* vals;
++  if (!mReceivers.Get(messageName, &vals))
++    return;
++  nsAutoJSValHolder
++    *val = vals->Elements(),
++    *end = val + vals->Length();
++  while (val != end)
++    snapshot.AppendElement(*val++);
++}
+diff --git a/js/jetpack/JetpackActorCommon.h b/js/jetpack/JetpackActorCommon.h
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/JetpackActorCommon.h
+@@ -0,0 +1,99 @@
++/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is Mozilla Firefox.
++ *
++ * The Initial Developer of the Original Code is
++ * the Mozilla Foundation <http://www.mozilla.org>.
++ * Portions created by the Initial Developer are Copyright (C) 2010
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *   Ben Newman <b{enjam,newma}n@mozilla.com>
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++#ifndef mozilla_jetpack_JetpackActorCommon_h
++#define mozilla_jetpack_JetpackActorCommon_h
++
++#include "nsClassHashtable.h"
++#include "nsHashKeys.h"
++#include "nsTArray.h"
++#include "nsAutoJSValHolder.h"
++#include "nsString.h"
++
++struct JSContext;
++
++namespace mozilla {
++namespace jetpack {
++
++class JetpackActorCommon
++{
++public:
++
++  bool
++  RecvMessage(JSContext* cx,
++              const nsString& messageName,
++              const nsString& inData, // TODO
++              nsTArray<nsString>* outData); // TODO
++
++  nsresult
++  RegisterReceiver(JSContext* cx,
++                   const nsString& messageName,
++                   jsval receiver);
++
++  void
++  UnregisterReceiver(const nsString& messageName,
++                     jsval receiver);
++
++  void
++  UnregisterReceivers(const nsString& messageName) {
++    mReceivers.Remove(messageName);
++  }
++
++  void ClearReceivers() {
++    mReceivers.Clear();
++  }
++
++protected:
++
++  JetpackActorCommon() {
++    mReceivers.Init();
++  }
++
++private:
++
++  void TakeSnapshot(const nsString& messageName,
++                    nsTArray<jsval>& snapshot);
++
++  nsClassHashtable<nsStringHashKey,
++                   nsTArray<nsAutoJSValHolder> > mReceivers;
++
++};
++
++}}
++
++#endif
+diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
+--- a/js/jetpack/JetpackChild.cpp
++++ b/js/jetpack/JetpackChild.cpp
+@@ -30,54 +30,356 @@
+  * use your version of this file under the terms of the MPL, indicate your
+  * decision by deleting the provisions above and replace them with the notice
+  * and other provisions required by the GPL or the LGPL. If you do not delete
+  * the provisions above, a recipient may use your version of this file under
+  * the terms of any one of the MPL, the GPL or the LGPL.
+  *
+  * ***** END LICENSE BLOCK ***** */
+ 
++#include "base/basictypes.h"
++#include "jscntxt.h"
++
+ #include "mozilla/jetpack/JetpackChild.h"
+ 
+-#include <stdio.h>
++#include "jsarray.h"
+ 
+ namespace mozilla {
+ namespace jetpack {
+ 
+ JetpackChild::JetpackChild()
+ {
+-  NS_ASSERTION(!gInstance, "Something terribly wrong here!");
+-  gInstance = this;
+ }
+ 
+ JetpackChild::~JetpackChild()
+ {
+-  NS_ASSERTION(gInstance == this, "Something terribly wrong here!");
+-  gInstance = nsnull;
+ }
+ 
++#define IMPL_PROP_FLAGS (JSPROP_SHARED | \
++                         JSPROP_ENUMERATE | \
++                         JSPROP_READONLY | \
++                         JSPROP_PERMANENT)
++const JSPropertySpec
++JetpackChild::sImplProperties[] = {
++  { "jetpack", 0, IMPL_PROP_FLAGS, UserJetpackGetter, NULL },
++  { 0, 0, 0, NULL, NULL }
++};
++
++#undef IMPL_PROP_FLAGS
++
++#define IMPL_METHOD_FLAGS (JSFUN_FAST_NATIVE |  \
++                           JSPROP_ENUMERATE | \
++                           JSPROP_READONLY | \
++                           JSPROP_PERMANENT)
++const JSFunctionSpec
++JetpackChild::sImplMethods[] = {
++  JS_FN("sendMessage", SendMessage, 2, IMPL_METHOD_FLAGS),
++  JS_FN("callMessage", CallMessage, 2, IMPL_METHOD_FLAGS),
++  JS_FN("registerReceiver", RegisterReceiver, 2, IMPL_METHOD_FLAGS),
++  JS_FN("unregisterReceiver", UnregisterReceiver, 2, IMPL_METHOD_FLAGS),
++  JS_FN("unregisterReceivers", UnregisterReceivers, 1, IMPL_METHOD_FLAGS),
++  JS_FN("wrap", Wrap, 1, IMPL_METHOD_FLAGS),
++  JS_FS_END
++};
++
++#undef IMPL_METHOD_FLAGS
++
+ bool
+ JetpackChild::Init(base::ProcessHandle aParentProcessHandle,
+                    MessageLoop* aIOLoop,
+                    IPC::Channel* aChannel)
+ {
+   if (!Open(aChannel, aParentProcessHandle, aIOLoop))
+     return false;
+ 
++  if (!(mRuntime = JS_NewRuntime(32L * 1024L * 1024L)) ||
++      !(mImplCx = JS_NewContext(mRuntime, 8192)) ||
++      !(mUserCx = JS_NewContext(mRuntime, 8192)))
++    return false;
++
++  {
++    JSAutoRequest request(mImplCx);
++    JS_SetContextPrivate(mImplCx, this);
++    JSObject* implGlobal = JS_NewObject(mImplCx, NULL, NULL, NULL);
++    if (!implGlobal ||
++        !JS_InitStandardClasses(mImplCx, implGlobal) ||
++        !JS_DefineProperties(mImplCx, implGlobal,
++                             const_cast<JSPropertySpec*>(sImplProperties)) ||
++        !JS_DefineFunctions(mImplCx, implGlobal,
++                            const_cast<JSFunctionSpec*>(sImplMethods)))
++      return false;
++  }
++
++  {
++    JSAutoRequest request(mUserCx);
++    JS_SetContextPrivate(mUserCx, this);
++    JSObject* userGlobal = JS_NewObject(mUserCx, NULL, NULL, NULL);
++    if (!userGlobal ||
++        !JS_InitStandardClasses(mUserCx, userGlobal))
++      return false;
++  }
++
+   return true;
+ }
+ 
+ void
+ JetpackChild::CleanUp()
+ {
++  JS_DestroyContext(mUserCx);
++  JS_DestroyContext(mImplCx);
++  JS_DestroyRuntime(mRuntime);
++  JS_ShutDown();
+ }
+ 
+ bool
+-JetpackChild::RecvLoadImplementation(const nsCString& script)
++JetpackChild::RecvSendMessage(const nsString& messageName,
++                              const nsString& data) // TODO
+ {
+-  printf("Received LoadImplementation message: '%s'\n", script.get());
++  return JetpackActorCommon::RecvMessage(mImplCx, messageName, data, NULL);
++}
++
++static bool
++Evaluate(JSContext* cx, const nsCString& code)
++{
++  JSAutoRequest request(cx);
++  jsval v;
++  JS_EvaluateScript(cx, JS_GetGlobalObject(cx), code.get(),
++                    code.Length(), EmptyCString().get(), 1, &v);
+   return true;
+ }
+ 
+-JetpackChild* JetpackChild::gInstance;
++bool
++JetpackChild::RecvLoadImplementation(const nsCString& code)
++{
++  return Evaluate(mImplCx, code);
++}
++
++bool
++JetpackChild::RecvLoadUserScript(const nsCString& code)
++{
++  return Evaluate(mUserCx, code);
++}
++
++JetpackChild*
++JetpackChild::GetThis(JSContext* cx)
++{
++  JetpackChild* self =
++    static_cast<JetpackChild*>(JS_GetContextPrivate(cx));
++  JS_ASSERT(cx == self->mImplCx ||
++            cx == self->mUserCx);
++  return self;
++}
++
++JSBool
++JetpackChild::UserJetpackGetter(JSContext* cx, JSObject* obj, jsval id,
++                                jsval* vp)
++{
++  JSObject* userGlobal = JS_GetGlobalObject(GetThis(cx)->mUserCx);
++  JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(userGlobal));
++  return JS_TRUE;
++}
++
++struct MessageResult {
++  PRUnichar* msgNameChars;
++  size_t msgNameLength;
++  PRUnichar* dataChars;
++  size_t dataLength;
++};
++
++static JSBool
++MessageCommon(JSContext* cx, uintN argc, jsval* vp,
++              MessageResult* result)
++{
++  if (argc < 1 || argc > 2) {
++    JS_ReportError(cx, "message takes one or two arguments");
++    return JS_FALSE;
++  }
++
++  jsval* argv = JS_ARGV(cx, vp);
++
++  JSString
++    * msgNameStr = JS_ValueToString(cx, argv[0]),
++    * dataStr = (argc == 2 ?
++                 JS_ValueToString(cx, argv[1]) :
++                 JSVAL_TO_STRING(JS_GetEmptyStringValue(cx)));
++
++  if (!msgNameStr || !dataStr) {
++    JS_ReportOutOfMemory(cx);
++    return JS_FALSE;
++  }
++
++  result->msgNameChars = (PRUnichar*)JS_GetStringChars(msgNameStr);
++  result->msgNameLength = JS_GetStringLength(msgNameStr);
++  result->dataChars = (PRUnichar*)JS_GetStringChars(dataStr);
++  result->dataLength = JS_GetStringLength(dataStr);
++
++  return JS_TRUE;
++}
++
++JSBool
++JetpackChild::SendMessage(JSContext* cx, uintN argc, jsval* vp)
++{
++  MessageResult smr;
++  if (!MessageCommon(cx, argc, vp, &smr))
++    return JS_FALSE;
++
++  if (!GetThis(cx)->SendSendMessage(nsDependentString(smr.msgNameChars,
++                                                      smr.msgNameLength),
++                                    nsDependentString(smr.dataChars,
++                                                      smr.dataLength)))
++  {
++    JS_ReportError(cx, "Failed to sendMessage");
++    return JS_FALSE;
++  }
++
++  JS_SET_RVAL(cx, vp, JSVAL_VOID);
++
++  return JS_TRUE;
++}
++
++JSBool
++JetpackChild::CallMessage(JSContext* cx, uintN argc, jsval* vp)
++{
++  MessageResult smr;
++  if (!MessageCommon(cx, argc, vp, &smr))
++    return JS_FALSE;
++
++  nsTArray<nsString> outData;
++  if (!GetThis(cx)->SendCallMessage(nsDependentString(smr.msgNameChars,
++                                                      smr.msgNameLength),
++                                    nsDependentString(smr.dataChars,
++                                                      smr.dataLength),
++                                    &outData))
++  {
++    JS_ReportError(cx, "Failed to callMessage");
++    return JS_FALSE;
++  }
++
++  jsval* outVals;
++  JSObject* arrObj =
++    js_NewArrayObjectWithCapacity(cx, outData.Length(), &outVals);
++  if (!arrObj || !outVals) {
++    JS_ReportOutOfMemory(cx);
++    return JS_FALSE;
++  }
++  js::AutoValueRooter root(cx, arrObj);
++
++  for (PRUint32 i = 0; i < outData.Length(); ++i) {
++    JSString* rstr =
++      JS_NewUCStringCopyN(cx,
++                          outData[i].BeginReading(),
++                          outData[i].Length());
++    if (!rstr) {
++      JS_ReportOutOfMemory(cx);
++      return JS_FALSE;
++    }
++    outVals[i] = STRING_TO_JSVAL(rstr);
++  }
++
++  JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(arrObj));
++
++  return JS_TRUE;
++}
++
++struct ReceiverResult
++{
++  PRUnichar* msgNameChars;
++  size_t msgNameLength;
++  jsval receiver;
++};
++
++static JSBool
++ReceiverCommon(JSContext* cx, uintN argc, jsval* vp,
++               const char* methodName, uintN arity,
++               ReceiverResult* result)
++{
++  if (argc != arity) {
++    JS_ReportError(cx, "%s requires exactly %d arguments", methodName, arity);
++    return JS_FALSE;
++  }
++
++  if (arity < 1)
++    return JS_TRUE;
++
++  jsval* argv = JS_ARGV(cx, vp);
++
++  JSString* str = JS_ValueToString(cx, argv[0]);
++  if (!str) {
++    JS_ReportError(cx, "%s expects a string as its first argument", methodName);
++    return JS_FALSE;
++  }
++
++  result->msgNameChars = (PRUnichar*)JS_GetStringChars(str);
++  result->msgNameLength = JS_GetStringLength(str);
++
++  if (arity < 2)
++    return JS_TRUE;
++
++  if (!JSVAL_IS_OBJECT(argv[1]) ||
++      !JS_ObjectIsFunction(cx, JSVAL_TO_OBJECT(argv[1])))
++  {
++    JS_ReportError(cx, "%s expects a function as its second argument",
++                   methodName);
++    return JS_FALSE;
++  }
++
++  result->receiver = argv[1];
++
++  return JS_TRUE;
++}
++
++JSBool
++JetpackChild::RegisterReceiver(JSContext* cx, uintN argc, jsval* vp)
++{
++  ReceiverResult rr;
++  if (!ReceiverCommon(cx, argc, vp, "registerReceiver", 2, &rr))
++    return JS_FALSE;
++
++  JetpackActorCommon* actor = GetThis(cx);
++  nsresult rv =
++    actor->RegisterReceiver(cx,
++                            nsDependentString(rr.msgNameChars,
++                                              rr.msgNameLength),
++                            rr.receiver);
++  if (NS_FAILED(rv)) {
++    JS_ReportOutOfMemory(cx);
++    return JS_FALSE;
++  }
++
++  return JS_TRUE;
++}
++
++JSBool
++JetpackChild::UnregisterReceiver(JSContext* cx, uintN argc, jsval* vp)
++{
++  ReceiverResult rr;
++  if (!ReceiverCommon(cx, argc, vp, "unregisterReceiver", 2, &rr))
++    return JS_FALSE;
++
++  JetpackActorCommon* actor = GetThis(cx);
++  actor->UnregisterReceiver(nsDependentString(rr.msgNameChars,
++                                              rr.msgNameLength),
++                            rr.receiver);
++  return JS_TRUE;
++}
++
++JSBool
++JetpackChild::UnregisterReceivers(JSContext* cx, uintN argc, jsval* vp)
++{
++  ReceiverResult rr;
++  if (!ReceiverCommon(cx, argc, vp, "unregisterReceivers", 1, &rr))
++    return JS_FALSE;
++
++  JetpackActorCommon* actor = GetThis(cx);
++  actor->UnregisterReceivers(nsDependentString(rr.msgNameChars,
++                                               rr.msgNameLength));
++  return JS_TRUE;
++}
++
++JSBool
++JetpackChild::Wrap(JSContext* cx, uintN argc, jsval* vp)
++{
++  JS_ReportError(cx, "wrap not yet implemented (depends on bug 563010)");
++  return JS_FALSE;
++}
+ 
+ } // namespace jetpack
+ } // namespace mozilla
+diff --git a/js/jetpack/JetpackChild.h b/js/jetpack/JetpackChild.h
+--- a/js/jetpack/JetpackChild.h
++++ b/js/jetpack/JetpackChild.h
+@@ -34,39 +34,60 @@
+  * the terms of any one of the MPL, the GPL or the LGPL.
+  *
+  * ***** END LICENSE BLOCK ***** */
+ 
+ #ifndef mozilla_jetpack_JetpackChild_h
+ #define mozilla_jetpack_JetpackChild_h
+ 
+ #include "mozilla/jetpack/PJetpackChild.h"
++#include "mozilla/jetpack/JetpackActorCommon.h"
+ 
+ namespace mozilla {
+ namespace jetpack {
+ 
+-class JetpackChild : public PJetpackChild
++class JetpackChild
++  : public PJetpackChild
++  , private JetpackActorCommon
+ {
+ public:
+   JetpackChild();
+   ~JetpackChild();
+ 
+   static JetpackChild* current();
+ 
+   bool Init(base::ProcessHandle aParentProcessHandle,
+             MessageLoop* aIOLoop,
+             IPC::Channel* aChannel);
+ 
+   void CleanUp();
+ 
+ protected:
+-  NS_OVERRIDE virtual bool RecvLoadImplementation(const nsCString& script);
++  NS_OVERRIDE virtual bool RecvSendMessage(const nsString& messageName,
++                                           const nsString& data); // TODO
++  NS_OVERRIDE virtual bool RecvLoadImplementation(const nsCString& code);
++  NS_OVERRIDE virtual bool RecvLoadUserScript(const nsCString& code);
+ 
+ private:
+-  static JetpackChild* gInstance;
++  JSRuntime* mRuntime;
++  JSContext *mImplCx, *mUserCx;
++
++  static JetpackChild* GetThis(JSContext* cx);
++
++  static const JSPropertySpec sImplProperties[];
++  static JSBool UserJetpackGetter(JSContext* cx, JSObject* obj, jsval idval,
++                                  jsval* vp);
++
++  static const JSFunctionSpec sImplMethods[];
++  static JSBool SendMessage(JSContext* cx, uintN argc, jsval *vp);
++  static JSBool CallMessage(JSContext* cx, uintN argc, jsval *vp);
++  static JSBool RegisterReceiver(JSContext* cx, uintN argc, jsval *vp);
++  static JSBool UnregisterReceiver(JSContext* cx, uintN argc, jsval *vp);
++  static JSBool UnregisterReceivers(JSContext* cx, uintN argc, jsval *vp);
++  static JSBool Wrap(JSContext* cx, uintN argc, jsval *vp);
+ 
+   DISALLOW_EVIL_CONSTRUCTORS(JetpackChild);
+ };
+ 
+ } // namespace jetpack
+ } // namespace mozilla
+ 
+ 
+diff --git a/js/jetpack/JetpackParent.cpp b/js/jetpack/JetpackParent.cpp
+--- a/js/jetpack/JetpackParent.cpp
++++ b/js/jetpack/JetpackParent.cpp
+@@ -32,39 +32,160 @@
+  * and other provisions required by the GPL or the LGPL. If you do not delete
+  * the provisions above, a recipient may use your version of this file under
+  * the terms of any one of the MPL, the GPL or the LGPL.
+  *
+  * ***** END LICENSE BLOCK ***** */
+ 
+ #include "mozilla/jetpack/JetpackParent.h"
+ 
++#include "nsIURI.h"
++#include "nsNetUtil.h"
++#include "nsIVariant.h"
++
+ namespace mozilla {
+ namespace jetpack {
+ 
+-JetpackParent::JetpackParent()
++JetpackParent::JetpackParent(JSContext* cx)
+   : mSubprocess(new JetpackProcessParent())
++  , mContext(cx)
+ {
+   mSubprocess->Launch();
+   Open(mSubprocess->GetChannel(),
+        mSubprocess->GetChildProcessHandle());
+ }
+ 
+ JetpackParent::~JetpackParent()
+ {
+   XRE_GetIOMessageLoop()
+     ->PostTask(FROM_HERE, new DeleteTask<JetpackProcessParent>(mSubprocess));
+ }
+ 
+ NS_IMPL_ISUPPORTS1(JetpackParent, nsIJetpack)
+ 
+-NS_IMETHODIMP
+-JetpackParent::LoadImplementation(const nsAString& aURI)
++static nsresult
++ReadFromURI(const nsAString& aURI,
++            nsCString* content)
+ {
+-  // this is all wrong, load the URI and send the data, but for now...
+-  if (!SendLoadImplementation(NS_ConvertUTF16toUTF8(aURI)))
+-    return NS_ERROR_FAILURE;
++  nsCOMPtr<nsIURI> uri;
++  nsresult rv = NS_NewURI(getter_AddRefs(uri),
++                          NS_ConvertUTF16toUTF8(aURI));
++  NS_ENSURE_SUCCESS(rv, rv);
++
++  nsCOMPtr<nsIChannel> channel;
++  NS_NewChannel(getter_AddRefs(channel), uri);
++  NS_ENSURE_TRUE(channel, NS_ERROR_FAILURE);
++
++  nsCOMPtr<nsIInputStream> input;
++  channel->Open(getter_AddRefs(input));
++  if (input) {
++    char buffer[256];
++    PRUint32 avail = 0;
++    input->Available(&avail);
++    if (avail) {
++      PRUint32 read = 0;
++      while (NS_SUCCEEDED(input->Read(buffer, sizeof(buffer), &read)) && read) {
++        content->Append(buffer, read);
++        read = 0;
++      }
++    }
++  }
+ 
+   return NS_OK;
+ }
+ 
++NS_IMETHODIMP
++JetpackParent::SendMessage(const nsAString& aMessageName,
++                           const nsAString& aData)
++{
++  if (!SendSendMessage(nsString(aMessageName),
++                       nsString(aData)))
++    return NS_ERROR_FAILURE;
++  return NS_OK;
++}
++
++static bool
++GetReceiver(JSContext* cx, nsIVariant* receiver, jsval* rval)
++{
++  return (NS_SUCCEEDED(receiver->GetAsJSVal(rval)) &&
++          JSVAL_IS_OBJECT(*rval) &&
++          JS_ObjectIsFunction(cx, JSVAL_TO_OBJECT(*rval)));
++}
++            
++NS_IMETHODIMP
++JetpackParent::RegisterReceiver(const nsAString& aMessageName,
++                                nsIVariant* aReceiver)
++{
++  jsval receiver;
++  if (!GetReceiver(mContext, aReceiver, &receiver))
++    return NS_ERROR_INVALID_ARG;
++
++  return JetpackActorCommon::RegisterReceiver(mContext,
++                                              nsString(aMessageName),
++                                              receiver);
++}
++
++NS_IMETHODIMP
++JetpackParent::UnregisterReceiver(const nsAString& aMessageName,
++                                  nsIVariant* aReceiver)
++{
++  jsval receiver;
++  if (!GetReceiver(mContext, aReceiver, &receiver))
++    return NS_ERROR_INVALID_ARG;
++
++  JetpackActorCommon::UnregisterReceiver(nsString(aMessageName),
++                                         receiver);
++  return NS_OK;
++}
++
++NS_IMETHODIMP
++JetpackParent::UnregisterReceivers(const nsAString& aMessageName)
++{
++  JetpackActorCommon::UnregisterReceivers(nsString(aMessageName));
++  return NS_OK;
++}
++
++NS_IMETHODIMP
++JetpackParent::LoadImplementation(const nsAString& aURI)
++{
++  nsCString code;
++  nsresult rv = ReadFromURI(aURI, &code);
++  NS_ENSURE_SUCCESS(rv, rv);
++
++  if (!code.IsEmpty() &&
++      !SendLoadImplementation(code))
++    rv = NS_ERROR_FAILURE;
++
++  return rv;
++}
++
++NS_IMETHODIMP
++JetpackParent::LoadUserScript(const nsAString& aURI)
++{
++  nsCString code;
++  nsresult rv = ReadFromURI(aURI, &code);
++  NS_ENSURE_SUCCESS(rv, rv);
++
++  if (!code.IsEmpty() &&
++      !SendLoadUserScript(code))
++    rv = NS_ERROR_FAILURE;
++
++  return rv;
++}
++
++bool
++JetpackParent::RecvSendMessage(const nsString& messageName,
++                               const nsString& data) // TODO
++{
++  return JetpackActorCommon::RecvMessage(mContext, messageName, data, NULL);
++}
++
++bool
++JetpackParent::RecvCallMessage(const nsString& messageName,
++                               const nsString& inData, // TODO
++                               nsTArray<nsString>* outData) // TODO
++{
++  return JetpackActorCommon::RecvMessage(mContext, messageName, inData,
++                                         outData);
++}
++
+ } // namespace jetpack
+ } // namespace mozilla
+diff --git a/js/jetpack/JetpackParent.h b/js/jetpack/JetpackParent.h
+--- a/js/jetpack/JetpackParent.h
++++ b/js/jetpack/JetpackParent.h
+@@ -35,34 +35,47 @@
+  *
+  * ***** END LICENSE BLOCK ***** */
+ 
+ #ifndef mozilla_jetpack_JetpackParent_h
+ #define mozilla_jetpack_JetpackParent_h
+ 
+ #include "mozilla/jetpack/PJetpackParent.h"
+ #include "mozilla/jetpack/JetpackProcessParent.h"
++#include "mozilla/jetpack/JetpackActorCommon.h"
+ #include "nsIJetpack.h"
+ 
++#include "nsTArray.h"
++
++struct JSContext;
++
+ namespace mozilla {
+ namespace jetpack {
+ 
+ class JetpackParent
+   : public PJetpackParent
+   , public nsIJetpack
++  , private JetpackActorCommon
+ {
+ public:
+   NS_DECL_ISUPPORTS
+   NS_DECL_NSIJETPACK
+ 
+-  JetpackParent();
++  JetpackParent(JSContext* cx);
+   ~JetpackParent();
+ 
++protected:
++  NS_OVERRIDE virtual bool RecvSendMessage(const nsString& messageName,
++                                           const nsString& data); // TODO
++  NS_OVERRIDE virtual bool RecvCallMessage(const nsString& messageName,
++                                           const nsString& inData, // TODO
++                                           nsTArray<nsString>* outData); // TODO
+ private:
+   JetpackProcessParent* mSubprocess;
++  JSContext* mContext;
+ 
+   DISALLOW_EVIL_CONSTRUCTORS(JetpackParent);
+ };
+ 
+ } // namespace jetpack
+ } // namespace mozilla
+ 
+ #endif // mozilla_jetpack_JetpackParent_h
+diff --git a/js/jetpack/JetpackService.cpp b/js/jetpack/JetpackService.cpp
+--- a/js/jetpack/JetpackService.cpp
++++ b/js/jetpack/JetpackService.cpp
+@@ -38,26 +38,33 @@
+ #include "base/basictypes.h"
+ #include "mozilla/jetpack/JetpackService.h"
+ 
+ #include "mozilla/jetpack/JetpackParent.h"
+ #include "nsIJetpack.h"
+ 
+ #include "nsIGenericFactory.h"
+ 
++#include "nsIJSContextStack.h"
++
+ namespace mozilla {
+ namespace jetpack {
+ 
+ NS_IMPL_ISUPPORTS1(JetpackService,
+                    nsIJetpackService)
+ 
+ NS_IMETHODIMP
+ JetpackService::CreateJetpack(nsIJetpack** aResult)
+ {
+-  nsRefPtr<JetpackParent> j = new JetpackParent();
++  nsCOMPtr<nsIJSContextStack>
++    stack(do_GetService("@mozilla.org/js/xpc/ContextStack;1"));
++  JSContext* cx;
++  nsresult rv = stack->Peek(&cx);
++  NS_ENSURE_SUCCESS(rv, rv);
++  nsRefPtr<JetpackParent> j = new JetpackParent(cx);
+   *aResult = j.forget().get();
+   return NS_OK;
+ }
+ 
+ NS_GENERIC_FACTORY_CONSTRUCTOR(JetpackService)
+ 
+ } // namespace jetpack
+ } // namespace mozilla
+diff --git a/js/jetpack/Makefile.in b/js/jetpack/Makefile.in
+--- a/js/jetpack/Makefile.in
++++ b/js/jetpack/Makefile.in
+@@ -56,21 +56,27 @@ XPIDLSRCS = \
+ 
+ EXPORTS_NAMESPACES = mozilla/jetpack
+ EXPORTS_mozilla/jetpack = \
+   JetpackProcessChild.h \
+   JetpackProcessParent.h \
+   JetpackParent.h \
+   JetpackChild.h \
+   JetpackService.h \
++  JetpackActorCommon.h \
+   $(NULL)
+ 
+ CPPSRCS = \
+   JetpackParent.cpp \
+   JetpackChild.cpp \
+   JetpackProcessChild.cpp \
+   JetpackProcessParent.cpp \
+   JetpackService.cpp \
++  JetpackActorCommon.cpp \
+   $(NULL)
+ 
++ifdef ENABLE_TESTS
++TOOL_DIRS += tests
++endif
++
+ include $(topsrcdir)/config/config.mk
+ include $(topsrcdir)/ipc/chromium/chromium-config.mk
+ include $(topsrcdir)/config/rules.mk
+diff --git a/js/jetpack/PJetpack.ipdl b/js/jetpack/PJetpack.ipdl
+--- a/js/jetpack/PJetpack.ipdl
++++ b/js/jetpack/PJetpack.ipdl
+@@ -33,16 +33,27 @@
+  * the provisions above, a recipient may use your version of this file under
+  * the terms of any one of the MPL, the GPL or the LGPL.
+  *
+  * ***** END LICENSE BLOCK ***** */
+ 
+ namespace mozilla {
+ namespace jetpack {
+ 
+-async protocol PJetpack
++sync protocol PJetpack
+ {
++both:
++  async SendMessage(nsString messageName,
++                    nsString data); // TODO
++
+ child:
+-  async LoadImplementation(nsCString script);
++  async LoadImplementation(nsCString code);
++  async LoadUserScript(nsCString code);
++
++parent:
++  sync CallMessage(nsString messageName,
++                   nsString inData) // TODO
++    returns (nsString[] outData); // TODO
++
+ };
+ 
+ }
+ }
+diff --git a/js/jetpack/bootstrap-impl.js b/js/jetpack/bootstrap-impl.js
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/bootstrap-impl.js
+@@ -0,0 +1,7 @@
++registerReceiver("echo", function(msgName, data) {
++  sendMessage(msgName, data);
++});
++
++registerReceiver("callback", function(msgName, data) {
++  sendMessage("sendback", callMessage("callback", data)[0]);
++});
+diff --git a/js/jetpack/bootstrap-user.js b/js/jetpack/bootstrap-user.js
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/bootstrap-user.js
+@@ -0,0 +1,1 @@
++"Jetpack User Context";
+diff --git a/js/jetpack/jar.mn b/js/jetpack/jar.mn
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/jar.mn
+@@ -0,0 +1,3 @@
++toolkit.jar:
++        content/global/jetpack/bootstrap-impl.js (bootstrap-impl.js)
++        content/global/jetpack/bootstrap-user.js (bootstrap-user.js)
+diff --git a/js/jetpack/nsIJetpack.idl b/js/jetpack/nsIJetpack.idl
+--- a/js/jetpack/nsIJetpack.idl
++++ b/js/jetpack/nsIJetpack.idl
+@@ -32,13 +32,25 @@
+  * and other provisions required by the GPL or the LGPL. If you do not delete
+  * the provisions above, a recipient may use your version of this file under
+  * the terms of any one of the MPL, the GPL or the LGPL.
+  *
+  * ***** END LICENSE BLOCK ***** */
+ 
+ #include "nsISupports.idl"
+ 
++interface nsIVariant;
++
+ [scriptable, uuid(be12cc9f-75d4-4f2d-b062-f549ea13446a)]
+ interface nsIJetpack : nsISupports
+ {
++  void sendMessage(in AString aMessageName,
++                   in AString aData); // TODO
++
++  void registerReceiver(in AString aMessageName,
++                        in nsIVariant aReceiver);
++  void unregisterReceiver(in AString aMessageName,
++                          in nsIVariant aReceiver);
++  void unregisterReceivers(in AString aMessageName);
++
+   void loadImplementation(in AString aURI);
++  void loadUserScript(in AString aURI);
+ };
+diff --git a/js/jetpack/tests/Makefile.in b/js/jetpack/tests/Makefile.in
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/tests/Makefile.in
+@@ -0,0 +1,50 @@
++# ***** BEGIN LICENSE BLOCK *****
++# Version: MPL 1.1/GPL 2.0/LGPL 2.1
++#
++# The contents of this file are subject to the Mozilla Public License Version
++# 1.1 (the "License"); you may not use this file except in compliance with
++# the License. You may obtain a copy of the License at
++# http://www.mozilla.org/MPL/
++#
++# Software distributed under the License is distributed on an "AS IS" basis,
++# WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++# for the specific language governing rights and limitations under the
++# License.
++#
++# The Original Code is mozilla.org code.
++#
++# The Initial Developer of the Original Code is
++# The Mozilla Foundation.
++# Portions created by the Initial Developer are Copyright (C) 2010
++# the Initial Developer. All Rights Reserved.
++#
++# Contributor(s):
++#   Ben Newman <b{enjam,newma}n@mozilla.com> (original author)
++#
++# Alternatively, the contents of this file may be used under the terms of
++# either of the GNU General Public License Version 2 or later (the "GPL"),
++# or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++# in which case the provisions of the GPL or the LGPL are applicable instead
++# of those above. If you wish to allow use of your version of this file only
++# under the terms of either the GPL or the LGPL, and not to allow others to
++# use your version of this file under the terms of the MPL, indicate your
++# decision by deleting the provisions above and replace them with the notice
++# and other provisions required by the GPL or the LGPL. If you do not delete
++# the provisions above, a recipient may use your version of this file under
++# the terms of any one of the MPL, the GPL or the LGPL.
++#
++# ***** END LICENSE BLOCK *****
++
++DEPTH     = ../../..
++topsrcdir = @top_srcdir@
++srcdir    = @srcdir@
++VPATH     = @srcdir@
++
++include $(DEPTH)/config/autoconf.mk
++
++MODULE = test_jetpack
++
++XPCSHELL_TESTS = unit
++
++include $(topsrcdir)/config/config.mk
++include $(topsrcdir)/config/rules.mk
+diff --git a/js/jetpack/tests/unit/test_jetpack.js b/js/jetpack/tests/unit/test_jetpack.js
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/tests/unit/test_jetpack.js
+@@ -0,0 +1,33 @@
++var jps = jps || Components.classes["@mozilla.org/jetpack/service;1"]
++  .getService(Components.interfaces.nsIJetpackService);
++
++function run_test() {
++  var jetpack = jps.createJetpack();
++  jetpack.loadImplementation(
++    "chrome://global/content/jetpack/bootstrap-impl.js");
++  jetpack.loadUserScript(
++    "chrome://global/content/jetpack/bootstrap-user.js");
++
++  jetpack.registerReceiver("echo", function(msgName, data) {
++    do_check_eq(msgName, "echo");
++    do_check_eq(data, "echo this");
++    do_test_finished();
++  });
++
++  jetpack.registerReceiver("callback", function(msgName, data) {
++    do_check_eq(msgName, "callback");
++    return "called back: " + data;
++  });
++
++  jetpack.registerReceiver("sendback", function(msgName, data) {
++    do_check_eq(msgName, "sendback");
++    do_check_eq(data, "called back: call me back");
++    do_test_finished();
++  });
++
++  do_test_pending();
++  do_test_pending();
++
++  jetpack.sendMessage("echo", "echo this");
++  jetpack.sendMessage("callback", "call me back");
++}
+diff --git a/toolkit/toolkit-makefiles.sh b/toolkit/toolkit-makefiles.sh
+--- a/toolkit/toolkit-makefiles.sh
++++ b/toolkit/toolkit-makefiles.sh
+@@ -204,16 +204,20 @@ MAKEFILES_xpconnect="
+   js/src/xpconnect/loader/Makefile
+   js/src/xpconnect/tests/Makefile
+   js/src/xpconnect/tests/components/Makefile
+   js/src/xpconnect/tests/idl/Makefile
+   js/src/xpconnect/tools/Makefile
+   js/src/xpconnect/tools/idl/Makefile
+ "
+ 
++MAKEFILES_jetpack="
++  js/jetpack/Makefile
++"
++
+ MAKEFILES_jsdebugger="
+   js/jsd/Makefile
+   js/jsd/idl/Makefile
+ "
+ 
+ MAKEFILES_content="
+   content/Makefile
+   content/base/Makefile
+@@ -807,16 +811,17 @@ add_makefiles "
+   $MAKEFILES_db
+   $MAKEFILES_dom
+   $MAKEFILES_editor
+   $MAKEFILES_xmlparser
+   $MAKEFILES_gfx
+   $MAKEFILES_htmlparser
+   $MAKEFILES_intl
+   $MAKEFILES_xpconnect
++  $MAKEFILES_jetpack
+   $MAKEFILES_jsdebugger
+   $MAKEFILES_jsctypes
+   $MAKEFILES_content
+   $MAKEFILES_layout
+   $MAKEFILES_libimg
+   $MAKEFILES_libjar
+   $MAKEFILES_libreg
+   $MAKEFILES_libpref

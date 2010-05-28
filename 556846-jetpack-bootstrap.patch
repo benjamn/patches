@@ -1,0 +1,1289 @@
+diff --git a/browser/installer/package-manifest.in b/browser/installer/package-manifest.in
+--- a/browser/installer/package-manifest.in
++++ b/browser/installer/package-manifest.in
+@@ -164,16 +164,17 @@
+ @BINPATH@/components/fuel.xpt
+ @BINPATH@/components/gfx.xpt
+ @BINPATH@/components/htmlparser.xpt
+ @BINPATH@/components/imglib2.xpt
+ @BINPATH@/components/imgicon.xpt
+ @BINPATH@/components/inspector.xpt
+ @BINPATH@/components/intl.xpt
+ @BINPATH@/components/jar.xpt
++@BINPATH@/components/jetpack.xpt
+ @BINPATH@/components/jsdservice.xpt
+ @BINPATH@/components/layout_base.xpt
+ #ifdef NS_PRINTING
+ @BINPATH@/components/layout_printing.xpt
+ #endif
+ @BINPATH@/components/layout_xul_tree.xpt
+ @BINPATH@/components/layout_xul.xpt
+ @BINPATH@/components/locale.xpt
+diff --git a/ipc/ipdl/Makefile.in b/ipc/ipdl/Makefile.in
+--- a/ipc/ipdl/Makefile.in
++++ b/ipc/ipdl/Makefile.in
+@@ -50,16 +50,17 @@ FORCE_STATIC_LIB = 1
+ LIBXUL_LIBRARY = 1
+ EXPORT_LIBRARY = 1
+ 
+ ##-----------------------------------------------------------------------------
+ ## When you add IPDL files to a source directory, list the directory here.
+ ##
+ IPDLDIRS =  \
+   dom/plugins  \
++  js/jetpack \
+   ipc/ipdl/test/cxx  \
+   $(NULL)
+ ##-----------------------------------------------------------------------------
+ 
+ ifdef MOZ_IPDL_TESTS
+ DIRS += test
+ endif
+ 
+diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/JetpackChild.cpp
+@@ -0,0 +1,83 @@
++/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is Mozilla Firefox.
++ *
++ * The Initial Developer of the Original Code is
++ * the Mozilla Foundation <http://www.mozilla.org>.
++ * Portions created by the Initial Developer are Copyright (C) 2010
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++#include "mozilla/jetpack/JetpackChild.h"
++
++#include <stdio.h>
++
++namespace mozilla {
++namespace jetpack {
++
++JetpackChild::JetpackChild()
++{
++  NS_ASSERTION(!gInstance, "Something terribly wrong here!");
++  gInstance = this;
++}
++
++JetpackChild::~JetpackChild()
++{
++  NS_ASSERTION(gInstance == this, "Something terribly wrong here!");
++  gInstance = nsnull;
++}
++
++bool
++JetpackChild::Init(base::ProcessHandle aParentProcessHandle,
++                   MessageLoop* aIOLoop,
++                   IPC::Channel* aChannel)
++{
++  if (!Open(aChannel, aParentProcessHandle, aIOLoop))
++    return false;
++
++  return true;
++}
++
++void
++JetpackChild::CleanUp()
++{
++}
++
++bool
++JetpackChild::RecvLoadImplementation(const nsCString& script)
++{
++  printf("Received LoadImplementation message: '%s'\n", script.get());
++  return true;
++}
++
++JetpackChild* JetpackChild::gInstance;
++
++} // namespace jetpack
++} // namespace mozilla
+diff --git a/js/jetpack/JetpackChild.h b/js/jetpack/JetpackChild.h
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/JetpackChild.h
+@@ -0,0 +1,73 @@
++/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is Mozilla Firefox.
++ *
++ * The Initial Developer of the Original Code is
++ * the Mozilla Foundation <http://www.mozilla.org>.
++ * Portions created by the Initial Developer are Copyright (C) 2010
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++#ifndef mozilla_jetpack_JetpackChild_h
++#define mozilla_jetpack_JetpackChild_h
++
++#include "mozilla/jetpack/PJetpackChild.h"
++
++namespace mozilla {
++namespace jetpack {
++
++class JetpackChild : public PJetpackChild
++{
++public:
++  JetpackChild();
++  ~JetpackChild();
++
++  static JetpackChild* current();
++
++  bool Init(base::ProcessHandle aParentProcessHandle,
++            MessageLoop* aIOLoop,
++            IPC::Channel* aChannel);
++
++  void CleanUp();
++
++protected:
++  NS_OVERRIDE virtual bool RecvLoadImplementation(const nsCString& script);
++
++private:
++  static JetpackChild* gInstance;
++
++  DISALLOW_EVIL_CONSTRUCTORS(JetpackChild);
++};
++
++} // namespace jetpack
++} // namespace mozilla
++
++
++#endif // mozilla_jetpack_JetpackChild_h
+diff --git a/js/jetpack/JetpackParent.cpp b/js/jetpack/JetpackParent.cpp
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/JetpackParent.cpp
+@@ -0,0 +1,70 @@
++/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is Mozilla Firefox.
++ *
++ * The Initial Developer of the Original Code is
++ * the Mozilla Foundation <http://www.mozilla.org>.
++ * Portions created by the Initial Developer are Copyright (C) 2010
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++#include "mozilla/jetpack/JetpackParent.h"
++
++namespace mozilla {
++namespace jetpack {
++
++JetpackParent::JetpackParent()
++  : mSubprocess(new JetpackProcessParent())
++{
++  mSubprocess->Launch();
++  Open(mSubprocess->GetChannel(),
++       mSubprocess->GetChildProcessHandle());
++}
++
++JetpackParent::~JetpackParent()
++{
++  XRE_GetIOMessageLoop()
++    ->PostTask(FROM_HERE, new DeleteTask<JetpackProcessParent>(mSubprocess));
++}
++
++NS_IMPL_ISUPPORTS1(JetpackParent, nsIJetpack)
++
++NS_IMETHODIMP
++JetpackParent::LoadImplementation(const nsAString& aURI)
++{
++  // this is all wrong, load the URI and send the data, but for now...
++  if (!SendLoadImplementation(NS_ConvertUTF16toUTF8(aURI)))
++    return NS_ERROR_FAILURE;
++
++  return NS_OK;
++}
++
++} // namespace jetpack
++} // namespace mozilla
+diff --git a/js/jetpack/JetpackParent.h b/js/jetpack/JetpackParent.h
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/JetpackParent.h
+@@ -0,0 +1,68 @@
++/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is Mozilla Firefox.
++ *
++ * The Initial Developer of the Original Code is
++ * the Mozilla Foundation <http://www.mozilla.org>.
++ * Portions created by the Initial Developer are Copyright (C) 2010
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++#ifndef mozilla_jetpack_JetpackParent_h
++#define mozilla_jetpack_JetpackParent_h
++
++#include "mozilla/jetpack/PJetpackParent.h"
++#include "mozilla/jetpack/JetpackProcessParent.h"
++#include "nsIJetpack.h"
++
++namespace mozilla {
++namespace jetpack {
++
++class JetpackParent
++  : public PJetpackParent
++  , public nsIJetpack
++{
++public:
++  NS_DECL_ISUPPORTS
++  NS_DECL_NSIJETPACK
++
++  JetpackParent();
++  ~JetpackParent();
++
++private:
++  JetpackProcessParent* mSubprocess;
++
++  DISALLOW_EVIL_CONSTRUCTORS(JetpackParent);
++};
++
++} // namespace jetpack
++} // namespace mozilla
++
++#endif // mozilla_jetpack_JetpackParent_h
+diff --git a/js/jetpack/JetpackProcessChild.cpp b/js/jetpack/JetpackProcessChild.cpp
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/JetpackProcessChild.cpp
+@@ -0,0 +1,63 @@
++/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is Mozilla Firefox.
++ *
++ * The Initial Developer of the Original Code is
++ * the Mozilla Foundation <http://www.mozilla.org>.
++ * Portions created by the Initial Developer are Copyright (C) 2010
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++#include "mozilla/ipc/IOThreadChild.h"
++
++#include "mozilla/jetpack/JetpackProcessChild.h"
++
++using mozilla::ipc::IOThreadChild;
++
++namespace mozilla {
++namespace jetpack {
++
++bool
++JetpackProcessChild::Init()
++{
++  mJetpack.Init(ParentHandle(),
++                IOThreadChild::message_loop(),
++                IOThreadChild::channel());
++  return true;
++}
++
++void
++JetpackProcessChild::CleanUp()
++{
++  mJetpack.CleanUp();
++}
++
++} // namespace jetpack
++} // namespace mozilla
+diff --git a/js/jetpack/JetpackProcessChild.h b/js/jetpack/JetpackProcessChild.h
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/JetpackProcessChild.h
+@@ -0,0 +1,79 @@
++/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is Mozilla Firefox.
++ *
++ * The Initial Developer of the Original Code is
++ * the Mozilla Foundation <http://www.mozilla.org>.
++ * Portions created by the Initial Developer are Copyright (C) 2010
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++#ifndef mozilla_jetpack_JetpackProcessChild_h
++#define mozilla_jetpack_JetpackProcessChild_h
++
++#include "mozilla/ipc/ProcessChild.h"
++
++#include "mozilla/jetpack/JetpackChild.h"
++
++namespace mozilla {
++namespace jetpack {
++
++// The JetpackProcessChild class represents the thread where jetpack code is run;
++// the main() thread is the I/O thread of the jetpack process.
++
++class JetpackProcessChild : public mozilla::ipc::ProcessChild
++{
++  typedef mozilla::ipc::ProcessChild ProcessChild;
++
++public:
++  JetpackProcessChild(ProcessHandle aParentHandle)
++    : ProcessChild(aParentHandle)
++  { }
++
++  virtual ~JetpackProcessChild()
++  { }
++
++  NS_OVERRIDE virtual bool Init();
++  NS_OVERRIDE virtual void CleanUp();
++
++  static JetpackProcessChild* current() {
++    return static_cast<JetpackProcessChild*>(ProcessChild::current());
++  }
++
++private:
++  JetpackChild mJetpack;
++
++  DISALLOW_EVIL_CONSTRUCTORS(JetpackProcessChild);
++};
++
++}
++}
++
++#endif // mozilla_jetpack_JetpackProcessChild_h
+diff --git a/js/jetpack/JetpackProcessParent.cpp b/js/jetpack/JetpackProcessParent.cpp
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/JetpackProcessParent.cpp
+@@ -0,0 +1,61 @@
++/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is Mozilla Firefox.
++ *
++ * The Initial Developer of the Original Code is
++ * the Mozilla Foundation <http://www.mozilla.org>.
++ * Portions created by the Initial Developer are Copyright (C) 2010
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++#include "mozilla/jetpack/JetpackProcessParent.h"
++
++#include "mozilla/ipc/BrowserProcessSubThread.h"
++
++namespace mozilla {
++namespace jetpack {
++
++JetpackProcessParent::JetpackProcessParent()
++  : mozilla::ipc::GeckoChildProcessHost(GeckoProcessType_Jetpack)
++{
++}
++
++JetpackProcessParent::~JetpackProcessParent()
++{
++}
++
++void
++JetpackProcessParent::Launch()
++{
++  AsyncLaunch();
++}
++
++} // namespace jetpack
++} // namespace mozilla
+diff --git a/js/jetpack/JetpackProcessParent.h b/js/jetpack/JetpackProcessParent.h
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/JetpackProcessParent.h
+@@ -0,0 +1,76 @@
++/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is Mozilla Firefox.
++ *
++ * The Initial Developer of the Original Code is
++ * the Mozilla Foundation <http://www.mozilla.org>.
++ * Portions created by the Initial Developer are Copyright (C) 2010
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++#ifndef mozilla_jetpack_JetpackProcessParent_h
++#define mozilla_jetpack_JetpackProcessParent_h
++
++#include "base/basictypes.h"
++
++#include "base/file_path.h"
++#include "base/scoped_ptr.h"
++#include "base/thread.h"
++#include "base/waitable_event.h"
++#include "chrome/common/child_process_host.h"
++
++#include "mozilla/ipc/GeckoChildProcessHost.h"
++
++namespace mozilla {
++namespace jetpack {
++
++class JetpackProcessParent : mozilla::ipc::GeckoChildProcessHost
++{
++public:
++  JetpackProcessParent();
++  ~JetpackProcessParent();
++
++  /**
++   * Aynchronously launch the jetpack process.
++   */
++  void Launch();
++
++  using mozilla::ipc::GeckoChildProcessHost::GetShutDownEvent;
++  using mozilla::ipc::GeckoChildProcessHost::GetChannel;
++  using mozilla::ipc::GeckoChildProcessHost::GetChildProcessHandle;
++
++private:
++    DISALLOW_EVIL_CONSTRUCTORS(JetpackProcessParent);
++};
++
++} // namespace jetpack
++} // namespace mozilla
++
++#endif // mozilla_jetpack_JetpackProcessParent_h
+diff --git a/js/jetpack/JetpackService.cpp b/js/jetpack/JetpackService.cpp
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/JetpackService.cpp
+@@ -0,0 +1,79 @@
++/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is Mozilla Firefox.
++ *
++ * The Initial Developer of the Original Code is
++ * the Mozilla Foundation <http://www.mozilla.org>.
++ * Portions created by the Initial Developer are Copyright (C) 2010
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++#include "base/basictypes.h"
++#include "mozilla/jetpack/JetpackService.h"
++
++#include "mozilla/jetpack/JetpackParent.h"
++#include "nsIJetpack.h"
++
++#include "nsIGenericFactory.h"
++
++namespace mozilla {
++namespace jetpack {
++
++NS_IMPL_ISUPPORTS1(JetpackService,
++                   nsIJetpackService)
++
++NS_IMETHODIMP
++JetpackService::CreateJetpack(nsIJetpack** aResult)
++{
++  nsRefPtr<JetpackParent> j = new JetpackParent();
++  *aResult = j.forget().get();
++  return NS_OK;
++}
++
++NS_GENERIC_FACTORY_CONSTRUCTOR(JetpackService)
++
++} // namespace jetpack
++} // namespace mozilla
++
++#define JETPACKSERVICE_CID \
++{ 0x4cf18fcd, 0x4247, 0x4388, \
++  { 0xb1, 0x88, 0xb0, 0x72, 0x2a, 0xc0, 0x52, 0x21 } }
++
++static const nsModuleComponentInfo kComponents[] = {
++  {
++    "mozilla::jetpack::JetpackService",
++    JETPACKSERVICE_CID,
++    "@mozilla.org/jetpack/service;1",
++    mozilla::jetpack::JetpackServiceConstructor
++  }
++};
++
++NS_IMPL_NSGETMODULE(jetpack, kComponents)
++
+diff --git a/js/jetpack/JetpackService.h b/js/jetpack/JetpackService.h
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/JetpackService.h
+@@ -0,0 +1,56 @@
++/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is Mozilla Firefox.
++ *
++ * The Initial Developer of the Original Code is
++ * the Mozilla Foundation <http://www.mozilla.org>.
++ * Portions created by the Initial Developer are Copyright (C) 2010
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++#ifndef mozilla_jetpack_JetpackService_h
++#define mozilla_jetpack_JetpackService_h
++
++#include "nsIJetpackService.h"
++
++namespace mozilla {
++namespace jetpack {
++
++class JetpackService : public nsIJetpackService
++{
++public:
++  NS_DECL_ISUPPORTS
++  NS_DECL_NSIJETPACKSERVICE
++};
++
++} // jetpack
++} // mozilla
++
++#endif // mozilla_jetpack_JetpackService_h
+diff --git a/js/jetpack/Makefile.in b/js/jetpack/Makefile.in
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/Makefile.in
+@@ -0,0 +1,76 @@
++# ***** BEGIN LICENSE BLOCK *****
++# Version: MPL 1.1/GPL 2.0/LGPL 2.1
++#
++# The contents of this file are subject to the Mozilla Public License Version
++# 1.1 (the "License"); you may not use this file except in compliance with
++# the License. You may obtain a copy of the License at
++# http://www.mozilla.org/MPL/
++#
++# Software distributed under the License is distributed on an "AS IS" basis,
++# WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++# for the specific language governing rights and limitations under the
++# License.
++#
++# The Original Code is Mozilla Firefox.
++#
++# The Initial Developer of the Original Code is
++# the Mozilla Foundation <http://www.mozilla.org>.
++# Portions created by the Initial Developer are Copyright (C) 2010
++# the Initial Developer. All Rights Reserved.
++#
++# Contributor(s):
++#
++# Alternatively, the contents of this file may be used under the terms of
++# either the GNU General Public License Version 2 or later (the "GPL"), or
++# the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++# in which case the provisions of the GPL or the LGPL are applicable instead
++# of those above. If you wish to allow use of your version of this file only
++# under the terms of either the GPL or the LGPL, and not to allow others to
++# use your version of this file under the terms of the MPL, indicate your
++# decision by deleting the provisions above and replace them with the notice
++# and other provisions required by the GPL or the LGPL. If you do not delete
++# the provisions above, a recipient may use your version of this file under
++# the terms of any one of the MPL, the GPL or the LGPL.
++#
++# ***** END LICENSE BLOCK *****
++
++DEPTH = ../..
++topsrcdir = @top_srcdir@
++srcdir = @srcdir@
++VPATH = @srcdir@
++
++include $(DEPTH)/config/autoconf.mk
++
++MODULE = jetpack
++LIBRARY_NAME = jetpack_s
++LIBXUL_LIBRARY = 1
++FORCE_STATIC_LIB = 1
++IS_COMPONENT = 1
++EXPORT_LIBRARY = 1
++MODULE_NAME = jetpack
++
++XPIDLSRCS = \
++  nsIJetpackService.idl \
++  nsIJetpack.idl \
++  $(NULL)
++
++EXPORTS_NAMESPACES = mozilla/jetpack
++EXPORTS_mozilla/jetpack = \
++  JetpackProcessChild.h \
++  JetpackProcessParent.h \
++  JetpackParent.h \
++  JetpackChild.h \
++  JetpackService.h \
++  $(NULL)
++
++CPPSRCS = \
++  JetpackParent.cpp \
++  JetpackChild.cpp \
++  JetpackProcessChild.cpp \
++  JetpackProcessParent.cpp \
++  JetpackService.cpp \
++  $(NULL)
++
++include $(topsrcdir)/config/config.mk
++include $(topsrcdir)/ipc/chromium/chromium-config.mk
++include $(topsrcdir)/config/rules.mk
+diff --git a/js/jetpack/PJetpack.ipdl b/js/jetpack/PJetpack.ipdl
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/PJetpack.ipdl
+@@ -0,0 +1,48 @@
++/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is Mozilla Firefox.
++ *
++ * The Initial Developer of the Original Code is
++ * the Mozilla Foundation <http://www.mozilla.org>.
++ * Portions created by the Initial Developer are Copyright (C) 2010
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++namespace mozilla {
++namespace jetpack {
++
++async protocol PJetpack
++{
++child:
++  async LoadImplementation(nsCString script);
++};
++
++}
++}
+diff --git a/js/jetpack/ipdl.mk b/js/jetpack/ipdl.mk
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/ipdl.mk
+@@ -0,0 +1,3 @@
++IPDLSRCS = \
++  PJetpack.ipdl \
++  $(NULL)
+diff --git a/js/jetpack/nsIJetpack.idl b/js/jetpack/nsIJetpack.idl
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/nsIJetpack.idl
+@@ -0,0 +1,44 @@
++/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is Mozilla Firefox.
++ *
++ * The Initial Developer of the Original Code is
++ * the Mozilla Foundation <http://www.mozilla.org>.
++ * Portions created by the Initial Developer are Copyright (C) 2010
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++#include "nsISupports.idl"
++
++[scriptable, uuid(be12cc9f-75d4-4f2d-b062-f549ea13446a)]
++interface nsIJetpack : nsISupports
++{
++  void loadImplementation(in AString aURI);
++};
+diff --git a/js/jetpack/nsIJetpackService.idl b/js/jetpack/nsIJetpackService.idl
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/nsIJetpackService.idl
+@@ -0,0 +1,46 @@
++/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
++/* ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is Mozilla Firefox.
++ *
++ * The Initial Developer of the Original Code is
++ * the Mozilla Foundation <http://www.mozilla.org>.
++ * Portions created by the Initial Developer are Copyright (C) 2010
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either the GNU General Public License Version 2 or later (the "GPL"), or
++ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++#include "nsISupports.idl"
++
++interface nsIJetpack;
++
++[scriptable, uuid(2e097e3e-225f-42a3-87a8-c5c22659fef0)]
++interface nsIJetpackService : nsISupports
++{
++  nsIJetpack createJetpack();
++};
+diff --git a/toolkit/library/libxul-config.mk b/toolkit/library/libxul-config.mk
+--- a/toolkit/library/libxul-config.mk
++++ b/toolkit/library/libxul-config.mk
+@@ -148,16 +148,20 @@ COMPONENT_LIBS += \
+ 	commandlines \
+ 	extensions \
+ 	toolkitcomps \
+ 	pipboot \
+ 	pipnss \
+ 	appcomps \
+ 	$(NULL)
+ 
++ifdef MOZ_IPC
++COMPONENT_LIBS +=  jetpack_s
++endif
++
+ ifdef BUILD_CTYPES
+ COMPONENT_LIBS += \
+ 	jsctypes \
+ 	$(NULL)
+ endif
+ 
+ ifdef MOZ_PLUGINS
+ DEFINES += -DMOZ_PLUGINS
+diff --git a/toolkit/library/nsStaticXULComponents.cpp b/toolkit/library/nsStaticXULComponents.cpp
+--- a/toolkit/library/nsStaticXULComponents.cpp
++++ b/toolkit/library/nsStaticXULComponents.cpp
+@@ -130,16 +130,23 @@
+ #endif
+ 
+ #if defined(MOZ_DEBUG) && defined(ENABLE_TESTS)
+ #define LAYOUT_DEBUG_MODULE MODULE(nsLayoutDebugModule)
+ #else
+ #define LAYOUT_DEBUG_MODULE
+ #endif
+ 
++#ifdef MOZ_IPC
++#define JETPACK_MODULES \
++    MODULE(jetpack)
++#else
++#define JETPACK_MODULES
++#endif
++
+ #ifdef MOZ_PLUGINS
+ #define PLUGINS_MODULES \
+     MODULE(nsPluginModule)
+ #else
+ #define PLUGINS_MODULES
+ #endif
+ 
+ #ifdef MOZ_JSDEBUGGER
+@@ -236,16 +243,17 @@
+     ZIPWRITER_MODULE                         \
+     MODULE(nsPrefModule)                     \
+     RDF_MODULES                              \
+     MODULE(nsParserModule)                   \
+     GFX_MODULES                              \
+     WIDGET_MODULES                           \
+     MODULE(nsImageLib2Module)                \
+     ICON_MODULE                              \
++    JETPACK_MODULES                          \
+     PLUGINS_MODULES                          \
+     MODULE(nsLayoutModule)                   \
+     MODULE(docshell_provider)                \
+     MODULE(embedcomponents)                  \
+     MODULE(Browser_Embedding_Module)         \
+     ACCESS_MODULES                           \
+     MODULE(appshell)                         \
+     MODULE(nsTransactionManagerModule)       \
+diff --git a/toolkit/toolkit-makefiles.sh b/toolkit/toolkit-makefiles.sh
+--- a/toolkit/toolkit-makefiles.sh
++++ b/toolkit/toolkit-makefiles.sh
+@@ -80,16 +80,17 @@ MAKEFILES_dom="
+   dom/src/jsurl/Makefile
+   dom/src/geolocation/Makefile
+   dom/src/json/Makefile
+   dom/src/offline/Makefile
+   dom/src/storage/Makefile
+   dom/src/threads/Makefile
+   dom/locales/Makefile
+   dom/plugins/Makefile
++  js/jetpack/Makefile
+ "
+ 
+ MAKEFILES_editor="
+   editor/Makefile
+   editor/public/Makefile
+   editor/idl/Makefile
+   editor/txmgr/Makefile
+   editor/txmgr/idl/Makefile
+diff --git a/toolkit/toolkit-tiers.mk b/toolkit/toolkit-tiers.mk
+--- a/toolkit/toolkit-tiers.mk
++++ b/toolkit/toolkit-tiers.mk
+@@ -99,17 +99,17 @@ ifeq ($(OS_ARCH),WINCE)
+ tier_platform_dirs += modules/lib7z
+ endif
+ 
+ #
+ # "gecko" - core components
+ #
+ 
+ ifdef MOZ_IPC
+-tier_platform_dirs += ipc
++tier_platform_dirs += ipc js/jetpack
+ endif
+ 
+ tier_platform_dirs += \
+ 		js/src/xpconnect \
+ 		intl/chardet \
+ 		$(NULL)
+ 
+ ifdef MOZ_ENABLE_GTK2
+diff --git a/toolkit/xre/nsAppRunner.cpp b/toolkit/xre/nsAppRunner.cpp
+--- a/toolkit/xre/nsAppRunner.cpp
++++ b/toolkit/xre/nsAppRunner.cpp
+@@ -734,16 +734,17 @@ nsXULAppInfo::GetWidgetToolkit(nsACStrin
+ // xpcom/system/nsIXULRuntime.idl.
+ #define SYNC_ENUMS(a,b) \
+   PR_STATIC_ASSERT(nsIXULRuntime::PROCESS_TYPE_ ## a == \
+                    static_cast<int>(GeckoProcessType_ ## b));
+ 
+ SYNC_ENUMS(DEFAULT, Default)
+ SYNC_ENUMS(PLUGIN, Plugin)
+ SYNC_ENUMS(CONTENT, Content)
++SYNC_ENUMS(JETPACK, Jetpack)
+ SYNC_ENUMS(IPDLUNITTEST, IPDLUnitTest)
+ 
+ // .. and ensure that that is all of them:
+ PR_STATIC_ASSERT(GeckoProcessType_IPDLUnitTest + 1 == GeckoProcessType_End);
+ 
+ NS_IMETHODIMP
+ nsXULAppInfo::GetProcessType(PRUint32* aResult)
+ {
+diff --git a/toolkit/xre/nsEmbedFunctions.cpp b/toolkit/xre/nsEmbedFunctions.cpp
+--- a/toolkit/xre/nsEmbedFunctions.cpp
++++ b/toolkit/xre/nsEmbedFunctions.cpp
+@@ -84,31 +84,33 @@
+ #include "chrome/common/notification_service.h"
+ 
+ #include "mozilla/ipc/BrowserProcessSubThread.h"
+ #include "mozilla/ipc/GeckoChildProcessHost.h"
+ #include "mozilla/ipc/IOThreadChild.h"
+ #include "mozilla/ipc/ProcessChild.h"
+ #include "ScopedXREEmbed.h"
+ 
++#include "mozilla/jetpack/JetpackProcessChild.h"
+ #include "mozilla/plugins/PluginProcessChild.h"
+ 
+ #ifdef MOZ_IPDL_TESTS
+ #include "mozilla/_ipdltest/IPDLUnitTests.h"
+ #include "mozilla/_ipdltest/IPDLUnitTestProcessChild.h"
+ 
+ using mozilla::_ipdltest::IPDLUnitTestProcessChild;
+ #endif  // ifdef MOZ_IPDL_TESTS
+ 
+ using mozilla::ipc::BrowserProcessSubThread;
+ using mozilla::ipc::GeckoChildProcessHost;
+ using mozilla::ipc::IOThreadChild;
+ using mozilla::ipc::ProcessChild;
+ using mozilla::ipc::ScopedXREEmbed;
+ 
++using mozilla::jetpack::JetpackProcessChild;
+ using mozilla::plugins::PluginProcessChild;
+ 
+ using mozilla::startup::sChildProcessType;
+ #endif
+ 
+ static NS_DEFINE_CID(kAppShellCID, NS_APPSHELL_CID);
+ 
+ #ifdef XP_WIN
+@@ -388,16 +390,20 @@ XRE_InitChildProcess(int aArgc,
+     case GeckoProcessType_Default:
+       NS_RUNTIMEABORT("This makes no sense");
+       break;
+ 
+     case GeckoProcessType_Plugin:
+       process = new PluginProcessChild(parentHandle);
+       break;
+ 
++    case GeckoProcessType_Jetpack:
++      process = new JetpackProcessChild(parentHandle);
++      break;
++
+     case GeckoProcessType_IPDLUnitTest:
+ #ifdef MOZ_IPDL_TESTS
+       process = new IPDLUnitTestProcessChild(parentHandle);
+ #else 
+       NS_RUNTIMEABORT("rebuild with --enable-ipdl-tests");
+ #endif
+       break;
+ 
+diff --git a/xpcom/build/nsXULAppAPI.h b/xpcom/build/nsXULAppAPI.h
+--- a/xpcom/build/nsXULAppAPI.h
++++ b/xpcom/build/nsXULAppAPI.h
+@@ -419,27 +419,29 @@ XRE_API(nsresult,
+ XRE_API(void,
+         XRE_FreeAppData, (nsXREAppData *aAppData))
+ 
+ enum GeckoProcessType {
+   GeckoProcessType_Default = 0,
+ 
+   GeckoProcessType_Plugin,
+   GeckoProcessType_Content,
++  GeckoProcessType_Jetpack,
+ 
+   GeckoProcessType_IPDLUnitTest,
+ 
+   GeckoProcessType_End,
+   GeckoProcessType_Invalid = GeckoProcessType_End
+ };
+ 
+ static const char* const kGeckoProcessTypeString[] = {
+   "default",
+   "plugin",
+   "tab",
++  "jetpack",
+   "ipdlunittest"
+ };
+ 
+ PR_STATIC_ASSERT(sizeof(kGeckoProcessTypeString) /
+                  sizeof(kGeckoProcessTypeString[0]) ==
+                  GeckoProcessType_End);
+ 
+ 
+diff --git a/xpcom/system/nsIXULRuntime.idl b/xpcom/system/nsIXULRuntime.idl
+--- a/xpcom/system/nsIXULRuntime.idl
++++ b/xpcom/system/nsIXULRuntime.idl
+@@ -88,17 +88,18 @@ interface nsIXULRuntime : nsISupports
+   readonly attribute AUTF8String widgetToolkit;
+ 
+   /**
+    * The legal values of processType.
+    */
+   const unsigned long PROCESS_TYPE_DEFAULT = 0;
+   const unsigned long PROCESS_TYPE_PLUGIN = 1;
+   const unsigned long PROCESS_TYPE_CONTENT = 2;
+-  const unsigned long PROCESS_TYPE_IPDLUNITTEST = 3;
++  const unsigned long PROCESS_TYPE_JETPACK = 3;
++  const unsigned long PROCESS_TYPE_IPDLUNITTEST = 4;
+ 
+   /**
+    * The type of the caller's process.  Returns one of the values above.
+    */
+   readonly attribute unsigned long processType;
+ 
+   /**
+    * Signal the apprunner to invalidate caches on the next restart.
