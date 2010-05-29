@@ -1,10 +1,12 @@
 # HG changeset patch
 # Parent 5ebc8f1139032699df19e3fc94508d9ca397b0b2
+Support passing objects with circular references through Jetpack messages (bug 556846).
 
 diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.cpp
 --- a/js/jetpack/JetpackActorCommon.cpp
 +++ b/js/jetpack/JetpackActorCommon.cpp
-@@ -46,90 +46,116 @@
+@@ -45,220 +45,344 @@
+ #include "mozilla/jsipc/PHandleChild.h"
  #include "mozilla/jsipc/Handle.h"
  
  #include "jsapi.h"
@@ -12,8 +14,7 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
  #include "jshashtable.h"
  
  using mozilla::jetpack::JetpackActorCommon;
- using mozilla::jetpack::Variant;
-+using mozilla::jetpack::CompVariant;
+-using mozilla::jetpack::Variant;
  using mozilla::jsipc::PHandleParent;
  using mozilla::jsipc::HandleParent;
  using mozilla::jsipc::PHandleChild;
@@ -44,13 +45,13 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
 +  bool ok() { return map.initialized(); }
  
 -  SetType set;
-+  // TODO Make this responsible for rooting.
-+  bool add(KeyType obj, IdType* id) {
++  bool add(KeyType obj, IdType* id = NULL) {
 +    MapType::AddPtr ap = map.lookupForAdd(obj);
 +    if (!ap)
 +      return (rmap.AppendElement(obj) &&
 +              map.add(ap, obj, rmap.Length() - 1));
-+    *id = ap->value;
++    if (id)
++      *id = ap->value;
 +    return false;
 +  }
 +
@@ -65,10 +66,13 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
  };
  
  bool
- JetpackActorCommon::jsval_to_Variant(JSContext* cx, jsval from, Variant* to,
-                                      OpaqueSeenType* seen)
+-JetpackActorCommon::jsval_to_Variant(JSContext* cx, jsval from, Variant* to,
+-                                     OpaqueSeenType* seen)
++JetpackActorCommon::jsval_to_PrimVariant(JSContext* cx, JSType type, jsval from,
++                                         PrimVariant* to)
  {
-   switch (JS_TypeOfValue(cx, from)) {
+-  switch (JS_TypeOfValue(cx, from)) {
++  switch (type) {
    case JSTYPE_VOID:
      *to = void_t();
      return true;
@@ -92,64 +96,62 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
        *to = hc;
        return true;
      }
++    return false;
++  }
  
 -    JSObject* obj = JSVAL_TO_OBJECT(from);
 -
-     js::LazilyConstructed<OpaqueSeenType> lost;
-     if (!seen) {
-       lost.construct();
-       seen = lost.addr();
-       if (!seen->ok())
-         return false;
-     }
+-    js::LazilyConstructed<OpaqueSeenType> lost;
+-    if (!seen) {
+-      lost.construct();
+-      seen = lost.addr();
+-      if (!seen->ok())
+-        return false;
+-    }
 -    OpaqueSeenType::SetType::AddPtr ap =
 -      seen->set.lookupForAdd(obj);
 -    if (ap || !seen->set.add(ap, obj))
 -      return false;
-+
-+    OpaqueSeenType::KeyType obj = JSVAL_TO_OBJECT(from);
-+    OpaqueSeenType::IdType id;
-+    if (!seen->add(obj, &id)) {
-+      *to = CompVariant(void_t(), id);
-+      return true;
-+    }
- 
-     if (JS_IsArrayObject(cx, obj)) {
-       nsTArray<Variant> elems;
-       jsuint len;
-       if (!JS_GetArrayLength(cx, obj, &len))
-         return false;
-       for (jsuint i = 0; i < len; ++i) {
-         jsval val;
-         Variant* vp = elems.AppendElement();
-         if (!JS_GetElement(cx, obj, i, &val) ||
-             !jsval_to_Variant(cx, val, vp, seen))
-           *vp = void_t();
-       }
+-
+-    if (JS_IsArrayObject(cx, obj)) {
+-      nsTArray<Variant> elems;
+-      jsuint len;
+-      if (!JS_GetArrayLength(cx, obj, &len))
+-        return false;
+-      for (jsuint i = 0; i < len; ++i) {
+-        jsval val;
+-        Variant* vp = elems.AppendElement();
+-        if (!JS_GetElement(cx, obj, i, &val) ||
+-            !jsval_to_Variant(cx, val, vp, seen))
+-          *vp = void_t();
+-      }
 -      *to = elems;
-+      *to = CompVariant(elems, id);
-       return true;
-     }
- 
-     js::AutoIdArray ida(cx, JS_Enumerate(cx, obj));
-     if (!ida)
-       return false;
- 
-     nsTArray<KeyValue> kvs;
-@@ -143,121 +169,193 @@ JetpackActorCommon::jsval_to_Variant(JSC
-       if (!JS_GetPropertyById(cx, obj, ida[i], &val))
-         return false;
-       KeyValue* kv = kvs.AppendElement();
-       kv->key() = nsString((PRUnichar*)JS_GetStringChars(idStr),
-                            JS_GetStringLength(idStr));
-       if (!jsval_to_Variant(cx, val, &kv->value(), seen))
-         return false;
-     }
+-      return true;
+-    }
+-
+-    js::AutoIdArray ida(cx, JS_Enumerate(cx, obj));
+-    if (!ida)
+-      return false;
+-
+-    nsTArray<KeyValue> kvs;
+-    for (size_t i = 0; i < ida.length(); ++i) {
+-      jsval val; // reused for both key and value
+-      if (!JS_IdToValue(cx, ida[i], &val))
+-        return false;
+-      JSString* idStr = JS_ValueToString(cx, val);
+-      if (!idStr)
+-        return false;
+-      if (!JS_GetPropertyById(cx, obj, ida[i], &val))
+-        return false;
+-      KeyValue* kv = kvs.AppendElement();
+-      kv->key() = nsString((PRUnichar*)JS_GetStringChars(idStr),
+-                           JS_GetStringLength(idStr));
+-      if (!jsval_to_Variant(cx, val, &kv->value(), seen))
+-        return false;
+-    }
 -    *to = kvs;
-+    *to = CompVariant(kvs, id);
-     return true;
-   }
-+
+-    return true;
+-  }
    case JSTYPE_STRING:
      *to = nsDependentString((PRUnichar*)JS_GetStringChars(JSVAL_TO_STRING(from)),
                              JS_GetStringLength(JSVAL_TO_STRING(from)));
@@ -179,6 +181,92 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
  bool
 -JetpackActorCommon::jsval_from_Variant(JSContext* cx, const Variant& from,
 -                                       jsval* to)
++JetpackActorCommon::jsval_to_CompVariant(JSContext* cx, JSType type, jsval from,
++                                         CompVariant* to, OpaqueSeenType* seen)
++{
++  if (type != JSTYPE_OBJECT)
++    return false;
++
++  js::LazilyConstructed<OpaqueSeenType> lost;
++  if (!seen) {
++    lost.construct();
++    seen = lost.addr();
++    if (!seen->ok())
++      return false;
++  }
++
++  OpaqueSeenType::KeyType obj = JSVAL_TO_OBJECT(from);
++  OpaqueSeenType::IdType id;
++  if (!seen->add(obj, &id)) {
++    *to = CompVariant(id);
++    return true;
++  }
++
++  if (JS_IsArrayObject(cx, obj)) {
++    nsTArray<Variant> elems;
++    jsuint len;
++    if (!JS_GetArrayLength(cx, obj, &len))
++      return false;
++    for (jsuint i = 0; i < len; ++i) {
++      jsval val;
++      Variant* vp = elems.AppendElement();
++      if (!JS_GetElement(cx, obj, i, &val) ||
++          !jsval_to_Variant(cx, val, vp, seen))
++        *vp = void_t();
++    }
++    *to = elems;
++    return true;
++  }
++
++  js::AutoIdArray ida(cx, JS_Enumerate(cx, obj));
++  if (!ida)
++    return false;
++
++  nsTArray<KeyValue> kvs;
++  for (size_t i = 0; i < ida.length(); ++i) {
++    jsval val; // reused for both key and value
++    if (!JS_IdToValue(cx, ida[i], &val))
++      return false;
++    JSString* idStr = JS_ValueToString(cx, val);
++    if (!idStr)
++      return false;
++    if (!JS_GetPropertyById(cx, obj, ida[i], &val))
++      return false;
++    KeyValue* kv = kvs.AppendElement();
++    kv->key() = nsString((PRUnichar*)JS_GetStringChars(idStr),
++                         JS_GetStringLength(idStr));
++    if (!jsval_to_Variant(cx, val, &kv->value(), seen))
++      return false;
++  }
++  *to = kvs;
++
++  return true;
++}
++
++bool
++JetpackActorCommon::jsval_to_Variant(JSContext* cx, jsval from, Variant* to,
++                                     OpaqueSeenType* seen)
++{
++  JSType type = JS_TypeOfValue(cx, from);
++  if (JSVAL_IS_NULL(from))
++    type = JSTYPE_NULL;
++
++  PrimVariant pv;
++  if (jsval_to_PrimVariant(cx, type, from, &pv)) {
++    *to = pv;
++    return true;
++  }
++
++  CompVariant cv;
++  if (jsval_to_CompVariant(cx, type, from, &cv, seen)) {
++    *to = cv;
++    return true;
++  }
++
++  return false;
++}
++
++bool
 +JetpackActorCommon::jsval_from_PrimVariant(JSContext* cx,
 +                                           const PrimVariant& from,
 +                                           jsval* to)
@@ -245,6 +333,7 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
 -  case Variant::TArrayOfKeyValue: {
 -    const nsTArray<KeyValue>& kvs = from.get_ArrayOfKeyValue();
 -    JSObject* obj = JS_NewObject(cx, NULL, NULL, NULL);
+-    if (!obj)
 +
 +  default:
 +    return false;
@@ -257,22 +346,26 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
 +                                           jsval* to,
 +                                           OpaqueSeenType* seen)
 +{
-+  JSObject* obj = NULL;
-+  const CompVariantValue& value = from.value();
++  js::LazilyConstructed<OpaqueSeenType> lost;
++  if (!seen) {
++    lost.construct();
++    seen = lost.addr();
++    if (!seen->ok())
++      return false;
++  }
 +
-+  switch (value.type()) {
-+  case CompVariantValue::TArrayOfKeyValue: {
-+    const nsTArray<KeyValue>& kvs = value.get_ArrayOfKeyValue();
-+    obj = JS_NewObject(cx, NULL, NULL, NULL);
-     if (!obj)
++  JSObject* obj = NULL;
++
++  switch (from.type()) {
++  case CompVariant::TArrayOfKeyValue: {
++    if (!(obj = JS_NewObject(cx, NULL, NULL, NULL)))
        return false;
      js::AutoObjectRooter root(cx, obj);
 +
-+    OpaqueSeenType::IdType id;
-+    if (!seen->add(obj, &id) ||
-+        from.id() != id)
++    if (!seen->add(obj))
 +      return false;
 +
++    const nsTArray<KeyValue>& kvs = from.get_ArrayOfKeyValue();
      for (PRUint32 i = 0; i < kvs.Length(); ++i) {
        const KeyValue& kv = kvs.ElementAt(i);
        jsval val;
@@ -290,23 +383,21 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
 +    break;
    }
 -  case Variant::TArrayOfVariant: {
--    const nsTArray<Variant>& vs = from.get_ArrayOfVariant();
 +
-+  case CompVariantValue::TArrayOfVariant: {
-+    const nsTArray<Variant>& vs = value.get_ArrayOfVariant();
++  case CompVariant::TArrayOfVariant: {
+     const nsTArray<Variant>& vs = from.get_ArrayOfVariant();
      jsval* elems;
 -    JSObject* arrObj =
 -      js_NewArrayObjectWithCapacity(cx, vs.Length(), &elems);
 -    if (!arrObj || !elems)
++
 +    obj = js_NewArrayObjectWithCapacity(cx, vs.Length(), &elems);
 +    if (!obj || !elems)
        return false;
 -    js::AutoObjectRooter root(cx, arrObj);
 +    js::AutoObjectRooter root(cx, obj);
 +
-+    OpaqueSeenType::IdType id; 
-+    if (!seen->add(obj, &id) ||
-+        from.id() != id)
++    if (!seen->add(obj))
 +      return false;
 +
      for (PRUint32 i = 0; i < vs.Length(); ++i)
@@ -317,10 +408,10 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
 -    return true;
 +
 +    break;
-+  }
+   }
 +
-+  case CompVariantValue::Tvoid_t:
-+    if (!seen->reverseLookup(from.id(), &obj))
++  case CompVariant::Tsize_t:
++    if (!seen->reverseLookup(from.get_size_t(), &obj))
 +      return false;
 +    break;
 +
@@ -339,16 +430,8 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
 +  switch (from.type()) {
 +  case Variant::TPrimVariant:
 +    return jsval_from_PrimVariant(cx, from, to);
-+  case Variant::TCompVariant: {
-+    js::LazilyConstructed<OpaqueSeenType> lost;
-+    if (!seen) {
-+      lost.construct();
-+      seen = lost.addr();
-+      if (!seen->ok())
-+        return false;
-+    }
++  case Variant::TCompVariant:
 +    return jsval_from_CompVariant(cx, from, to, seen);
-   }
    default:
      return false;
    }
@@ -356,6 +439,26 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
  
  bool
  JetpackActorCommon::RecvMessage(JSContext* cx,
+                                 const nsString& messageName,
+@@ -302,16 +426,18 @@ JetpackActorCommon::RecvMessage(JSContex
+     jsval rval;
+     if (!JS_CallFunctionValue(cx, implGlobal, snapshot.ElementAt(i), argc, argv,
+                               &rval))
+       break;
+ 
+     if (!results)
+       continue;
+ 
++    js::AutoValueRooter root(cx, rval);
++
+     Variant* vp = results->AppendElement();
+     if (!jsval_to_Variant(cx, rval, vp))
+       *vp = void_t();
+   }
+ 
+   return true;
+ }
+ 
 diff --git a/js/jetpack/JetpackActorCommon.h b/js/jetpack/JetpackActorCommon.h
 --- a/js/jetpack/JetpackActorCommon.h
 +++ b/js/jetpack/JetpackActorCommon.h
@@ -378,7 +481,7 @@ diff --git a/js/jetpack/JetpackActorCommon.h b/js/jetpack/JetpackActorCommon.h
  
    bool
    RecvMessage(JSContext* cx,
-@@ -76,29 +78,35 @@ public:
+@@ -76,29 +78,40 @@ public:
    UnregisterReceivers(const nsString& messageName) {
      mReceivers.Remove(messageName);
    }
@@ -403,6 +506,11 @@ diff --git a/js/jetpack/JetpackActorCommon.h b/js/jetpack/JetpackActorCommon.h
  
  private:
  
++  static bool jsval_to_PrimVariant(JSContext* cx, JSType type, jsval from,
++                                   PrimVariant* to);
++  static bool jsval_to_CompVariant(JSContext* cx, JSType type, jsval from,
++                                   CompVariant* to, OpaqueSeenType* seen);
++
 +  static bool jsval_from_PrimVariant(JSContext* cx, const PrimVariant& from,
 +                                     jsval* to);
 +  static bool jsval_from_CompVariant(JSContext* cx, const CompVariant& from,
@@ -419,7 +527,7 @@ diff --git a/js/jetpack/JetpackActorCommon.h b/js/jetpack/JetpackActorCommon.h
 diff --git a/js/jetpack/PJetpack.ipdl b/js/jetpack/PJetpack.ipdl
 --- a/js/jetpack/PJetpack.ipdl
 +++ b/js/jetpack/PJetpack.ipdl
-@@ -43,26 +43,40 @@ using mozilla::null_t;
+@@ -43,26 +43,35 @@ using mozilla::null_t;
  namespace mozilla {
  namespace jetpack {
  
@@ -439,15 +547,10 @@ diff --git a/js/jetpack/PJetpack.ipdl b/js/jetpack/PJetpack.ipdl
    PHandle;
 +};
 +
-+union CompVariantValue {
++union CompVariant {
    KeyValue[];
    Variant[];
-+  void_t; // treat id as reference
-+};
-+
-+struct CompVariant {
-+  CompVariantValue value;
-+  int id;
++  size_t; // reference
 +};
 +  
 +union Variant {
@@ -461,21 +564,88 @@ diff --git a/js/jetpack/PJetpack.ipdl b/js/jetpack/PJetpack.ipdl
  both:
    async SendMessage(nsString messageName,
                      Variant[] data);
+diff --git a/js/jetpack/tests/unit/impl.js b/js/jetpack/tests/unit/impl.js
+--- a/js/jetpack/tests/unit/impl.js
++++ b/js/jetpack/tests/unit/impl.js
+@@ -1,12 +1,13 @@
+-registerReceiver("echo",
+-                 function(msgName, data, handle) {
+-                   sendMessage(msgName, data, handle);
+-                 });
++function echo() {
++  sendMessage.apply(this, arguments);
++}
++
++registerReceiver("echo", echo);
+ 
+ registerReceiver("callback",
+                  function(msgName, data, handle) {
+                    sendMessage("sendback",
+                                callMessage("callback", data)[0],
+                                handle);
+                  });
+ 
+@@ -15,23 +16,22 @@ registerReceiver("gimmeHandle",
+                    sendMessage("recvHandle", "ok", createHandle());
+                  });
+ 
+ registerReceiver("kthx",
+                  function(msgName, data, child) {
+                    sendMessage("recvHandleAgain", data + data, child.parent);
+                  });
+ 
+-registerReceiver("echo2",
+-                 function(msgName, obj1, obj2) {
+-                   sendMessage("echo2", obj1, obj2);
+-                 });
++registerReceiver("echo2", echo);
+ 
+ registerReceiver("multireturn begin",
+                  function() {
+                    var results = callMessage("multireturn");
+                    sendMessage.apply(null, ["multireturn check"].concat(results));
+                  });
+ 
+ registerReceiver("testarray",
+                  function(msgName, array) {
+                    sendMessage("testarray", array.reverse());
+                  });
++
++registerReceiver("test primitive types", echo);
 diff --git a/js/jetpack/tests/unit/test_jetpack.js b/js/jetpack/tests/unit/test_jetpack.js
 --- a/js/jetpack/tests/unit/test_jetpack.js
 +++ b/js/jetpack/tests/unit/test_jetpack.js
-@@ -8,17 +8,17 @@ function run_test() {
+@@ -6,20 +6,34 @@ function run_test() {
+   jetpack.loadImplementation(
+     "chrome://global/content/jetpack/test-impl.js");
    jetpack.loadUserScript(
      "chrome://global/content/jetpack/test-user.js");
  
    var circ1 = {},
        circ2 = {},
        circ3 = {},
-       str = "circular references forbidden",
-       threw;
+-      str = "circular references forbidden",
+-      threw;
 -  ((circ1.obj = circ2).obj = circ3).obj = circ1;
+-  try { jetpack.sendMessage(str, circ3, circ1) }
++      ok = false;
 +  ((circ1.next = circ2).next = circ3).next = circ1;
-   try { jetpack.sendMessage(str, circ3, circ1) }
++  try {
++    jetpack.sendMessage("ignored", circ3, circ1);
++    ok = true;
++  } catch (x) {
++    do_check_false(x);
++  }
++  do_check_true(ok);
++
++  var bad = {
++    self: "bad",
++    obj: {
++      fn: function() { return this.foo },
++      foo: 42
++    }
++  }, threw, str = "no methods";
++  try { jetpack.sendMessage(str, bad) }
    catch (x) { threw = str }
    do_check_eq(threw, str);
  
@@ -483,3 +653,75 @@ diff --git a/js/jetpack/tests/unit/test_jetpack.js b/js/jetpack/tests/unit/test_
    echoHandle.payload = { weight: 10 };
    jetpack.registerReceiver("echo",
                             function(msgName, data, handle) {
+                              do_check_eq(arguments.length, 3);
+@@ -69,44 +83,68 @@ function run_test() {
+                              do_check_neq(obj1, a);
+                              do_check_neq(obj2, b);
+                              do_check_eq(obj1.id, a.id);
+                              do_check_eq(obj2.id, b.id);
+                              do_check_eq(obj1.id, obj2.obj.id);
+                              do_test_finished();
+                            });
+ 
+-  var undefined;
+   jetpack.registerReceiver("multireturn", function() { return obj1 });
+   jetpack.registerReceiver("multireturn", function() { return circ1 });
+   jetpack.registerReceiver("multireturn", function() { return obj2 });
+   jetpack.registerReceiver("multireturn check",
+                            function(msgName, rval1, rval2, rval3) {
+                              do_check_eq(rval1.id, obj1.id);
+-                             do_check_eq(rval2, undefined);
++                             do_check_eq(rval2.next.next.next, rval2);
+                              do_check_eq(rval3.id, obj2.id);
+                              do_check_eq(rval3.obj.id, obj1.id);
+                              do_test_finished();
+                            });
+ 
+   var testarray = [1, 1, 2, 3, 5, 8, 13];
+   jetpack.registerReceiver("testarray",
+                            function(msgName, reversed) {
+                              for (var i = 0; i < testarray.length; ++i)
+                                do_check_eq(testarray[i],
+                                            reversed[reversed.length - i - 1]);
+                              do_test_finished();
+                            });
+ 
++  var undefined;
++  jetpack.registerReceiver("test primitive types",
++                           function(msgName,
++                                    void_val, null_val,
++                                    bool_true, bool_false,
++                                    one, two, nine99,
++                                    one_quarter,
++                                    oyez_str)
++                           {
++                             do_check_true(void_val === undefined);
++                             do_check_true(null_val === null);
++                             do_check_true(bool_true === true);
++                             do_check_true(bool_false === false);
++                             do_check_eq(one, 1);
++                             do_check_eq(two, 2);
++                             do_check_eq(nine99, 999);
++                             do_check_eq(one_quarter, 0.25);
++                             do_check_eq(oyez_str, "oyez");
++
++                             do_test_finished();
++                           });
++
++  do_test_pending();
+   do_test_pending();
+   do_test_pending();
+   do_test_pending();
+   do_test_pending();
+   do_test_pending();
+   do_test_pending();
+ 
+   jetpack.sendMessage("echo", "echo this", echoHandle);
+   jetpack.sendMessage("callback", "call me back", callbackHandle);
+   jetpack.sendMessage("gimmeHandle");
+   jetpack.sendMessage("echo2", obj1, obj2);
+   jetpack.sendMessage("multireturn begin");
+   jetpack.sendMessage("testarray", testarray);
++  jetpack.sendMessage("test primitive types",
++                      undefined, null, true, false, 1, 2, 999, 1/4, "oyez");
+ }
