@@ -1169,13 +1169,13 @@ new file mode 100644
 diff --git a/toolkit/toolkit-makefiles.sh b/toolkit/toolkit-makefiles.sh
 --- a/toolkit/toolkit-makefiles.sh
 +++ b/toolkit/toolkit-makefiles.sh
-@@ -204,16 +204,20 @@ MAKEFILES_xpconnect="
+@@ -202,16 +202,20 @@ MAKEFILES_xpconnect="
+   js/src/xpconnect/shell/Makefile
+   js/src/xpconnect/src/Makefile
    js/src/xpconnect/loader/Makefile
    js/src/xpconnect/tests/Makefile
    js/src/xpconnect/tests/components/Makefile
    js/src/xpconnect/tests/idl/Makefile
-   js/src/xpconnect/tools/Makefile
-   js/src/xpconnect/tools/idl/Makefile
  "
  
 +MAKEFILES_jetpack="
@@ -1190,7 +1190,7 @@ diff --git a/toolkit/toolkit-makefiles.sh b/toolkit/toolkit-makefiles.sh
  MAKEFILES_content="
    content/Makefile
    content/base/Makefile
-@@ -807,16 +811,17 @@ add_makefiles "
+@@ -802,16 +806,17 @@ add_makefiles "
    $MAKEFILES_db
    $MAKEFILES_dom
    $MAKEFILES_editor

@@ -98,72 +98,40 @@ diff --git a/js/src/xpconnect/src/qsgen.py b/js/src/xpconnect/src/qsgen.py
  def writeResultConv(f, type, jsvalPtr, jsvalRef):
      """ Emit code to convert the C++ variable `result` to a jsval.
  
-@@ -980,84 +992,61 @@ def writeQuickStub(f, customMethodCalls,
-     # Epilog.
-     f.write("}\n\n")
- 
-     # Now write out the call to the template function.
-     if customMethodCall is not None:
-         f.write(callTemplate)
- 
- # Only these types can be returned (note: no strings);
--# if the type isn't one of these, then traceTypeMap['_default'] is used
-+# if the type isn't one of these, then defaultTraceType is used
- traceReturnTypeMap = {
--    'void':
--        ["jsval ", "JSVAL", "JSVAL_VOID"],
--    'boolean':
--        ["JSBool ", "BOOL", "JS_FALSE"],
--    'short':
--        ["int32 ", "INT32", "0"],
--    'unsigned short':
--        ["uint32 ", "UINT32", "0"],
--    'long':
--        ["int32 ", "INT32", "0"],
--    'unsigned long':
--        ["uint32 ", "UINT32", "0"],
--    'float':
--        ["jsdouble ", "DOUBLE", "0"],
--    'double':
--        ["jsdouble ", "DOUBLE", "0"],
-+    'void':             ("jsval ", "JSVAL", "JSVAL_VOID"),
-+    'boolean':          ("JSBool ", "BOOL", "JS_FALSE"),
-+    'short':            ("int32 ", "INT32", "0"),
-+    'unsigned short':   ("uint32 ", "UINT32", "0"),
-+    'long':             ("int32 ", "INT32", "0"),
-+    'unsigned long':    ("uint32 ", "UINT32", "0"),
-+    'float':            ("jsdouble ", "DOUBLE", "0"),
-+    'double':           ("jsdouble ", "DOUBLE", "0"),
-+    'jsval':            ("jsval ", "JSVAL", "JSVAL_VOID")
+@@ -999,67 +1011,56 @@ traceReturnTypeMap = {
+         ["int32 ", "INT32", "0"],
+     'unsigned long':
+         ["uint32 ", "UINT32", "0"],
+     'float':
+         ["jsdouble ", "DOUBLE", "0"],
+     'double':
+         ["jsdouble ", "DOUBLE", "0"],
+     'octet':
+-        ["uint32 ", "UINT32", "0"]
++        ["uint32 ", "UINT32", "0"],
++    'jsval':
++        ["jsval ", "JSVAL", "JSVAL_VOID"]
      }
  
  # This list extends the above list, but includes types that
 -# are valid for arguments only, namely strings.  It also
 -# includes the default jsval type.
--traceTypeMap = {
--    '[astring]':
--        ["JSString *", "STRING", "nsnull"],
--    '[domstring]':
--        ["JSString *", "STRING", "nsnull"],
--    '[cstring]':
--        ["JSString *", "STRING", "nsnull"],
--    'string':
--        ["JSString *", "STRING", "nsnull"],
--    'wstring':
--        ["JSString *", "STRING", "nsnull"],
 +# are valid for arguments only, namely strings.
-+traceTypeMap = traceReturnTypeMap.copy()
-+traceTypeMap.update({
-+    '[astring]':        ("JSString *", "STRING", "nsnull"),
-+    '[domstring]':      ("JSString *", "STRING", "nsnull"),
-+    '[cstring]':        ("JSString *", "STRING", "nsnull"),
-+    'string':           ("JSString *", "STRING", "nsnull"),
-+    'wstring':          ("JSString *", "STRING", "nsnull"),
-+    })
- 
+ traceTypeMap = {
+     '[astring]':
+         ["JSString *", "STRING", "nsnull"],
+     '[domstring]':
+         ["JSString *", "STRING", "nsnull"],
+     '[cstring]':
+         ["JSString *", "STRING", "nsnull"],
+     'string':
+         ["JSString *", "STRING", "nsnull"],
+     'wstring':
+         ["JSString *", "STRING", "nsnull"],
+-
 -    '_default':
 -        ["jsval ", "JSVAL", "JSVAL_VOID"]
--    }
+     }
 +defaultTraceType = ("jsval ", "JSVAL", "JSVAL_VOID")
  
  def getTraceType(type):
@@ -208,7 +176,7 @@ diff --git a/js/src/xpconnect/src/qsgen.py b/js/src/xpconnect/src/qsgen.py
      ret += " " * (4 * indent)
      ret += "return %s;\n" % retval
      ret += " " * (4 * (indent - 1))
-@@ -1133,17 +1122,17 @@ def writeTraceableArgumentConversion(f, 
+@@ -1135,17 +1136,17 @@ def writeTraceableArgumentConversion(f, 
              pass
          else:
              if not rvdeclared:
@@ -227,7 +195,7 @@ diff --git a/js/src/xpconnect/src/qsgen.py b/js/src/xpconnect/src/qsgen.py
                  f.write("        xpc_qsThrowBadArgWithDetails(cx, rv, %d, "
                          "\"%s\", \"%s\");\n"
                          % (i, member.iface.name, member.name))
-@@ -1179,16 +1168,18 @@ traceableResultConvTemplates = {
+@@ -1181,16 +1182,18 @@ traceableResultConvTemplates = {
          "    if (!xpc_qsStringToJsval(cx, result, &rval)) {\n"
          "        JS_ReportOutOfMemory(cx);\n${errorStr}"
          "    return rval;\n",
@@ -246,7 +214,7 @@ diff --git a/js/src/xpconnect/src/qsgen.py b/js/src/xpconnect/src/qsgen.py
          template = traceableResultConvTemplates.get(typeName)
          if template is not None:
              values = { 'errorStr': getFailureString(
-@@ -1255,27 +1246,27 @@ def writeTraceableQuickStub(f, customMet
+@@ -1257,27 +1260,27 @@ def writeTraceableQuickStub(f, customMet
              f.write("    XPCLazyCallContext lccx(ccx);\n")
  
      # Get the 'self' pointer.
@@ -278,7 +246,7 @@ diff --git a/js/src/xpconnect/src/qsgen.py b/js/src/xpconnect/src/qsgen.py
      rvdeclared = False
      for i, param in enumerate(member.params):
          argName = "arg%d" % i
-@@ -1305,17 +1296,19 @@ def writeTraceableQuickStub(f, customMet
+@@ -1307,17 +1310,19 @@ def writeTraceableQuickStub(f, customMet
          selfname = prefix + 'self'
          nsresultname = prefix + 'rv'
  

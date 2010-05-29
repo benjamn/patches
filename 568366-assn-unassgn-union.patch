@@ -1,0 +1,311 @@
+# HG changeset patch
+# User Chris Jones <jones.chris.g@gmail.com>
+# Date 1274915740 18000
+# Node ID e05aded707c18ed17a9dff149b6e878992e36b4d
+# Parent  9dc669f1806225d6bb5d5a3b7901ca2812eb801e
+Bug 568366: Allow copy-constructing and assigning from T__None-typed unions. r?benjamn
+
+diff --git a/ipc/ipdl/ipdl/lower.py b/ipc/ipdl/ipdl/lower.py
+--- a/ipc/ipdl/ipdl/lower.py
++++ b/ipc/ipdl/ipdl/lower.py
+@@ -1659,17 +1659,16 @@ def _generateCxxUnion(ud):
+     refClsType = Type(ud.name, ref=1)
+     typetype = Type('Type')
+     valuetype = Type('Value')
+     mtypevar = ExprVar('mType')
+     mvaluevar = ExprVar('mValue')
+     maybedtorvar = ExprVar('MaybeDestroy')
+     assertsanityvar = ExprVar('AssertSanity')
+     tnonevar = ExprVar('T__None')
+-    tfirstvar = ExprVar('T__First')
+     tlastvar = ExprVar('T__Last')
+ 
+     def callAssertSanity(uvar=None, expectTypeVar=None):
+         func = assertsanityvar
+         args = [ ]
+         if uvar is not None:
+             func = ExprSelect(uvar, '.', assertsanityvar.name)
+         if expectTypeVar is not None:
+@@ -1695,17 +1694,16 @@ def _generateCxxUnion(ud):
+     # the |Type| enum, used to switch on the discunion's real type
+     cls.addstmt(Label.PUBLIC)
+     typeenum = TypeEnum(typetype.name)
+     typeenum.addId(tnonevar.name, 0)
+     firstid = ud.components[0].enum()
+     typeenum.addId(firstid, 1)
+     for c in ud.components[1:]:
+         typeenum.addId(c.enum())
+-    typeenum.addId(tfirstvar.name, firstid)
+     typeenum.addId(tlastvar.name, ud.components[-1].enum())
+     cls.addstmts([ StmtDecl(Decl(typeenum,'')),
+                    Whitespace.NL ])
+ 
+     cls.addstmt(Label.PRIVATE)
+     cls.addstmts(
+         usingTypedefs
+         # hacky typedef's that allow placement dtors of builtins
+@@ -1769,17 +1767,17 @@ def _generateCxxUnion(ud):
+     ])
+     cls.addstmts([ maybedtor, Whitespace.NL ])
+ 
+     # add helper methods that ensure the discunion has a
+     # valid type
+     sanity = MethodDefn(MethodDecl(
+         assertsanityvar.name, ret=Type.VOID, const=1, force_inline=1))
+     sanity.addstmts([
+-        _abortIfFalse(ExprBinary(tfirstvar, '<=', mtypevar),
++        _abortIfFalse(ExprBinary(tnonevar, '<=', mtypevar),
+                       'invalid type tag'),
+         _abortIfFalse(ExprBinary(mtypevar, '<=', tlastvar),
+                       'invalid type tag') ])
+     cls.addstmt(sanity)
+ 
+     atypevar = ExprVar('aType')
+     sanity2 = MethodDefn(
+         MethodDecl(assertsanityvar.name,
+@@ -1822,16 +1820,18 @@ def _generateCxxUnion(ud):
+         copyswitch.addcase(
+             CaseLabel(c.enum()),
+             StmtBlock([
+                 StmtExpr(c.callCtor(
+                     ExprCall(ExprSelect(othervar,
+                                         '.', c.getConstTypeName())))),
+                 StmtBreak()
+             ]))
++    copyswitch.addcase(CaseLabel(tnonevar.name),
++                       StmtBlock([ StmtBreak() ]))
+     copyswitch.addcase(
+         DefaultLabel(),
+         StmtBlock([ _runtimeAbort('unreached'), StmtReturn() ]))
+     copyctor.addstmts([
+         StmtExpr(callAssertSanity(uvar=othervar)),
+         copyswitch,
+         StmtExpr(ExprAssn(mtypevar, othertype))
+     ])
+@@ -1875,16 +1875,19 @@ def _generateCxxUnion(ud):
+         case = StmtBlock()
+         case.addstmts([
+             maybeReconstruct(c, rhstypevar),
+             StmtExpr(c.callOperatorEq(
+                 ExprCall(ExprSelect(rhsvar, '.', c.getConstTypeName())))),
+             StmtBreak()
+         ])
+         opeqswitch.addcase(CaseLabel(c.enum()), case)
++    opeqswitch.addcase(CaseLabel(tnonevar.name),
++                       StmtBlock([ StmtExpr(callMaybeDestroy(rhstypevar)),
++                                   StmtBreak() ]))
+     opeqswitch.addcase(
+         DefaultLabel(),
+         StmtBlock([ _runtimeAbort('unreached'), StmtBreak() ]))
+     opeq.addstmts([
+         StmtExpr(callAssertSanity(uvar=rhsvar)),
+         StmtDecl(Decl(typetype, rhstypevar.name), init=ud.callType(rhsvar)),
+         opeqswitch,
+         StmtExpr(ExprAssn(mtypevar, rhstypevar)),
+diff --git a/ipc/ipdl/test/cxx/PTestDataStructures.ipdl b/ipc/ipdl/test/cxx/PTestDataStructures.ipdl
+--- a/ipc/ipdl/test/cxx/PTestDataStructures.ipdl
++++ b/ipc/ipdl/test/cxx/PTestDataStructures.ipdl
+@@ -1,10 +1,12 @@
+ include protocol PTestDataStructuresSub;
+ 
++using mozilla::null_t;
++
+ namespace mozilla {
+ namespace _foo {
+ 
+ union IntDouble {
+     int;
+     double;
+ };
+ 
+@@ -62,16 +64,33 @@ union WithStructs {
+ struct WithUnions {
+     int i;
+     int[] ai;
+     PTestDataStructuresSub[] ap;
+     Actors[] aa;
+     Unions[] au;
+ };
+ 
++struct CommonAttrs { bool dummy; };
++struct FooAttrs { int dummy; };
++struct BarAttrs { float dummy; };
++union SpecificAttrs {
++    FooAttrs;
++    BarAttrs;
++};
++struct Attrs {
++    CommonAttrs common;
++    SpecificAttrs specific;
++};
++struct SetAttrs {
++    PTestDataStructuresSub x;
++    Attrs attrs;
++};
++union Op { null_t; SetAttrs; };
++
+ } // namespace _foo
+ } // namespace mozilla
+ 
+ namespace mozilla {
+ namespace _ipdltest {
+ 
+ sync protocol PTestDataStructures {
+     manages PTestDataStructuresSub;
+@@ -151,35 +170,38 @@ parent:
+                  WithStructs o2,
+                  WithStructs o3,
+                  WithStructs o4,
+                  WithStructs o5);
+ 
+     sync Test16(WithUnions i)
+         returns (WithUnions o);
+ 
++    sync Test17(Op[] ops);
++
+ state START:
+     send Start goto TEST1;
+ 
+ state TEST1:   recv Test1 goto TEST2;
+ state TEST2:   recv Test2 goto TEST3;
+ state TEST3:   recv Test3 goto TEST4;
+ state TEST4:   recv Test4 goto TEST5;
+ state TEST5:   recv Test5 goto TEST6;
+ state TEST6:   recv Test6 goto TEST7;
+ state TEST7:   recv Test7 goto TEST8;
+ state TEST8:   recv Test8 goto TEST9;
+ state TEST9:   recv Test9 goto TEST10;
+ state TEST10:  recv Test10 goto TEST11;
+ state TEST11:  recv Test11 goto TEST12;
+-state TEST12:  recv Test11 goto TEST13;
+-state TEST13:  recv Test11 goto TEST14;
+-state TEST14:  recv Test11 goto TEST15;
+-state TEST15:  recv Test11 goto TEST16;
+-state TEST16:  recv Test11 goto DEAD;
++state TEST12:  recv Test12 goto TEST13;
++state TEST13:  recv Test13 goto TEST14;
++state TEST14:  recv Test14 goto TEST15;
++state TEST15:  recv Test15 goto TEST16;
++state TEST16:  recv Test16 goto TEST17;
++state TEST17:  recv Test17 goto DEAD;
+ 
+ state DEAD:
+     recv __delete__;
+ };
+ 
+ } // namespace _ipdltest
+ } // namespace mozilla
+ 
+diff --git a/ipc/ipdl/test/cxx/TestDataStructures.cpp b/ipc/ipdl/test/cxx/TestDataStructures.cpp
+--- a/ipc/ipdl/test/cxx/TestDataStructures.cpp
++++ b/ipc/ipdl/test/cxx/TestDataStructures.cpp
+@@ -412,16 +412,23 @@ bool TestDataStructuresParent::RecvTest1
+                         iau[3].get_ArrayOfActors()[0]
+                         .get_ArrayOfPTestDataStructuresSubParent());
+ 
+     *o = i;
+ 
+     return true;
+ }
+ 
++bool TestDataStructuresParent::RecvTest17(const nsTArray<Op>& sa)
++{
++    test_assert(sa.Length() == 1 && Op::TSetAttrs == sa[0].type(),
++                "wrong value");
++    return true;
++}
++
+ //-----------------------------------------------------------------------------
+ // child
+ 
+ TestDataStructuresChild::TestDataStructuresChild()
+ {
+     MOZ_COUNT_CTOR(TestDataStructuresChild);
+ }
+ 
+@@ -446,16 +453,17 @@ TestDataStructuresChild::RecvStart()
+     Test9();
+     Test10();
+     Test11();
+     Test12();
+     Test13();
+     Test14();
+     Test15();
+     Test16();
++    Test17();
+ 
+     for (uint32 i = 0; i < nactors; ++i)
+         if (!PTestDataStructuresSubChild::Send__delete__(mKids[i]))
+             fail("can't send dtor");
+ 
+     Close();
+ 
+     return true;
+@@ -868,10 +876,26 @@ TestDataStructuresChild::Test16()
+                         mKids);
+     assert_arrays_equal(oau[3].get_ArrayOfActors()[0]
+                         .get_ArrayOfPTestDataStructuresSubChild(),
+                         mKids);
+ 
+     printf("  passed %s\n", __FUNCTION__);
+ }
+ 
++void
++TestDataStructuresChild::Test17()
++{
++    Attrs attrs;
++    attrs.common() = CommonAttrs(true);
++    attrs.specific() = BarAttrs(1.0f);
++
++    nsTArray<Op> ops;
++    ops.AppendElement(SetAttrs(NULL, mKids[0], attrs));
++
++    if (!SendTest17(ops))
++        fail("sending Test17");
++
++    printf("  passed %s\n", __FUNCTION__);
++}
++
+ } // namespace _ipdltest
+ } // namespace mozilla
+diff --git a/ipc/ipdl/test/cxx/TestDataStructures.h b/ipc/ipdl/test/cxx/TestDataStructures.h
+--- a/ipc/ipdl/test/cxx/TestDataStructures.h
++++ b/ipc/ipdl/test/cxx/TestDataStructures.h
+@@ -151,16 +151,19 @@ protected:
+             WithStructs* o5);
+ 
+     NS_OVERRIDE
+     virtual bool RecvTest16(
+             const WithUnions& i,
+             WithUnions* o);
+ 
+     NS_OVERRIDE
++    virtual bool RecvTest17(const nsTArray<Op>& sa);
++
++    NS_OVERRIDE
+     virtual void ActorDestroy(ActorDestroyReason why)
+     {
+         if (NormalShutdown != why)
+             fail("unexpected destruction!");  
+         passed("ok");
+         QuitParent();
+     }
+ 
+@@ -215,16 +218,17 @@ private:
+     void Test9();
+     void Test10();
+     void Test11();
+     void Test12();
+     void Test13();
+     void Test14();
+     void Test15();
+     void Test16();
++    void Test17();
+ 
+     nsTArray<PTestDataStructuresSubChild*> mKids;
+ };
+ 
+ 
+ } // namespace _ipdltest
+ } // namespace mozilla
+ 
