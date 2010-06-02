@@ -1,8 +1,4 @@
 Bug 556846 - Investigate multi-process Jetpack.
-* * *
-Port mozilla::jsipc::Handle from projects/electrolysis to mozilla-central.
-* * *
-Support passing objects with circular references through Jetpack messages (bug 556846).
 
 diff --git a/ipc/ipdl/Makefile.in b/ipc/ipdl/Makefile.in
 --- a/ipc/ipdl/Makefile.in
@@ -504,143 +500,6 @@ new file mode 100644
 +IPDLSRCS = \
 +  PHandle.ipdl \
 +  $(NULL)
-diff --git a/js/ipc/tests/unit/handle_child.js b/js/ipc/tests/unit/handle_child.js
-new file mode 100644
---- /dev/null
-+++ b/js/ipc/tests/unit/handle_child.js
-@@ -0,0 +1,6 @@
-+load("handle_common.js");
-+
-+function run_test() {
-+  run_common_tests();
-+}
-+
-diff --git a/js/ipc/tests/unit/handle_common.js b/js/ipc/tests/unit/handle_common.js
-new file mode 100644
---- /dev/null
-+++ b/js/ipc/tests/unit/handle_common.js
-@@ -0,0 +1,105 @@
-+function createHandle() {
-+  return getRootHandle().createHandle();
-+}
-+
-+function run_common_tests() {
-+  test_sanity();
-+  test_safe_iteration();
-+  test_local_invalidation();
-+  test_long_parent_chain(100);
-+  test_invalid_creation();
-+}
-+
-+function test_sanity() {
-+  var root = getRootHandle(),
-+      parent = createHandle(),
-+      child = parent.createHandle(),
-+      grandchild = child.createHandle();
-+
-+  do_check_neq(child, parent);
-+  do_check_eq(child.parent, parent);
-+  do_check_eq(parent.parent, root);
-+  do_check_eq(root.parent, null);
-+  do_check_eq(grandchild.parent.parent, parent);
-+
-+  do_check_true(child.isValid);
-+  do_check_true(parent.isValid);
-+
-+  parent.invalidate();
-+}
-+
-+function test_safe_iteration() {
-+  var handle = createHandle(),
-+      keys = [];
-+  handle.foo = 42;
-+  handle.self = handle;
-+  for (var k in handle)
-+    keys[keys.length] = k;
-+  do_check_eq(keys.sort().join("~"),
-+              "foo~self");
-+  handle.invalidate();
-+}
-+
-+function test_local_invalidation() {
-+  var parent = createHandle(),
-+      child = parent.createHandle();
-+
-+  do_check_true(child.invalidate());
-+  do_check_false(child.isValid);
-+  do_check_true(parent.isValid);
-+
-+  child = parent.createHandle();
-+  do_check_true(child.isValid);
-+
-+  do_check_true(parent.invalidate());
-+  do_check_false(parent.invalidate());
-+  do_check_false(child.isValid);
-+  do_check_false(parent.isValid);
-+
-+  parent = createHandle();
-+  child = parent.createHandle();
-+  child = child.createHandle();
-+
-+  var uncle = parent.createHandle(),
-+      sibling = child.parent.createHandle();
-+
-+  do_check_eq(child.parent.parent, parent);
-+  do_check_true(child.parent.isValid);
-+
-+  do_check_true(child.parent.invalidate());
-+  do_check_false(child.isValid);
-+  do_check_true(parent.isValid);
-+
-+  do_check_false(sibling.isValid);
-+  do_check_true(uncle.isValid);
-+
-+  parent.invalidate();
-+}
-+
-+function test_long_parent_chain(len) {
-+  const ancestor = createHandle();
-+  for (var handle = ancestor, i = 0; i < len; ++i)
-+    handle = handle.createHandle();
-+  const child = handle;
-+
-+  while (handle != ancestor)
-+    handle = handle.parent;
-+
-+  do_check_true(child.isValid);
-+  do_check_true(ancestor.invalidate());
-+  do_check_false(child.isValid);
-+}
-+
-+function test_invalid_creation() {
-+  var parent = createHandle(),
-+      child = parent.createHandle();
-+
-+  parent.invalidate();
-+
-+  do_check_eq(child.parent, null);
-+
-+  var threw = false;
-+  try { child.createHandle(); }
-+  catch (x) { threw = true; }
-+  do_check_true(threw);
-+}
-diff --git a/js/ipc/tests/unit/test_handle.js b/js/ipc/tests/unit/test_handle.js
-new file mode 100644
---- /dev/null
-+++ b/js/ipc/tests/unit/test_handle.js
-@@ -0,0 +1,11 @@
-+load("handle_common.js");
-+
-+function run_test() {
-+  run_test_in_child("handle_child.js",
-+                    run_actual_tests);
-+}
-+
-+function run_actual_tests() {
-+  run_common_tests();
-+  do_test_finished();
-+}
 diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.cpp
 new file mode 100644
 --- /dev/null
@@ -2256,6 +2115,110 @@ new file mode 100644
 +
 +include $(topsrcdir)/config/config.mk
 +include $(topsrcdir)/config/rules.mk
+diff --git a/js/jetpack/tests/unit/handle_tests.js b/js/jetpack/tests/unit/handle_tests.js
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/tests/unit/handle_tests.js
+@@ -0,0 +1,99 @@
++function run_handle_tests() {
++  test_sanity();
++  test_safe_iteration();
++  test_local_invalidation();
++  test_long_parent_chain(100);
++  test_invalid_creation();
++}
++
++function test_sanity() {
++  var parent = createHandle(),
++      child = parent.createHandle(),
++      grandchild = child.createHandle();
++
++  do_check_neq(child, parent);
++  do_check_eq(child.parent, parent);
++  do_check_eq(parent.parent, null);
++  do_check_eq(grandchild.parent.parent, parent);
++
++  do_check_true(child.isValid);
++  do_check_true(parent.isValid);
++
++  parent.invalidate();
++}
++
++function test_safe_iteration() {
++  var handle = createHandle(),
++      keys = [];
++  handle.foo = 42;
++  handle.self = handle;
++  for (var k in handle)
++    keys[keys.length] = k;
++  do_check_eq(keys.sort().join("~"),
++              "foo~self");
++  handle.invalidate();
++}
++
++function test_local_invalidation() {
++  var parent = createHandle(),
++      child = parent.createHandle();
++
++  do_check_true(child.invalidate());
++  do_check_false(child.isValid);
++  do_check_true(parent.isValid);
++
++  child = parent.createHandle();
++  do_check_true(child.isValid);
++
++  do_check_true(parent.invalidate());
++  do_check_false(parent.invalidate());
++  do_check_false(child.isValid);
++  do_check_false(parent.isValid);
++
++  parent = createHandle();
++  child = parent.createHandle();
++  child = child.createHandle();
++
++  var uncle = parent.createHandle(),
++      sibling = child.parent.createHandle();
++
++  do_check_eq(child.parent.parent, parent);
++  do_check_true(child.parent.isValid);
++
++  do_check_true(child.parent.invalidate());
++  do_check_false(child.isValid);
++  do_check_true(parent.isValid);
++
++  do_check_false(sibling.isValid);
++  do_check_true(uncle.isValid);
++
++  parent.invalidate();
++}
++
++function test_long_parent_chain(len) {
++  const ancestor = createHandle();
++  for (var handle = ancestor, i = 0; i < len; ++i)
++    handle = handle.createHandle();
++  const child = handle;
++
++  while (handle != ancestor)
++    handle = handle.parent;
++
++  do_check_true(child.isValid);
++  do_check_true(ancestor.invalidate());
++  do_check_false(child.isValid);
++}
++
++function test_invalid_creation() {
++  var parent = createHandle(),
++      child = parent.createHandle();
++
++  parent.invalidate();
++
++  do_check_eq(child.parent, null);
++
++  var threw = false;
++  try { child.createHandle(); }
++  catch (x) { threw = true; }
++  do_check_true(threw);
++}
 diff --git a/js/jetpack/tests/unit/impl.js b/js/jetpack/tests/unit/impl.js
 new file mode 100644
 --- /dev/null
@@ -2302,12 +2265,19 @@ diff --git a/js/jetpack/tests/unit/test_jetpack.js b/js/jetpack/tests/unit/test_
 new file mode 100644
 --- /dev/null
 +++ b/js/jetpack/tests/unit/test_jetpack.js
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,157 @@
 +var jps = jps || Components.classes["@mozilla.org/jetpack/service;1"]
-+  .getService(Components.interfaces.nsIJetpackService);
++  .getService(Components.interfaces.nsIJetpackService),
++  jetpack = jps.createJetpack();
++
++load("handle_tests.js");
++function createHandle() {
++  return jetpack.createHandle();
++}
 +
 +function run_test() {
-+  var jetpack = jps.createJetpack();
++  run_handle_tests();
++
 +  jetpack.loadImplementation(
 +    "chrome://global/content/jetpack/test-impl.js");
 +  jetpack.loadUserScript(
