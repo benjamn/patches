@@ -312,7 +312,7 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
 new file mode 100644
 --- /dev/null
 +++ b/js/jetpack/JetpackActorCommon.cpp
-@@ -0,0 +1,487 @@
+@@ -0,0 +1,492 @@
 +/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -411,6 +411,9 @@ new file mode 100644
 +JetpackActorCommon::jsval_to_PrimVariant(JSContext* cx, JSType type, jsval from,
 +                                         PrimVariant* to)
 +{
++  // A false return from this function just means the value couldn't be
++  // converted to a PrimVariant (i.e., it wasn't a primitive value).
++
 +  switch (type) {
 +  case JSTYPE_VOID:
 +    *to = void_t();
@@ -516,11 +519,13 @@ new file mode 100644
 +      return false;
 +    if (!JS_GetPropertyById(cx, obj, ida[i], &val))
 +      return false;
-+    KeyValue* kv = kvs.AppendElement();
-+    kv->key() = nsString((PRUnichar*)JS_GetStringChars(idStr),
-+                         JS_GetStringLength(idStr));
-+    if (!jsval_to_Variant(cx, val, &kv->value(), seen))
-+      return false;
++    KeyValue kv;
++    // Silently drop properties that can't be converted.
++    if (jsval_to_Variant(cx, val, &kv.value(), seen)) {
++      kv.key() = nsString((PRUnichar*)JS_GetStringChars(idStr),
++                          JS_GetStringLength(idStr));
++      kvs.AppendElement(kv);
++    }
 +  }
 +  *to = kvs;
 +
@@ -2103,7 +2108,7 @@ diff --git a/js/jetpack/tests/unit/impl.js b/js/jetpack/tests/unit/impl.js
 new file mode 100644
 --- /dev/null
 +++ b/js/jetpack/tests/unit/impl.js
-@@ -0,0 +1,37 @@
+@@ -0,0 +1,39 @@
 +function echo() {
 +  sendMessage.apply(this, arguments);
 +}
@@ -2141,11 +2146,13 @@ new file mode 100644
 +                 });
 +
 +registerReceiver("test primitive types", echo);
++
++registerReceiver("drop methods", echo);
 diff --git a/js/jetpack/tests/unit/test_jetpack.js b/js/jetpack/tests/unit/test_jetpack.js
 new file mode 100644
 --- /dev/null
 +++ b/js/jetpack/tests/unit/test_jetpack.js
-@@ -0,0 +1,154 @@
+@@ -0,0 +1,158 @@
 +var jps = jps || Components.classes["@mozilla.org/jetpack/service;1"]
 +  .getService(Components.interfaces.nsIJetpackService),
 +  jetpack = jps.createJetpack();
@@ -2172,17 +2179,6 @@ new file mode 100644
 +    do_check_false(x);
 +  }
 +  do_check_true(ok);
-+
-+  var bad = {
-+    self: "bad",
-+    obj: {
-+      fn: function() { return this.foo },
-+      foo: 42
-+    }
-+  }, threw, str = "no methods";
-+  try { jetpack.sendMessage(str, bad) }
-+  catch (x) { threw = str }
-+  do_check_eq(threw, str);
 +
 +  var echoHandle = jetpack.createHandle();
 +  echoHandle.payload = { weight: 10 };
@@ -2283,6 +2279,20 @@ new file mode 100644
 +                             do_test_finished();
 +                           });
 +
++  var drop = {
++    nested: {
++      method: function() { return this.value },
++      value: 42
++    }
++  };
++  jetpack.registerReceiver("drop methods",
++                           function(msgName, echoed) {
++                             do_check_true(!echoed.nested.method);
++                             do_check_eq(echoed.nested.value, 42);
++                             do_test_finished();
++                           });
++
++  do_test_pending();
 +  do_test_pending();
 +  do_test_pending();
 +  do_test_pending();
@@ -2299,4 +2309,5 @@ new file mode 100644
 +  jetpack.sendMessage("testarray", testarray);
 +  jetpack.sendMessage("test primitive types",
 +                      undefined, null, true, false, 1, 2, 999, 1/4, "oyez");
++  jetpack.sendMessage("drop methods", drop);
 +}
