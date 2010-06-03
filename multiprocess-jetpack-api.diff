@@ -1,32 +1,11 @@
 Bug 556846 - Investigate multi-process Jetpack.
 
-diff --git a/ipc/ipdl/Makefile.in b/ipc/ipdl/Makefile.in
---- a/ipc/ipdl/Makefile.in
-+++ b/ipc/ipdl/Makefile.in
-@@ -51,16 +51,17 @@ LIBXUL_LIBRARY = 1
- EXPORT_LIBRARY = 1
- 
- ##-----------------------------------------------------------------------------
- ## When you add IPDL files to a source directory, list the directory here.
- ##
- IPDLDIRS =  \
-   dom/plugins  \
-   js/jetpack \
-+  js/ipc \
-   ipc/ipdl/test/cxx  \
-   $(NULL)
- ##-----------------------------------------------------------------------------
- 
- ifdef MOZ_IPDL_TESTS
- DIRS += test
- endif
- 
-diff --git a/js/ipc/Handle.h b/js/ipc/Handle.h
+diff --git a/js/jetpack/Handle.h b/js/jetpack/Handle.h
 new file mode 100644
 --- /dev/null
-+++ b/js/ipc/Handle.h
-@@ -0,0 +1,300 @@
-+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
++++ b/js/jetpack/Handle.h
+@@ -0,0 +1,303 @@
++/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
 + * vim: set ts=8 sw=4 et tw=80:
 + *
 + * ***** BEGIN LICENSE BLOCK *****
@@ -66,230 +45,232 @@ new file mode 100644
 + *
 + * ***** END LICENSE BLOCK ***** */
 +
-+#ifndef mozilla_jsipc_HandleParent_h__
-+#define mozilla_jsipc_HandleParent_h__
++#ifndef mozilla_jetpack_HandleParent_h
++#define mozilla_jetpack_HandleParent_h
 +
-+#include "mozilla/jsipc/PHandleParent.h"
-+#include "mozilla/jsipc/PHandleChild.h"
++#include "mozilla/jetpack/PHandleParent.h"
++#include "mozilla/jetpack/PHandleChild.h"
 +
 +#include "jsapi.h"
 +#include "jsobj.h"
 +#include "jscntxt.h"
 +
 +namespace mozilla {
-+namespace jsipc {
++namespace jetpack {
 +
++/**
++ * BaseType should be one of PHandleParent or PHandleChild; see the
++ * HandleParent and HandleChild typedefs at the bottom of this file.
++ */
 +template <class BaseType>
 +class Handle
-+    : public BaseType
++  : public BaseType
 +{
-+    Handle(Handle* parent)
-+        : mParent(parent)
-+        , mObj(NULL)
-+        , mRuntime(NULL)
-+    {}
++  Handle(Handle* parent)
++    : mParent(parent)
++    , mObj(NULL)
++    , mRuntime(NULL)
++  {}
 +
-+    BaseType* AllocPHandle() {
-+        return new Handle(this);
-+    }
++  BaseType* AllocPHandle() {
++    return new Handle(this);
++  }
 +
-+    bool DeallocPHandle(BaseType* actor) {
-+        delete actor;
-+        return true;
-+    }
++  bool DeallocPHandle(BaseType* actor) {
++    delete actor;
++    return true;
++  }
 +
 +public:
 +
-+    Handle()
-+        : mParent(NULL)
-+        , mObj(NULL)
-+        , mRuntime(NULL)
-+    {}
++  Handle()
++    : mParent(NULL)
++    , mObj(NULL)
++    , mRuntime(NULL)
++  {}
 +
-+    ~Handle() { TearDown(); }
++  ~Handle() { TearDown(); }
 +
-+    static Handle* FromJSObject(JSContext* cx, JSObject* obj) {
-+        // TODO Convert non-Handles to Handles somehow?
-+        return Unwrap(cx, obj);
++  static Handle* FromJSObject(JSContext* cx, JSObject* obj) {
++    // TODO Convert non-Handles to Handles somehow?
++    return Unwrap(cx, obj);
++  }
++
++  static Handle* FromJSVal(JSContext* cx, jsval val) {
++    if (!JSVAL_IS_OBJECT(val))
++      return NULL;
++    return Unwrap(cx, JSVAL_TO_OBJECT(val));
++  }
++
++  JSObject* ToJSObject(JSContext* cx) const {
++    if (!mObj && !mRuntime) {
++      JSAutoRequest request(cx);
++
++      JSClass* clasp = const_cast<JSClass*>(&sHandle_JSClass);
++      JSObject* obj = JS_NewObject(cx, clasp, NULL, NULL);
++      if (!obj)
++        return NULL;
++      js::AutoObjectRooter root(cx, obj);
++
++      JSPropertySpec* ps = const_cast<JSPropertySpec*>(sHandle_Properties);
++      JSFunctionSpec* fs = const_cast<JSFunctionSpec*>(sHandle_Functions);
++      JSRuntime* rt;
++
++      const char* name = IsParent(this)
++        ? "mozilla::jetpack::Handle<PHandleParent>::mObj"
++        : "mozilla::jetpack::Handle<PHandleChild>::mObj";
++
++      if (JS_SetPrivate(cx, obj, (void*)this) &&
++          JS_DefineProperties(cx, obj, ps) &&
++          JS_DefineFunctions(cx, obj, fs) &&
++          JS_AddNamedRootRT(rt = JS_GetRuntime(cx), (void*)&mObj, name))
++      {
++        mObj = obj;
++        mRuntime = rt;
++      }
 +    }
-+
-+    static Handle* FromJSVal(JSContext* cx, jsval val) {
-+        if (!JSVAL_IS_OBJECT(val))
-+            return NULL;
-+        return Unwrap(cx, JSVAL_TO_OBJECT(val));
-+    }
-+
-+    JSObject* ToJSObject(JSContext* cx) const {
-+        if (!mObj && !mRuntime) {
-+            JSAutoRequest request(cx);
-+
-+            JSClass* clasp = const_cast<JSClass*>(&sHandle_JSClass);
-+            JSObject* obj = JS_NewObject(cx, clasp, NULL, NULL);
-+            if (!obj)
-+                return NULL;
-+            js::AutoObjectRooter root(cx, obj);
-+
-+            JSPropertySpec* ps = const_cast<JSPropertySpec*>(sHandle_Properties);
-+            JSFunctionSpec* fs = const_cast<JSFunctionSpec*>(sHandle_Functions);
-+            JSRuntime* rt;
-+
-+            const char* name = IsParent(this)
-+                ? "mozilla::jsipc::Handle<PHandleParent>::mObj"
-+                : "mozilla::jsipc::Handle<PHandleChild>::mObj";
-+
-+            if (JS_SetPrivate(cx, obj, (void*)this) &&
-+                JS_DefineProperties(cx, obj, ps) &&
-+                JS_DefineFunctions(cx, obj, fs) &&
-+                JS_AddNamedRootRT(rt = JS_GetRuntime(cx), (void*)&mObj, name))
-+            {
-+                mObj = obj;
-+                mRuntime = rt;
-+            }
-+        }
-+        return mObj;
-+    }
++    return mObj;
++  }
 +
 +protected:
 +
-+    // XXX Why not simply ActorDestroyReason?
-+    void ActorDestroy(typename Handle::ActorDestroyReason why) {
-+        TearDown();
-+    }
++  void ActorDestroy(typename Handle::ActorDestroyReason why) {
++    TearDown();
++  }
 +
 +private:
 +
-+    static bool IsParent(const PHandleParent* handle) { return true; }
-+    static bool IsParent(const PHandleChild* handle) { return false; }
++  static bool IsParent(const PHandleParent* handle) { return true; }
++  static bool IsParent(const PHandleChild* handle) { return false; }
 +
-+    void TearDown() {
-+        if (mObj) {
-+            mObj->setPrivate(NULL);
-+            mObj = NULL;
-+            // Nulling out mObj effectively unroots the object, but we still
-+            // need to remove the root for good hygiene's sake.
-+            NS_ASSERTION(mRuntime, "Should have a JSRuntime if we had an object");
-+            JS_RemoveRootRT(mRuntime, (void*)&mObj);
-+            // By not nulling out mRuntime, we prevent ToJSObject from
-+            // reviving an invalidated/destroyed handle.
-+        }
++  void TearDown() {
++    if (mObj) {
++      mObj->setPrivate(NULL);
++      mObj = NULL;
++      // Nulling out mObj effectively unroots the object, but we still
++      // need to remove the root for good hygiene's sake.
++      NS_ASSERTION(mRuntime, "Should have a JSRuntime if we had an object");
++      JS_RemoveRootRT(mRuntime, (void*)&mObj);
++      // By not nulling out mRuntime, we prevent ToJSObject from
++      // reviving an invalidated/destroyed handle.
++    }
++  }
++
++  static const JSClass        sHandle_JSClass;
++  static const JSPropertySpec sHandle_Properties[];
++  static const JSFunctionSpec sHandle_Functions[];
++
++  Handle* const mParent;
++
++  // Used to cache the JSObject returned by ToJSObject, which is
++  // otherwise a const method.
++  mutable JSObject*  mObj;
++  mutable JSRuntime* mRuntime;
++
++  static Handle*
++  Unwrap(JSContext* cx, JSObject* obj) {
++    while (obj && obj->getClass() != &sHandle_JSClass)
++      obj = obj->getProto();
++
++    if (!obj)
++      return NULL;
++
++    Handle* self = static_cast<Handle*>(JS_GetPrivate(cx, obj));
++
++    NS_ASSERTION(!self || self->ToJSObject(cx) == obj,
++                 "Wrapper and wrapped object disagree?");
++
++    return self;
++  }
++
++  static JSBool
++  GetParent(JSContext* cx, JSObject* obj, jsval, jsval* vp) {
++    JS_SET_RVAL(cx, vp, JSVAL_NULL);
++
++    Handle* self = Unwrap(cx, obj);
++    if (!self)
++      return JS_TRUE;
++
++    Handle* parent = self->mParent;
++    if (!parent)
++      return JS_TRUE;
++
++    JSObject* pobj = parent->ToJSObject(cx);
++    JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(pobj));
++
++    return JS_TRUE;
++  }
++
++  static JSBool
++  GetIsValid(JSContext* cx, JSObject* obj, jsval, jsval* vp) {
++    Handle* self = Unwrap(cx, obj);
++    JS_SET_RVAL(cx, vp, BOOLEAN_TO_JSVAL(!!self));
++    return JS_TRUE;
++  }
++
++  static JSBool
++  Invalidate(JSContext* cx, uintN argc, jsval* vp) {
++    if (argc > 0) {
++      JS_ReportError(cx, "invalidate takes zero arguments");
++      return JS_FALSE;
 +    }
 +
-+    static const JSClass        sHandle_JSClass;
-+    static const JSPropertySpec sHandle_Properties[];
-+    static const JSFunctionSpec sHandle_Functions[];
-+
-+    Handle* const mParent;
-+
-+    // Used to cache the JSObject returned by ToJSObject, which is
-+    // otherwise a const method.
-+    mutable JSObject*  mObj;
-+    mutable JSRuntime* mRuntime;
-+
-+    static Handle*
-+    Unwrap(JSContext* cx, JSObject* obj) {
-+        if (!obj)
-+            return NULL;
-+
-+        while (obj->getClass() != &sHandle_JSClass)
-+            if (!(obj = obj->getProto()))
-+                return NULL;
-+
-+        Handle* self = static_cast<Handle*>(JS_GetPrivate(cx, obj));
-+
-+        NS_ASSERTION(!self || self->ToJSObject(cx) == obj,
-+                     "Wrapper and wrapped object disagree?");
-+
-+        return self;
++    Handle* self = Unwrap(cx, JS_THIS_OBJECT(cx, vp));
++    if (self) {
++      JS_SET_RVAL(cx, vp, BOOLEAN_TO_JSVAL(JS_TRUE));
++      if (!Send__delete__(self)) {
++        JS_ReportError(cx, "Failed to send __delete__ while invalidating");
++        return JS_FALSE;
++      }
++    } else {
++      JS_SET_RVAL(cx, vp, BOOLEAN_TO_JSVAL(JS_FALSE));
 +    }
 +
-+    static JSBool
-+    GetParent(JSContext* cx, JSObject* obj, jsval, jsval* vp) {
-+        JS_SET_RVAL(cx, vp, JSVAL_NULL);
++    return JS_TRUE;
++  }
 +
-+        Handle* self = Unwrap(cx, obj);
-+        if (!self)
-+            return JS_TRUE;
-+
-+        Handle* parent = self->mParent;
-+        if (!parent)
-+            return JS_TRUE;
-+
-+        JSObject* pobj = parent->ToJSObject(cx);
-+        JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(pobj));
-+
-+        return JS_TRUE;
++  static JSBool
++  CreateHandle(JSContext* cx, uintN argc, jsval* vp) {
++    if (argc > 0) {
++      JS_ReportError(cx, "createHandle takes zero arguments");
++      return JS_FALSE;
 +    }
 +
-+    static JSBool
-+    GetIsValid(JSContext* cx, JSObject* obj, jsval, jsval* vp) {
-+        Handle* self = Unwrap(cx, obj);
-+        JS_SET_RVAL(cx, vp, BOOLEAN_TO_JSVAL(!!self));
-+        return JS_TRUE;
++    Handle* self = Unwrap(cx, JS_THIS_OBJECT(cx, vp));
++    if (!self) {
++      JS_ReportError(cx, "Tried to create child from invalid handle");
++      return JS_FALSE;
 +    }
 +
-+    static JSBool
-+    Invalidate(JSContext* cx, uintN argc, jsval* vp) {
-+        if (argc > 0) {
-+            JS_ReportError(cx, "invalidate takes zero arguments");
-+            return JS_FALSE;
-+        }
-+
-+        Handle* self = Unwrap(cx, JS_THIS_OBJECT(cx, vp));
-+        if (self) {
-+            JS_SET_RVAL(cx, vp, BOOLEAN_TO_JSVAL(JS_TRUE));
-+            if (!Send__delete__(self)) {
-+                JS_ReportError(cx, "Failed to send __delete__ while invalidating");
-+                return JS_FALSE;
-+            }
-+        } else {
-+            JS_SET_RVAL(cx, vp, BOOLEAN_TO_JSVAL(JS_FALSE));
-+        }
-+
-+        return JS_TRUE;
++    BaseType* child = self->SendPHandleConstructor();
++    if (!child) {
++      JS_ReportError(cx, "Failed to construct child");
++      return JS_FALSE;
 +    }
 +
-+    static JSBool
-+    CreateHandle(JSContext* cx, uintN argc, jsval* vp) {
-+        if (argc > 0) {
-+            JS_ReportError(cx, "createHandle takes zero arguments");
-+            return JS_FALSE;
-+        }
++    JSObject* obj = static_cast<Handle*>(child)->ToJSObject(cx);
++    JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(obj));
 +
-+        Handle* self = Unwrap(cx, JS_THIS_OBJECT(cx, vp));
-+        if (!self) {
-+            JS_ReportError(cx, "Tried to create child from invalid handle");
-+            return JS_FALSE;
-+        }
++    return JS_TRUE;
++  }
 +
-+        BaseType* child = self->SendPHandleConstructor();
-+        if (!child) {
-+            JS_ReportError(cx, "Failed to construct child");
-+            return JS_FALSE;
-+        }
-+
-+        JSObject* obj = static_cast<Handle*>(child)->ToJSObject(cx);
-+        JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(obj));
-+
-+        return JS_TRUE;
-+    }
-+
-+    static void
-+    Finalize(JSContext* cx, JSObject* obj) {
-+        Handle* self = Unwrap(cx, obj);
-+        self && Send__delete__(self);
-+    }
++  static void
++  Finalize(JSContext* cx, JSObject* obj) {
++    Handle* self = Unwrap(cx, obj);
++    self && Send__delete__(self);
++  }
 +
 +};
 +
 +template <class BaseType>
 +const JSClass
 +Handle<BaseType>::sHandle_JSClass = {
-+    "IPDL Handle", JSCLASS_HAS_PRIVATE,
-+    JS_PropertyStub, JS_PropertyStub,
-+    JS_PropertyStub, JS_PropertyStub,
-+    JS_EnumerateStub, JS_ResolveStub,
-+    JS_ConvertStub, Handle::Finalize,
-+    JSCLASS_NO_OPTIONAL_MEMBERS
++  "IPDL Handle", JSCLASS_HAS_PRIVATE,
++  JS_PropertyStub, JS_PropertyStub,
++  JS_PropertyStub, JS_PropertyStub,
++  JS_EnumerateStub, JS_ResolveStub,
++  JS_ConvertStub, Handle::Finalize,
++  JSCLASS_NO_OPTIONAL_MEMBERS
 +};
 +
 +#define HANDLE_PROP_FLAGS (JSPROP_READONLY | JSPROP_PERMANENT)
@@ -297,9 +278,9 @@ new file mode 100644
 +template <class BaseType>
 +const JSPropertySpec
 +Handle<BaseType>::sHandle_Properties[] = {
-+    { "parent",  0, HANDLE_PROP_FLAGS, GetParent,  NULL },
-+    { "isValid", 0, HANDLE_PROP_FLAGS, GetIsValid, NULL },
-+    { 0, 0, 0, NULL, NULL }
++  { "parent",  0, HANDLE_PROP_FLAGS, GetParent,  NULL },
++  { "isValid", 0, HANDLE_PROP_FLAGS, GetIsValid, NULL },
++  { 0, 0, 0, NULL, NULL }
 +};
 +
 +#undef HANDLE_PROP_FLAGS
@@ -311,9 +292,9 @@ new file mode 100644
 +template <class BaseType>
 +const JSFunctionSpec
 +Handle<BaseType>::sHandle_Functions[] = {
-+    JS_FN("invalidate",   Invalidate,   0, HANDLE_FUN_FLAGS),
-+    JS_FN("createHandle", CreateHandle, 0, HANDLE_FUN_FLAGS),
-+    JS_FS_END
++  JS_FN("invalidate",   Invalidate,   0, HANDLE_FUN_FLAGS),
++  JS_FN("createHandle", CreateHandle, 0, HANDLE_FUN_FLAGS),
++  JS_FS_END
 +};
 +
 +#undef HANDLE_FUN_FLAGS
@@ -323,188 +304,15 @@ new file mode 100644
 +typedef Handle<PHandleParent> HandleParent;
 +typedef Handle<PHandleChild> HandleChild;
 +
-+}}
++} // namespace jetpack
++} // namespace mozilla
 +
 +#endif
-diff --git a/js/ipc/Makefile.in b/js/ipc/Makefile.in
-new file mode 100644
---- /dev/null
-+++ b/js/ipc/Makefile.in
-@@ -0,0 +1,64 @@
-+# ***** BEGIN LICENSE BLOCK *****
-+# Version: MPL 1.1/GPL 2.0/LGPL 2.1
-+#
-+# The contents of this file are subject to the Mozilla Public License Version
-+# 1.1 (the "License"); you may not use this file except in compliance with
-+# the License. You may obtain a copy of the License at
-+# http://www.mozilla.org/MPL/
-+#
-+# Software distributed under the License is distributed on an "AS IS" basis,
-+# WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
-+# for the specific language governing rights and limitations under the
-+# License.
-+#
-+# The Original Code is mozilla.org code.
-+#
-+# The Initial Developer of the Original Code is
-+# The Mozilla Foundation.
-+# Portions created by the Initial Developer are Copyright (C) 2010
-+# the Initial Developer. All Rights Reserved.
-+#
-+# Contributor(s):
-+#   Ben Newman <b{enjam,newma}n@mozilla.com> (original author)
-+#
-+# Alternatively, the contents of this file may be used under the terms of
-+# either of the GNU General Public License Version 2 or later (the "GPL"),
-+# or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
-+# in which case the provisions of the GPL or the LGPL are applicable instead
-+# of those above. If you wish to allow use of your version of this file only
-+# under the terms of either the GPL or the LGPL, and not to allow others to
-+# use your version of this file under the terms of the MPL, indicate your
-+# decision by deleting the provisions above and replace them with the notice
-+# and other provisions required by the GPL or the LGPL. If you do not delete
-+# the provisions above, a recipient may use your version of this file under
-+# the terms of any one of the MPL, the GPL or the LGPL.
-+#
-+# ***** END LICENSE BLOCK *****
-+
-+DEPTH     = ../..
-+topsrcdir = @top_srcdir@
-+srcdir    = @srcdir@
-+VPATH     = @srcdir@
-+
-+include $(DEPTH)/config/autoconf.mk
-+
-+MODULE = js
-+LIBRARY_NAME = jsipc_s
-+LIBXUL_LIBRARY = 1
-+FORCE_STATIC_LIB = 1
-+EXPORT_LIBRARY = 1
-+
-+EXPORTS_NAMESPACES = mozilla/jsipc
-+
-+EXPORTS_mozilla/jsipc = \
-+  Handle.h \
-+  $(NULL)
-+
-+CPPSRCS = \
-+  $(NULL)
-+
-+include $(topsrcdir)/config/config.mk
-+include $(topsrcdir)/ipc/chromium/chromium-config.mk
-+include $(topsrcdir)/config/rules.mk
-+
-+DEFINES += -DBIN_SUFFIX='"$(BIN_SUFFIX)"'
-diff --git a/js/ipc/PHandle.ipdl b/js/ipc/PHandle.ipdl
-new file mode 100644
---- /dev/null
-+++ b/js/ipc/PHandle.ipdl
-@@ -0,0 +1,55 @@
-+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
-+ * vim: set ts=8 sw=4 et tw=80:
-+ *
-+ * ***** BEGIN LICENSE BLOCK *****
-+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
-+ *
-+ * The contents of this file are subject to the Mozilla Public License Version
-+ * 1.1 (the "License"); you may not use this file except in compliance with
-+ * the License. You may obtain a copy of the License at
-+ * http://www.mozilla.org/MPL/
-+ *
-+ * Software distributed under the License is distributed on an "AS IS" basis,
-+ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
-+ * for the specific language governing rights and limitations under the
-+ * License.
-+ *
-+ * The Original Code is mozilla.org code.
-+ *
-+ * The Initial Developer of the Original Code is
-+ * The Mozilla Foundation.
-+ * Portions created by the Initial Developer are Copyright (C) 2010
-+ * the Initial Developer. All Rights Reserved.
-+ *
-+ * Contributor(s):
-+ *   Ben Newman <b{enjam,newma}n@mozilla.com> (original author)
-+ *
-+ * Alternatively, the contents of this file may be used under the terms of
-+ * either of the GNU General Public License Version 2 or later (the "GPL"),
-+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
-+ * in which case the provisions of the GPL or the LGPL are applicable instead
-+ * of those above. If you wish to allow use of your version of this file only
-+ * under the terms of either the GPL or the LGPL, and not to allow others to
-+ * use your version of this file under the terms of the MPL, indicate your
-+ * decision by deleting the provisions above and replace them with the notice
-+ * and other provisions required by the GPL or the LGPL. If you do not delete
-+ * the provisions above, a recipient may use your version of this file under
-+ * the terms of any one of the MPL, the GPL or the LGPL.
-+ *
-+ * ***** END LICENSE BLOCK ***** */
-+
-+include protocol PJetpack;
-+
-+namespace mozilla {
-+namespace jsipc {
-+
-+async protocol PHandle
-+{
-+    manager PJetpack or PHandle;
-+    manages PHandle;
-+both:
-+    PHandle();
-+    __delete__();
-+};
-+
-+}}
-diff --git a/js/ipc/ipdl.mk b/js/ipc/ipdl.mk
-new file mode 100644
---- /dev/null
-+++ b/js/ipc/ipdl.mk
-@@ -0,0 +1,40 @@
-+# ***** BEGIN LICENSE BLOCK *****
-+# Version: MPL 1.1/GPL 2.0/LGPL 2.1
-+#
-+# The contents of this file are subject to the Mozilla Public License Version
-+# 1.1 (the "License"); you may not use this file except in compliance with
-+# the License. You may obtain a copy of the License at
-+# http://www.mozilla.org/MPL/
-+#
-+# Software distributed under the License is distributed on an "AS IS" basis,
-+# WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
-+# for the specific language governing rights and limitations under the
-+# License.
-+#
-+# The Original Code is mozilla.org code.
-+#
-+# The Initial Developer of the Original Code is
-+# The Mozilla Foundation.
-+# Portions created by the Initial Developer are Copyright (C) 2010
-+# the Initial Developer. All Rights Reserved.
-+#
-+# Contributor(s):
-+#   Ben Newman <b{enjam,newma}n@mozilla.com> (original author)
-+#
-+# Alternatively, the contents of this file may be used under the terms of
-+# either of the GNU General Public License Version 2 or later (the "GPL"),
-+# or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
-+# in which case the provisions of the GPL or the LGPL are applicable instead
-+# of those above. If you wish to allow use of your version of this file only
-+# under the terms of either the GPL or the LGPL, and not to allow others to
-+# use your version of this file under the terms of the MPL, indicate your
-+# decision by deleting the provisions above and replace them with the notice
-+# and other provisions required by the GPL or the LGPL. If you do not delete
-+# the provisions above, a recipient may use your version of this file under
-+# the terms of any one of the MPL, the GPL or the LGPL.
-+#
-+# ***** END LICENSE BLOCK *****
-+
-+IPDLSRCS = \
-+  PHandle.ipdl \
-+  $(NULL)
 diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.cpp
 new file mode 100644
 --- /dev/null
 +++ b/js/jetpack/JetpackActorCommon.cpp
-@@ -0,0 +1,485 @@
+@@ -0,0 +1,487 @@
 +/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -548,19 +356,19 @@ new file mode 100644
 +
 +#include "mozilla/jetpack/JetpackActorCommon.h"
 +#include "mozilla/jetpack/PJetpack.h"
-+#include "mozilla/jsipc/PHandleParent.h"
-+#include "mozilla/jsipc/PHandleChild.h"
-+#include "mozilla/jsipc/Handle.h"
++#include "mozilla/jetpack/PHandleParent.h"
++#include "mozilla/jetpack/PHandleChild.h"
++#include "mozilla/jetpack/Handle.h"
 +
 +#include "jsapi.h"
 +#include "jstl.h"
 +#include "jshashtable.h"
 +
 +using mozilla::jetpack::JetpackActorCommon;
-+using mozilla::jsipc::PHandleParent;
-+using mozilla::jsipc::HandleParent;
-+using mozilla::jsipc::PHandleChild;
-+using mozilla::jsipc::HandleChild;
++using mozilla::jetpack::PHandleParent;
++using mozilla::jetpack::HandleParent;
++using mozilla::jetpack::PHandleChild;
++using mozilla::jetpack::HandleChild;
 +
 +class JetpackActorCommon::OpaqueSeenType
 +{
@@ -769,6 +577,8 @@ new file mode 100644
 +
 +  case PrimVariant::TnsString: {
 +    const nsString& str = from.get_nsString();
++    // TODO Use some sort of sharedstring/stringbuffer abstraction to
++    // exploit sharing opportunities more generally.
 +    if (!str.Length()) {
 +      *to = JS_GetEmptyStringValue(cx);
 +      return true;
@@ -994,7 +804,7 @@ diff --git a/js/jetpack/JetpackActorCommon.h b/js/jetpack/JetpackActorCommon.h
 new file mode 100644
 --- /dev/null
 +++ b/js/jetpack/JetpackActorCommon.h
-@@ -0,0 +1,120 @@
+@@ -0,0 +1,121 @@
 +/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -1112,13 +922,14 @@ new file mode 100644
 +
 +};
 +
-+}}
++} // namespace jetpack
++} // namespace mozilla
 +
 +#endif
 diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
 --- a/js/jetpack/JetpackChild.cpp
 +++ b/js/jetpack/JetpackChild.cpp
-@@ -30,54 +30,398 @@
+@@ -30,54 +30,395 @@
   * use your version of this file under the terms of the MPL, indicate your
   * decision by deleting the provisions above and replace them with the notice
   * and other provisions required by the GPL or the LGPL. If you do not delete
@@ -1131,13 +942,10 @@ diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
 +#include "jscntxt.h"
 +
  #include "mozilla/jetpack/JetpackChild.h"
-+#include "mozilla/jsipc/Handle.h"
++#include "mozilla/jetpack/Handle.h"
  
 -#include <stdio.h>
 +#include "jsarray.h"
-+
-+using mozilla::jsipc::PHandleChild;
-+using mozilla::jsipc::HandleChild;
  
  namespace mozilla {
  namespace jetpack {
@@ -1528,7 +1336,7 @@ diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
 diff --git a/js/jetpack/JetpackChild.h b/js/jetpack/JetpackChild.h
 --- a/js/jetpack/JetpackChild.h
 +++ b/js/jetpack/JetpackChild.h
-@@ -34,39 +34,73 @@
+@@ -34,39 +34,70 @@
   * the terms of any one of the MPL, the GPL or the LGPL.
   *
   * ***** END LICENSE BLOCK ***** */
@@ -1542,14 +1350,11 @@ diff --git a/js/jetpack/JetpackChild.h b/js/jetpack/JetpackChild.h
 +#include "nsTArray.h"
  
  namespace mozilla {
-+
-+namespace jsipc {
-+class PHandleChild;
-+}
-+
  namespace jetpack {
  
 -class JetpackChild : public PJetpackChild
++class PHandleChild;
++
 +class JetpackChild
 +  : public PJetpackChild
 +  , private JetpackActorCommon
@@ -1608,7 +1413,7 @@ diff --git a/js/jetpack/JetpackChild.h b/js/jetpack/JetpackChild.h
 diff --git a/js/jetpack/JetpackParent.cpp b/js/jetpack/JetpackParent.cpp
 --- a/js/jetpack/JetpackParent.cpp
 +++ b/js/jetpack/JetpackParent.cpp
-@@ -31,40 +31,203 @@
+@@ -31,40 +31,200 @@
   * decision by deleting the provisions above and replace them with the notice
   * and other provisions required by the GPL or the LGPL. If you do not delete
   * the provisions above, a recipient may use your version of this file under
@@ -1617,15 +1422,12 @@ diff --git a/js/jetpack/JetpackParent.cpp b/js/jetpack/JetpackParent.cpp
   * ***** END LICENSE BLOCK ***** */
  
  #include "mozilla/jetpack/JetpackParent.h"
-+#include "mozilla/jsipc/Handle.h"
++#include "mozilla/jetpack/Handle.h"
 +
 +#include "nsIURI.h"
 +#include "nsNetUtil.h"
 +#include "nsIVariant.h"
 +#include "nsIXPConnect.h"
-+
-+using mozilla::jsipc::PHandleParent;
-+using mozilla::jsipc::HandleParent;
  
  namespace mozilla {
  namespace jetpack {
@@ -1819,7 +1621,25 @@ diff --git a/js/jetpack/JetpackParent.cpp b/js/jetpack/JetpackParent.cpp
 diff --git a/js/jetpack/JetpackParent.h b/js/jetpack/JetpackParent.h
 --- a/js/jetpack/JetpackParent.h
 +++ b/js/jetpack/JetpackParent.h
-@@ -35,34 +35,56 @@
+@@ -15,16 +15,17 @@
+  * The Original Code is Mozilla Firefox.
+  *
+  * The Initial Developer of the Original Code is
+  * the Mozilla Foundation <http://www.mozilla.org>.
+  * Portions created by the Initial Developer are Copyright (C) 2010
+  * the Initial Developer. All Rights Reserved.
+  *
+  * Contributor(s):
++ *   Ben Newman <b{enjam,newma}n@mozilla.com>
+  *
+  * Alternatively, the contents of this file may be used under the terms of
+  * either the GNU General Public License Version 2 or later (the "GPL"), or
+  * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+  * in which case the provisions of the GPL or the LGPL are applicable instead
+  * of those above. If you wish to allow use of your version of this file only
+  * under the terms of either the GPL or the LGPL, and not to allow others to
+  * use your version of this file under the terms of the MPL, indicate your
+@@ -35,34 +36,53 @@
   *
   * ***** END LICENSE BLOCK ***** */
  
@@ -1836,13 +1656,10 @@ diff --git a/js/jetpack/JetpackParent.h b/js/jetpack/JetpackParent.h
 +struct JSContext;
 +
  namespace mozilla {
-+
-+namespace jsipc {
-+class PHandleParent;
-+}
-+
  namespace jetpack {
  
++class PHandleParent;
++
  class JetpackParent
    : public PJetpackParent
    , public nsIJetpack
@@ -1918,7 +1735,7 @@ diff --git a/js/jetpack/JetpackService.cpp b/js/jetpack/JetpackService.cpp
 diff --git a/js/jetpack/Makefile.in b/js/jetpack/Makefile.in
 --- a/js/jetpack/Makefile.in
 +++ b/js/jetpack/Makefile.in
-@@ -56,21 +56,27 @@ XPIDLSRCS = \
+@@ -56,21 +56,28 @@ XPIDLSRCS = \
  
  EXPORTS_NAMESPACES = mozilla/jetpack
  EXPORTS_mozilla/jetpack = \
@@ -1928,6 +1745,7 @@ diff --git a/js/jetpack/Makefile.in b/js/jetpack/Makefile.in
    JetpackChild.h \
    JetpackService.h \
 +  JetpackActorCommon.h \
++  Handle.h \
    $(NULL)
  
  CPPSRCS = \
@@ -1946,10 +1764,71 @@ diff --git a/js/jetpack/Makefile.in b/js/jetpack/Makefile.in
  include $(topsrcdir)/config/config.mk
  include $(topsrcdir)/ipc/chromium/chromium-config.mk
  include $(topsrcdir)/config/rules.mk
+diff --git a/js/jetpack/PHandle.ipdl b/js/jetpack/PHandle.ipdl
+new file mode 100644
+--- /dev/null
++++ b/js/jetpack/PHandle.ipdl
+@@ -0,0 +1,56 @@
++/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
++ * vim: set ts=8 sw=4 et tw=80:
++ *
++ * ***** BEGIN LICENSE BLOCK *****
++ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
++ *
++ * The contents of this file are subject to the Mozilla Public License Version
++ * 1.1 (the "License"); you may not use this file except in compliance with
++ * the License. You may obtain a copy of the License at
++ * http://www.mozilla.org/MPL/
++ *
++ * Software distributed under the License is distributed on an "AS IS" basis,
++ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
++ * for the specific language governing rights and limitations under the
++ * License.
++ *
++ * The Original Code is mozilla.org code.
++ *
++ * The Initial Developer of the Original Code is
++ * The Mozilla Foundation.
++ * Portions created by the Initial Developer are Copyright (C) 2010
++ * the Initial Developer. All Rights Reserved.
++ *
++ * Contributor(s):
++ *   Ben Newman <b{enjam,newma}n@mozilla.com> (original author)
++ *
++ * Alternatively, the contents of this file may be used under the terms of
++ * either of the GNU General Public License Version 2 or later (the "GPL"),
++ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
++ * in which case the provisions of the GPL or the LGPL are applicable instead
++ * of those above. If you wish to allow use of your version of this file only
++ * under the terms of either the GPL or the LGPL, and not to allow others to
++ * use your version of this file under the terms of the MPL, indicate your
++ * decision by deleting the provisions above and replace them with the notice
++ * and other provisions required by the GPL or the LGPL. If you do not delete
++ * the provisions above, a recipient may use your version of this file under
++ * the terms of any one of the MPL, the GPL or the LGPL.
++ *
++ * ***** END LICENSE BLOCK ***** */
++
++include protocol PJetpack;
++
++namespace mozilla {
++namespace jetpack {
++
++async protocol PHandle
++{
++  manager PJetpack or PHandle;
++  manages PHandle;
++both:
++  PHandle();
++  __delete__();
++};
++
++} // namespace jetpack
++} // namespace mozilla
 diff --git a/js/jetpack/PJetpack.ipdl b/js/jetpack/PJetpack.ipdl
 --- a/js/jetpack/PJetpack.ipdl
 +++ b/js/jetpack/PJetpack.ipdl
-@@ -30,19 +30,62 @@
+@@ -30,19 +30,63 @@
   * use your version of this file under the terms of the MPL, indicate your
   * decision by deleting the provisions above and replace them with the notice
   * and other provisions required by the GPL or the LGPL. If you do not delete
@@ -2017,15 +1896,16 @@ diff --git a/js/jetpack/PJetpack.ipdl b/js/jetpack/PJetpack.ipdl
 +
 +};
 +
-+}}
-diff --git a/js/jetpack/jar.mn b/js/jetpack/jar.mn
-new file mode 100644
---- /dev/null
-+++ b/js/jetpack/jar.mn
-@@ -0,0 +1,3 @@
-+toolkit.jar:
-+        content/global/jetpack/test-impl.js (tests/unit/impl.js)
-+        content/global/jetpack/test-user.js (tests/unit/user.js)
++} // namespace jetpack
++} // namespace mozilla
+diff --git a/js/jetpack/ipdl.mk b/js/jetpack/ipdl.mk
+--- a/js/jetpack/ipdl.mk
++++ b/js/jetpack/ipdl.mk
+@@ -1,3 +1,4 @@
+ IPDLSRCS = \
+   PJetpack.ipdl \
++  PHandle.ipdl \
+   $(NULL)
 diff --git a/js/jetpack/nsIJetpack.idl b/js/jetpack/nsIJetpack.idl
 --- a/js/jetpack/nsIJetpack.idl
 +++ b/js/jetpack/nsIJetpack.idl
@@ -2265,7 +2145,7 @@ diff --git a/js/jetpack/tests/unit/test_jetpack.js b/js/jetpack/tests/unit/test_
 new file mode 100644
 --- /dev/null
 +++ b/js/jetpack/tests/unit/test_jetpack.js
-@@ -0,0 +1,157 @@
+@@ -0,0 +1,154 @@
 +var jps = jps || Components.classes["@mozilla.org/jetpack/service;1"]
 +  .getService(Components.interfaces.nsIJetpackService),
 +  jetpack = jps.createJetpack();
@@ -2278,10 +2158,7 @@ new file mode 100644
 +function run_test() {
 +  run_handle_tests();
 +
-+  jetpack.loadImplementation(
-+    "chrome://global/content/jetpack/test-impl.js");
-+  jetpack.loadUserScript(
-+    "chrome://global/content/jetpack/test-user.js");
++  jetpack.loadImplementation("file://" + do_get_file("impl.js").path);
 +
 +  var circ1 = {},
 +      circ2 = {},
@@ -2423,91 +2300,3 @@ new file mode 100644
 +  jetpack.sendMessage("test primitive types",
 +                      undefined, null, true, false, 1, 2, 999, 1/4, "oyez");
 +}
-diff --git a/js/jetpack/tests/unit/user.js b/js/jetpack/tests/unit/user.js
-new file mode 100644
---- /dev/null
-+++ b/js/jetpack/tests/unit/user.js
-@@ -0,0 +1,1 @@
-+"Jetpack User Context";
-diff --git a/toolkit/toolkit-makefiles.sh b/toolkit/toolkit-makefiles.sh
---- a/toolkit/toolkit-makefiles.sh
-+++ b/toolkit/toolkit-makefiles.sh
-@@ -81,16 +81,17 @@ MAKEFILES_dom="
-   dom/src/geolocation/Makefile
-   dom/src/json/Makefile
-   dom/src/offline/Makefile
-   dom/src/storage/Makefile
-   dom/src/threads/Makefile
-   dom/locales/Makefile
-   dom/plugins/Makefile
-   js/jetpack/Makefile
-+  js/ipc/Makefile
- "
- 
- MAKEFILES_editor="
-   editor/Makefile
-   editor/public/Makefile
-   editor/idl/Makefile
-   editor/txmgr/Makefile
-   editor/txmgr/idl/Makefile
-@@ -202,16 +203,20 @@ MAKEFILES_xpconnect="
-   js/src/xpconnect/shell/Makefile
-   js/src/xpconnect/src/Makefile
-   js/src/xpconnect/loader/Makefile
-   js/src/xpconnect/tests/Makefile
-   js/src/xpconnect/tests/components/Makefile
-   js/src/xpconnect/tests/idl/Makefile
- "
- 
-+MAKEFILES_jetpack="
-+  js/jetpack/Makefile
-+"
-+
- MAKEFILES_jsdebugger="
-   js/jsd/Makefile
-   js/jsd/idl/Makefile
- "
- 
- MAKEFILES_content="
-   content/Makefile
-   content/base/Makefile
-@@ -802,16 +807,17 @@ add_makefiles "
-   $MAKEFILES_db
-   $MAKEFILES_dom
-   $MAKEFILES_editor
-   $MAKEFILES_xmlparser
-   $MAKEFILES_gfx
-   $MAKEFILES_htmlparser
-   $MAKEFILES_intl
-   $MAKEFILES_xpconnect
-+  $MAKEFILES_jetpack
-   $MAKEFILES_jsdebugger
-   $MAKEFILES_jsctypes
-   $MAKEFILES_content
-   $MAKEFILES_layout
-   $MAKEFILES_libimg
-   $MAKEFILES_libjar
-   $MAKEFILES_libreg
-   $MAKEFILES_libpref
-diff --git a/toolkit/toolkit-tiers.mk b/toolkit/toolkit-tiers.mk
---- a/toolkit/toolkit-tiers.mk
-+++ b/toolkit/toolkit-tiers.mk
-@@ -99,17 +99,17 @@ ifeq ($(OS_ARCH),WINCE)
- tier_platform_dirs += modules/lib7z
- endif
- 
- #
- # "gecko" - core components
- #
- 
- ifdef MOZ_IPC
--tier_platform_dirs += ipc js/jetpack
-+tier_platform_dirs += ipc js/jetpack js/ipc
- endif
- 
- tier_platform_dirs += \
- 		js/src/xpconnect \
- 		intl/chardet \
- 		$(NULL)
- 
- ifdef MOZ_ENABLE_GTK2
