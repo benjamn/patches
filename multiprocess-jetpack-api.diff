@@ -1022,7 +1022,7 @@ diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
 +    JSAutoRequest request(mImplCx);
 +    JS_SetContextPrivate(mImplCx, this);
 +    JSObject* implGlobal =
-+      JS_NewObject(mImplCx, const_cast<JSClass*>(&sGlobalClass), NULL, NULL);
++      JS_NewGlobalObject(mImplCx, const_cast<JSClass*>(&sGlobalClass));
 +    if (!implGlobal ||
 +        !JS_InitStandardClasses(mImplCx, implGlobal) ||
 +        !JS_DefineProperties(mImplCx, implGlobal,
@@ -1036,7 +1036,7 @@ diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
 +    JSAutoRequest request(mUserCx);
 +    JS_SetContextPrivate(mUserCx, this);
 +    JSObject* userGlobal =
-+      JS_NewObject(mUserCx, const_cast<JSClass*>(&sGlobalClass), NULL, NULL);
++      JS_NewGlobalObject(mUserCx, const_cast<JSClass*>(&sGlobalClass));
 +    if (!userGlobal ||
 +        !JS_InitStandardClasses(mUserCx, userGlobal))
 +      return false;
