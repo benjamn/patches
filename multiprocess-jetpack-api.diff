@@ -312,7 +312,7 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
 new file mode 100644
 --- /dev/null
 +++ b/js/jetpack/JetpackActorCommon.cpp
-@@ -0,0 +1,492 @@
+@@ -0,0 +1,512 @@
 +/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -387,11 +387,16 @@ new file mode 100644
 +
 +  bool ok() { return map.initialized(); }
 +
-+  bool add(KeyType obj, IdType* id = NULL) {
++  static const IdType kInvalidId = 0;
++  bool add(KeyType obj, IdType* id) {
 +    MapType::AddPtr ap = map.lookupForAdd(obj);
-+    if (!ap)
-+      return (rmap.AppendElement(obj) &&
-+              map.add(ap, obj, rmap.Length() - 1));
++    if (!ap) {
++      *id = rmap.Length();
++      if (!rmap.AppendElement(obj) ||
++          !map.add(ap, obj, rmap.Length() - 1))
++        *id = kInvalidId;
++      return true;
++    }
 +    if (id)
 +      *id = ap->value;
 +    return false;
@@ -460,7 +465,7 @@ new file mode 100644
 +    return true;
 +
 +  case JSTYPE_XML:
-+    // fall through
++    return false;
 +
 +  default:
 +    return false;
@@ -485,6 +490,8 @@ new file mode 100644
 +  OpaqueSeenType::KeyType obj = JSVAL_TO_OBJECT(from);
 +  OpaqueSeenType::IdType id;
 +  if (!seen->add(obj, &id)) {
++    if (OpaqueSeenType::kInvalidId == id)
++      return false;
 +    *to = CompVariant(id);
 +    return true;
 +  }
@@ -492,7 +499,8 @@ new file mode 100644
 +  if (JS_IsArrayObject(cx, obj)) {
 +    nsTArray<Variant> elems;
 +    jsuint len;
-+    if (!JS_GetArrayLength(cx, obj, &len))
++    if (!JS_GetArrayLength(cx, obj, &len) ||
++        !elems.SetCapacity(len))
 +      return false;
 +    for (jsuint i = 0; i < len; ++i) {
 +      jsval val;
@@ -522,8 +530,9 @@ new file mode 100644
 +    KeyValue kv;
 +    // Silently drop properties that can't be converted.
 +    if (jsval_to_Variant(cx, val, &kv.value(), seen)) {
-+      kv.key() = nsString((PRUnichar*)JS_GetStringChars(idStr),
-+                          JS_GetStringLength(idStr));
++      kv.key() = nsDependentString((PRUnichar*)JS_GetStringChars(idStr),
++                                   JS_GetStringLength(idStr));
++      // If AppendElement fails, we lose this property, no big deal.
 +      kvs.AppendElement(kv);
 +    }
 +  }
@@ -641,7 +650,8 @@ new file mode 100644
 +      return false;
 +    js::AutoObjectRooter root(cx, obj);
 +
-+    if (!seen->add(obj))
++    OpaqueSeenType::IdType ignored;
++    if (!seen->add(obj, &ignored))
 +      return false;
 +
 +    const nsTArray<KeyValue>& kvs = from.get_ArrayOfKeyValue();
@@ -650,7 +660,7 @@ new file mode 100644
 +      jsval val;
 +      if (!jsval_from_Variant(cx, kv.value(), &val, seen) ||
 +          !JS_SetUCProperty(cx, obj,
-+                            kv.key().BeginReading(),
++                            kv.key().get(),
 +                            kv.key().Length(),
 +                            &val))
 +        return false;
@@ -661,19 +671,22 @@ new file mode 100644
 +
 +  case CompVariant::TArrayOfVariant: {
 +    const nsTArray<Variant>& vs = from.get_ArrayOfVariant();
-+    jsval* elems;
-+
-+    obj = js_NewArrayObjectWithCapacity(cx, vs.Length(), &elems);
-+    if (!obj || !elems)
++    nsAutoTArray<jsval, 8> jsvals;
++    jsval* elems = jsvals.AppendElements(vs.Length());
++    if (!elems)
 +      return false;
-+    js::AutoObjectRooter root(cx, obj);
++    js::AutoArrayRooter root(cx, vs.Length(), elems);
 +
-+    if (!seen->add(obj))
++    OpaqueSeenType::IdType ignored;
++    if (!seen->add(obj, &ignored))
 +      return false;
 +
 +    for (PRUint32 i = 0; i < vs.Length(); ++i)
 +      if (!jsval_from_Variant(cx, vs.ElementAt(i), elems + i, seen))
 +        return false;
++
++    if (!(obj = JS_NewArrayObject(cx, vs.Length(), elems)))
++      return false;
 +
 +    break;
 +  }
@@ -720,7 +733,6 @@ new file mode 100644
 +    return true;
 +  js::AutoArrayRooter
 +    snapshotRooter(cx, snapshot.Length(), snapshot.Elements());
-+  JSAutoRequest request(cx);
 +
 +  nsAutoTArray<jsval, 4> args;
 +  PRUint32 argc = data.Length() + 1;
@@ -744,19 +756,18 @@ new file mode 100644
 +      return false;
 +
 +  JSObject* implGlobal = JS_GetGlobalObject(cx);
++  js::AutoValueRooter rval(cx, JSVAL_VOID);
++
 +  for (PRUint32 i = 0; i < snapshot.Length(); ++i) {
-+    jsval rval;
 +    if (!JS_CallFunctionValue(cx, implGlobal, snapshot.ElementAt(i), argc, argv,
-+                              &rval))
++                              rval.addr()))
 +      break;
 +
 +    if (!results)
 +      continue;
 +
-+    js::AutoValueRooter root(cx, rval);
-+
 +    Variant* vp = results->AppendElement();
-+    if (!jsval_to_Variant(cx, rval, vp))
++    if (!jsval_to_Variant(cx, rval.value(), vp))
 +      *vp = void_t();
 +  }
 +
@@ -768,14 +779,23 @@ new file mode 100644
 +                                     const nsString& messageName,
 +                                     jsval receiver)
 +{
++  if (!JSVAL_IS_OBJECT(receiver) ||
++      !JS_ObjectIsFunction(cx, JSVAL_TO_OBJECT(receiver)))
++    return NS_ERROR_INVALID_ARG;
++
 +  nsTArray<nsAutoJSValHolder>* vals;
-+  while (!mReceivers.Get(messageName, &vals))
-+    mReceivers.Put(messageName, new nsTArray<nsAutoJSValHolder>(1));
-+  NS_ENSURE_TRUE(vals, NS_ERROR_OUT_OF_MEMORY);
++  if (!mReceivers.Get(messageName, &vals)) {
++    vals = new nsTArray<nsAutoJSValHolder>(1);
++    if (!mReceivers.Put(messageName, vals)) {
++      delete vals;
++      return NS_ERROR_OUT_OF_MEMORY;
++    }
++  }
 +
 +  if (!vals->Contains(receiver)) {
 +    nsAutoJSValHolder* holder = vals->AppendElement();
-+    holder->Hold(cx);
++    if (!holder || !holder->Hold(cx))
++      return NS_ERROR_OUT_OF_MEMORY;
 +    *holder = receiver;
 +  }
 +
@@ -809,7 +829,7 @@ diff --git a/js/jetpack/JetpackActorCommon.h b/js/jetpack/JetpackActorCommon.h
 new file mode 100644
 --- /dev/null
 +++ b/js/jetpack/JetpackActorCommon.h
-@@ -0,0 +1,121 @@
+@@ -0,0 +1,123 @@
 +/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -905,6 +925,8 @@ new file mode 100644
 +
 +  JetpackActorCommon() {
 +    mReceivers.Init();
++    NS_ASSERTION(mReceivers.IsInitialized(),
++                 "Failed to initialize message receiver hash set");
 +  }
 +
 +private:
@@ -934,7 +956,7 @@ new file mode 100644
 diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
 --- a/js/jetpack/JetpackChild.cpp
 +++ b/js/jetpack/JetpackChild.cpp
-@@ -30,54 +30,395 @@
+@@ -30,54 +30,385 @@
   * use your version of this file under the terms of the MPL, indicate your
   * decision by deleting the provisions above and replace them with the notice
   * and other provisions required by the GPL or the LGPL. If you do not delete
@@ -1060,6 +1082,7 @@ diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
 +                              const nsTArray<Variant>& data)
  {
 -  printf("Received LoadImplementation message: '%s'\n", script.get());
++  JSAutoRequest request(mImplCx);
 +  return JetpackActorCommon::RecvMessage(mImplCx, messageName, data, NULL);
 +}
 +
@@ -1067,9 +1090,9 @@ diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
 +Evaluate(JSContext* cx, const nsCString& code)
 +{
 +  JSAutoRequest request(cx);
-+  jsval v;
++  jsval ignored = JSVAL_VOID;
 +  JS_EvaluateScript(cx, JS_GetGlobalObject(cx), code.get(),
-+                    code.Length(), EmptyCString().get(), 1, &v);
++                    code.Length(), "", 1, &ignored);
    return true;
  }
  
@@ -1119,8 +1142,7 @@ diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
 +}
 +
 +struct MessageResult {
-+  PRUnichar* msgNameChars;
-+  size_t msgNameLength;
++  nsString msgName;
 +  nsTArray<Variant> data;
 +};
 +
@@ -1137,12 +1159,13 @@ diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
 +
 +  JSString* msgNameStr = JS_ValueToString(cx, argv[0]);
 +  if (!msgNameStr) {
-+    JS_ReportOutOfMemory(cx);
++    JS_ReportError(cx, "Could not convert value to string");
 +    return JS_FALSE;
 +  }
 +
-+  result->msgNameChars = (PRUnichar*)JS_GetStringChars(msgNameStr);
-+  result->msgNameLength = JS_GetStringLength(msgNameStr);
++  result->msgName =
++    nsDependentString((PRUnichar*)JS_GetStringChars(msgNameStr),
++                      JS_GetStringLength(msgNameStr));
 +
 +  result->data.Clear();
 +  for (uintN i = 1; i < argc; ++i) {
@@ -1163,15 +1186,10 @@ diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
 +  if (!MessageCommon(cx, argc, vp, &smr))
 +    return JS_FALSE;
 +
-+  if (!GetThis(cx)->SendSendMessage(nsDependentString(smr.msgNameChars,
-+                                                      smr.msgNameLength),
-+                                    smr.data))
-+  {
++  if (!GetThis(cx)->SendSendMessage(smr.msgName, smr.data)) {
 +    JS_ReportError(cx, "Failed to sendMessage");
 +    return JS_FALSE;
 +  }
-+
-+  JS_SET_RVAL(cx, vp, JSVAL_VOID);
 +
 +  return JS_TRUE;
 +}
@@ -1184,23 +1202,20 @@ diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
 +    return JS_FALSE;
 +
 +  nsTArray<Variant> results;
-+  if (!GetThis(cx)->SendCallMessage(nsDependentString(smr.msgNameChars,
-+                                                      smr.msgNameLength),
-+                                    smr.data,
-+                                    &results))
-+  {
++  if (!GetThis(cx)->SendCallMessage(smr.msgName, smr.data, &results)) {
 +    JS_ReportError(cx, "Failed to callMessage");
 +    return JS_FALSE;
 +  }
 +
-+  jsval* rvals;
-+  JSObject* arrObj =
-+    js_NewArrayObjectWithCapacity(cx, results.Length(), &rvals);
-+  if (!arrObj || !rvals) {
++  nsAutoTArray<jsval, 4> jsvals;
++  jsval* rvals = jsvals.AppendElements(results.Length());
++  if (!rvals) {
 +    JS_ReportOutOfMemory(cx);
 +    return JS_FALSE;
 +  }
-+  js::AutoValueRooter root(cx, arrObj);
++  for (PRUint32 i = 0; i < results.Length(); ++i)
++    rvals[i] = JSVAL_VOID;
++  js::AutoArrayRooter root(cx, results.Length(), rvals);
 +
 +  for (PRUint32 i = 0; i < results.Length(); ++i)
 +    if (!jsval_from_Variant(cx, results.ElementAt(i), rvals + i)) {
@@ -1208,6 +1223,7 @@ diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
 +      return JS_FALSE;
 +    }
 +
++  JSObject* arrObj = JS_NewArrayObject(cx, results.Length(), rvals);
 +  JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(arrObj));
 +
 +  return JS_TRUE;
@@ -1215,8 +1231,7 @@ diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
 +
 +struct ReceiverResult
 +{
-+  PRUnichar* msgNameChars;
-+  size_t msgNameLength;
++  nsString msgName;
 +  jsval receiver;
 +};
 +
@@ -1230,6 +1245,7 @@ diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
 +    return JS_FALSE;
 +  }
 +
++  // Not currently possible, but think of the future.
 +  if (arity < 1)
 +    return JS_TRUE;
 +
@@ -1237,12 +1253,14 @@ diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
 +
 +  JSString* str = JS_ValueToString(cx, argv[0]);
 +  if (!str) {
-+    JS_ReportError(cx, "%s expects a string as its first argument", methodName);
++    JS_ReportError(cx, "%s expects a stringifiable value as its first argument",
++                   methodName);
 +    return JS_FALSE;
 +  }
 +
-+  result->msgNameChars = (PRUnichar*)JS_GetStringChars(str);
-+  result->msgNameLength = JS_GetStringLength(str);
++  result->msgName =
++    nsDependentString((PRUnichar*)JS_GetStringChars(str),
++                      JS_GetStringLength(str));
 +
 +  if (arity < 2)
 +    return JS_TRUE;
@@ -1255,6 +1273,7 @@ diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
 +    return JS_FALSE;
 +  }
 +
++  // GC-safe because argv is rooted.
 +  result->receiver = argv[1];
 +
 +  return JS_TRUE;
@@ -1268,11 +1287,7 @@ diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
 +    return JS_FALSE;
 +
 +  JetpackActorCommon* actor = GetThis(cx);
-+  nsresult rv =
-+    actor->RegisterReceiver(cx,
-+                            nsDependentString(rr.msgNameChars,
-+                                              rr.msgNameLength),
-+                            rr.receiver);
++  nsresult rv = actor->RegisterReceiver(cx, rr.msgName, rr.receiver);
 +  if (NS_FAILED(rv)) {
 +    JS_ReportOutOfMemory(cx);
 +    return JS_FALSE;
@@ -1289,9 +1304,7 @@ diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
 +    return JS_FALSE;
 +
 +  JetpackActorCommon* actor = GetThis(cx);
-+  actor->UnregisterReceiver(nsDependentString(rr.msgNameChars,
-+                                              rr.msgNameLength),
-+                            rr.receiver);
++  actor->UnregisterReceiver(rr.msgName, rr.receiver);
 +  return JS_TRUE;
 +}
 +
@@ -1303,15 +1316,14 @@ diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
 +    return JS_FALSE;
 +
 +  JetpackActorCommon* actor = GetThis(cx);
-+  actor->UnregisterReceivers(nsDependentString(rr.msgNameChars,
-+                                               rr.msgNameLength));
++  actor->UnregisterReceivers(rr.msgName);
 +  return JS_TRUE;
 +}
 +
 +JSBool
 +JetpackChild::Wrap(JSContext* cx, uintN argc, jsval* vp)
 +{
-+  JS_ReportError(cx, "wrap not yet implemented (depends on bug 563010)");
++  NS_NOTYETIMPLEMENTED("wrap not yet implemented (depends on bug 563010)");
 +  return JS_FALSE;
 +}
 +
@@ -1418,7 +1430,7 @@ diff --git a/js/jetpack/JetpackChild.h b/js/jetpack/JetpackChild.h
 diff --git a/js/jetpack/JetpackParent.cpp b/js/jetpack/JetpackParent.cpp
 --- a/js/jetpack/JetpackParent.cpp
 +++ b/js/jetpack/JetpackParent.cpp
-@@ -31,40 +31,200 @@
+@@ -31,40 +31,203 @@
   * decision by deleting the provisions above and replace them with the notice
   * and other provisions required by the GPL or the LGPL. If you do not delete
   * the provisions above, a recipient may use your version of this file under
@@ -1513,6 +1525,7 @@ diff --git a/js/jetpack/JetpackParent.cpp b/js/jetpack/JetpackParent.cpp
 +  NS_ENSURE_SUCCESS(rv, rv);
 +
 +  nsTArray<Variant> data;
++  NS_ENSURE_TRUE(data.SetCapacity(argc), NS_ERROR_OUT_OF_MEMORY);
 +
 +  for (PRUint32 i = 1; i < argc; ++i)
 +    if (!jsval_to_Variant(cx, argv[i], data.AppendElement()))
@@ -1581,6 +1594,7 @@ diff --git a/js/jetpack/JetpackParent.cpp b/js/jetpack/JetpackParent.cpp
 +JetpackParent::RecvSendMessage(const nsString& messageName,
 +                               const nsTArray<Variant>& data)
 +{
++  JSAutoRequest request(mContext);
 +  return JetpackActorCommon::RecvMessage(mContext, messageName, data, NULL);
 +}
 +
@@ -1589,6 +1603,7 @@ diff --git a/js/jetpack/JetpackParent.cpp b/js/jetpack/JetpackParent.cpp
 +                               const nsTArray<Variant>& data,
 +                               nsTArray<Variant>* results)
 +{
++  JSAutoRequest request(mContext);
 +  return JetpackActorCommon::RecvMessage(mContext, messageName, data, results);
 +}
 +
