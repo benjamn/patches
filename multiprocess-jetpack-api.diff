@@ -314,7 +314,7 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
 new file mode 100644
 --- /dev/null
 +++ b/js/jetpack/JetpackActorCommon.cpp
-@@ -0,0 +1,518 @@
+@@ -0,0 +1,521 @@
 +/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -389,13 +389,16 @@ new file mode 100644
 +
 +  bool ok() { return map.initialized(); }
 +
++  // Reserving 0 as an invalid ID means starting the valid IDs at 1.  We
++  // could have reserved a dummy first element of rmap, but that would
++  // have wasted space.
 +  static const IdType kInvalidId = 0;
++
 +  bool add(KeyType obj, IdType* id) {
 +    MapType::AddPtr ap = map.lookupForAdd(obj);
 +    if (!ap) {
-+      *id = rmap.Length();
 +      if (!rmap.AppendElement(obj) ||
-+          !map.add(ap, obj, rmap.Length() - 1))
++          !map.add(ap, obj, *id = rmap.Length()))
 +        *id = kInvalidId;
 +      return true;
 +    }
@@ -404,7 +407,7 @@ new file mode 100644
 +  }
 +
 +  KeyType reverseLookup(IdType id) {
-+    return rmap.SafeElementAt(id, NULL);
++    return rmap.SafeElementAt(id - 1, NULL);
 +  }
 +
 +private:
