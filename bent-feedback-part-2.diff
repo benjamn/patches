@@ -1,0 +1,477 @@
+# HG changeset patch
+# Parent 800d4782d03e36f73ddcfa64470d283a6a38e245
+
+diff --git a/js/jetpack/Handle.h b/js/jetpack/Handle.h
+--- a/js/jetpack/Handle.h
++++ b/js/jetpack/Handle.h
+@@ -136,17 +136,18 @@ private:
+   static bool IsParent(const PHandleParent* handle) { return true; }
+   static bool IsParent(const PHandleChild* handle) { return false; }
+ 
+   void TearDown() {
+     if (mObj) {
+       mObj->setPrivate(NULL);
+       mObj = NULL;
+       // Nulling out mObj effectively unroots the object, but we still
+-      // need to remove the root for good hygiene's sake.
++      // need to remove the root, else the JS engine will complain at
++      // shutdown.
+       NS_ASSERTION(mRuntime, "Should have a JSRuntime if we had an object");
+       JS_RemoveRootRT(mRuntime, (void*)&mObj);
+       // By not nulling out mRuntime, we prevent ToJSObject from
+       // reviving an invalidated/destroyed handle.
+     }
+   }
+ 
+   static const JSClass        sHandle_JSClass;
+@@ -245,16 +246,17 @@ private:
+     JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(obj));
+ 
+     return JS_TRUE;
+   }
+ 
+   static void
+   Finalize(JSContext* cx, JSObject* obj) {
+     Handle* self = Unwrap(cx, obj);
++    // Avoid warnings about unused return values:
+     self && Send__delete__(self);
+   }
+ 
+ };
+ 
+ template <class BaseType>
+ const JSClass
+ Handle<BaseType>::sHandle_JSClass = {
+diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.cpp
+--- a/js/jetpack/JetpackActorCommon.cpp
++++ b/js/jetpack/JetpackActorCommon.cpp
+@@ -77,23 +77,22 @@ public:
+     MapType::AddPtr ap = map.lookupForAdd(obj);
+     if (!ap) {
+       *id = rmap.Length();
+       if (!rmap.AppendElement(obj) ||
+           !map.add(ap, obj, rmap.Length() - 1))
+         *id = kInvalidId;
+       return true;
+     }
+-    if (id)
+-      *id = ap->value;
++    *id = ap->value;
+     return false;
+   }
+ 
+-  bool reverseLookup(IdType id, KeyType* objp) {
+-    return !!(*objp = rmap.SafeElementAt(id, NULL));
++  KeyType reverseLookup(IdType id) {
++    return rmap.SafeElementAt(id, NULL);
+   }
+ 
+ private:
+   MapType map;
+   nsAutoTArray<KeyType, 4> rmap;
+ 
+ };
+ 
+@@ -278,17 +277,17 @@ JetpackActorCommon::jsval_from_PrimVaria
+     const nsString& str = from.get_nsString();
+     // TODO Use some sort of sharedstring/stringbuffer abstraction to
+     // exploit sharing opportunities more generally.
+     if (!str.Length()) {
+       *to = JS_GetEmptyStringValue(cx);
+       return true;
+     }
+     JSString* s =
+-      JS_NewUCStringCopyN(cx, str.BeginReading(), str.Length());
++      JS_NewUCStringCopyN(cx, str.get(), str.Length());
+     if (!s)
+       return false;
+     *to = STRING_TO_JSVAL(s);
+     return true;
+   }
+ 
+   case PrimVariant::TPHandleParent: {
+     JSObject* hobj =
+@@ -337,34 +336,36 @@ JetpackActorCommon::jsval_from_CompVaria
+ 
+     OpaqueSeenType::IdType ignored;
+     if (!seen->add(obj, &ignored))
+       return false;
+ 
+     const nsTArray<KeyValue>& kvs = from.get_ArrayOfKeyValue();
+     for (PRUint32 i = 0; i < kvs.Length(); ++i) {
+       const KeyValue& kv = kvs.ElementAt(i);
+-      jsval val;
+-      if (!jsval_from_Variant(cx, kv.value(), &val, seen) ||
++      js::AutoValueRooter toSet(cx);
++      if (!jsval_from_Variant(cx, kv.value(), toSet.addr(), seen) ||
+           !JS_SetUCProperty(cx, obj,
+                             kv.key().get(),
+                             kv.key().Length(),
+-                            &val))
++                            toSet.addr()))
+         return false;
+     }
+ 
+     break;
+   }
+ 
+   case CompVariant::TArrayOfVariant: {
+     const nsTArray<Variant>& vs = from.get_ArrayOfVariant();
+     nsAutoTArray<jsval, 8> jsvals;
+     jsval* elems = jsvals.AppendElements(vs.Length());
+     if (!elems)
+       return false;
++    for (PRUint32 i = 0; i < vs.Length(); ++i)
++      elems[i] = JSVAL_VOID;
+     js::AutoArrayRooter root(cx, vs.Length(), elems);
+ 
+     OpaqueSeenType::IdType ignored;
+     if (!seen->add(obj, &ignored))
+       return false;
+ 
+     for (PRUint32 i = 0; i < vs.Length(); ++i)
+       if (!jsval_from_Variant(cx, vs.ElementAt(i), elems + i, seen))
+@@ -372,17 +373,17 @@ JetpackActorCommon::jsval_from_CompVaria
+ 
+     if (!(obj = JS_NewArrayObject(cx, vs.Length(), elems)))
+       return false;
+ 
+     break;
+   }
+ 
+   case CompVariant::Tsize_t:
+-    if (!seen->reverseLookup(from.get_size_t(), &obj))
++    if (!(obj = seen->reverseLookup(from.get_size_t())))
+       return false;
+     break;
+ 
+   default:
+     return false;
+   }
+ 
+   *to = OBJECT_TO_JSVAL(obj);
+@@ -425,42 +426,47 @@ JetpackActorCommon::RecvMessage(JSContex
+   if (!argv)
+     return false;
+   for (PRUint32 i = 0; i < argc; ++i)
+     argv[i] = JSVAL_VOID;
+   js::AutoArrayRooter argvRooter(cx, argc, argv);
+ 
+   JSString* msgNameStr =
+     JS_NewUCStringCopyN(cx,
+-                        messageName.BeginReading(),
++                        messageName.get(),
+                         messageName.Length());
+   if (!msgNameStr)
+     return false;
+   argv[0] = STRING_TO_JSVAL(msgNameStr);
+ 
+   for (PRUint32 i = 0; i < data.Length(); ++i)
+     if (!jsval_from_Variant(cx, data.ElementAt(i), argv + i + 1))
+       return false;
+ 
+   JSObject* implGlobal = JS_GetGlobalObject(cx);
+-  js::AutoValueRooter rval(cx, JSVAL_VOID);
++  js::AutoValueRooter rval(cx);
++
++  const uint32 savedOptions =
++    JS_SetOptions(cx, JS_GetOptions(cx) | JSOPTION_DONT_REPORT_UNCAUGHT);
+ 
+   for (PRUint32 i = 0; i < snapshot.Length(); ++i) {
++    Variant* vp = results ? results->AppendElement() : NULL;
++    rval.set(JSVAL_VOID);
+     if (!JS_CallFunctionValue(cx, implGlobal, snapshot.ElementAt(i), argc, argv,
+-                              rval.addr()))
+-      break;
+-
+-    if (!results)
+-      continue;
+-
+-    Variant* vp = results->AppendElement();
+-    if (!jsval_to_Variant(cx, rval.value(), vp))
++                              rval.addr())) {
++      // If a receiver throws, we drop the exception on the floor.
++      JS_ClearPendingException(cx);
++      if (vp)
++        *vp = void_t();
++    } else if (vp && !jsval_to_Variant(cx, rval.value(), vp))
+       *vp = void_t();
+   }
+ 
++  JS_SetOptions(cx, savedOptions);
++
+   return true;
+ }
+ 
+ nsresult
+ JetpackActorCommon::RegisterReceiver(JSContext* cx,
+                                      const nsString& messageName,
+                                      jsval receiver)
+ {
+diff --git a/js/jetpack/JetpackChild.cpp b/js/jetpack/JetpackChild.cpp
+--- a/js/jetpack/JetpackChild.cpp
++++ b/js/jetpack/JetpackChild.cpp
+@@ -148,19 +148,19 @@ JetpackChild::RecvSendMessage(const nsSt
+   JSAutoRequest request(mImplCx);
+   return JetpackActorCommon::RecvMessage(mImplCx, messageName, data, NULL);
+ }
+ 
+ static bool
+ Evaluate(JSContext* cx, const nsCString& code)
+ {
+   JSAutoRequest request(cx);
+-  jsval ignored = JSVAL_VOID;
++  js::AutoValueRooter ignored(cx);
+   JS_EvaluateScript(cx, JS_GetGlobalObject(cx), code.get(),
+-                    code.Length(), "", 1, &ignored);
++                    code.Length(), "", 1, ignored.addr());
+   return true;
+ }
+ 
+ bool
+ JetpackChild::RecvLoadImplementation(const nsCString& code)
+ {
+   return Evaluate(mImplCx, code);
+ }
+@@ -220,21 +220,26 @@ MessageCommon(JSContext* cx, uintN argc,
+   jsval* argv = JS_ARGV(cx, vp);
+ 
+   JSString* msgNameStr = JS_ValueToString(cx, argv[0]);
+   if (!msgNameStr) {
+     JS_ReportError(cx, "Could not convert value to string");
+     return JS_FALSE;
+   }
+ 
+-  result->msgName =
+-    nsDependentString((PRUnichar*)JS_GetStringChars(msgNameStr),
+-                      JS_GetStringLength(msgNameStr));
++  result->msgName.Assign((PRUnichar*)JS_GetStringChars(msgNameStr),
++                         JS_GetStringLength(msgNameStr));
+ 
+   result->data.Clear();
++
++  if (!result->data.SetCapacity(argc)) {
++    JS_ReportOutOfMemory(cx);
++    return JS_FALSE;
++  }
++
+   for (uintN i = 1; i < argc; ++i) {
+     Variant* vp = result->data.AppendElement();
+     if (!JetpackActorCommon::jsval_to_Variant(cx, argv[i], vp)) {
+       JS_ReportError(cx, "Invalid message argument at position %d", i);
+       return JS_FALSE;
+     }
+   }
+ 
+@@ -281,16 +286,20 @@ JetpackChild::CallMessage(JSContext* cx,
+ 
+   for (PRUint32 i = 0; i < results.Length(); ++i)
+     if (!jsval_from_Variant(cx, results.ElementAt(i), rvals + i)) {
+       JS_ReportError(cx, "Invalid result from handler %d", i);
+       return JS_FALSE;
+     }
+ 
+   JSObject* arrObj = JS_NewArrayObject(cx, results.Length(), rvals);
++  if (!arrObj) {
++    JS_ReportOutOfMemory(cx);
++    return JS_FALSE;
++  }
+   JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(arrObj));
+ 
+   return JS_TRUE;
+ }
+ 
+ struct ReceiverResult
+ {
+   nsString msgName;
+@@ -315,19 +324,18 @@ ReceiverCommon(JSContext* cx, uintN argc
+ 
+   JSString* str = JS_ValueToString(cx, argv[0]);
+   if (!str) {
+     JS_ReportError(cx, "%s expects a stringifiable value as its first argument",
+                    methodName);
+     return JS_FALSE;
+   }
+ 
+-  result->msgName =
+-    nsDependentString((PRUnichar*)JS_GetStringChars(str),
+-                      JS_GetStringLength(str));
++  result->msgName.Assign((PRUnichar*)JS_GetStringChars(str),
++                         JS_GetStringLength(str));
+ 
+   if (arity < 2)
+     return JS_TRUE;
+ 
+   if (!JSVAL_IS_OBJECT(argv[1]) ||
+       !JS_ObjectIsFunction(cx, JSVAL_TO_OBJECT(argv[1])))
+   {
+     JS_ReportError(cx, "%s expects a function as its second argument",
+@@ -392,23 +400,25 @@ JetpackChild::Wrap(JSContext* cx, uintN 
+ JSBool
+ JetpackChild::CreateHandle(JSContext* cx, uintN argc, jsval* vp)
+ {
+   if (argc > 0) {
+     JS_ReportError(cx, "createHandle takes zero arguments");
+     return JS_FALSE;
+   }
+ 
+-  HandleChild* handle =
+-    static_cast<HandleChild*>(GetThis(cx)->SendPHandleConstructor());
+-  if (!handle) {
++  HandleChild* handle;
++  JSObject* hobj;
++
++  PHandleChild* phc = GetThis(cx)->SendPHandleConstructor();
++  if (!(handle = static_cast<HandleChild*>(phc)) ||
++      !(hobj = handle->ToJSObject(cx))) {
+     JS_ReportError(cx, "Failed to construct Handle");
+     return JS_FALSE;
+   }
+ 
+-  JSObject* hobj = handle->ToJSObject(cx);
+   JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(hobj));
+ 
+   return JS_TRUE;
+ }
+ 
+ } // namespace jetpack
+ } // namespace mozilla
+diff --git a/js/jetpack/JetpackParent.cpp b/js/jetpack/JetpackParent.cpp
+--- a/js/jetpack/JetpackParent.cpp
++++ b/js/jetpack/JetpackParent.cpp
+@@ -72,27 +72,28 @@ ReadFromURI(const nsAString& aURI,
+                           NS_ConvertUTF16toUTF8(aURI));
+   NS_ENSURE_SUCCESS(rv, rv);
+ 
+   nsCOMPtr<nsIChannel> channel;
+   NS_NewChannel(getter_AddRefs(channel), uri);
+   NS_ENSURE_TRUE(channel, NS_ERROR_FAILURE);
+ 
+   nsCOMPtr<nsIInputStream> input;
+-  channel->Open(getter_AddRefs(input));
+-  if (input) {
+-    char buffer[256];
+-    PRUint32 avail = 0;
+-    input->Available(&avail);
+-    if (avail) {
+-      PRUint32 read = 0;
+-      while (NS_SUCCEEDED(input->Read(buffer, sizeof(buffer), &read)) && read) {
+-        content->Append(buffer, read);
+-        read = 0;
+-      }
++  rv = channel->Open(getter_AddRefs(input));
++  NS_ENSURE_SUCCESS(rv, rv);
++  NS_ASSERTION(input, "Channel opened successfully but stream was null?");
++
++  char buffer[256];
++  PRUint32 avail = 0;
++  input->Available(&avail);
++  if (avail) {
++    PRUint32 read = 0;
++    while (NS_SUCCEEDED(input->Read(buffer, sizeof(buffer), &read)) && read) {
++      content->Append(buffer, read);
++      read = 0;
+     }
+   }
+ 
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+ JetpackParent::SendMessage(const nsAString& aMessageName)
+@@ -115,16 +116,18 @@ JetpackParent::SendMessage(const nsAStri
+ 
+   jsval* argv;
+   rv = ncc->GetArgvPtr(&argv);
+   NS_ENSURE_SUCCESS(rv, rv);
+ 
+   nsTArray<Variant> data;
+   NS_ENSURE_TRUE(data.SetCapacity(argc), NS_ERROR_OUT_OF_MEMORY);
+ 
++  JSAutoRequest request(cx);
++
+   for (PRUint32 i = 1; i < argc; ++i)
+     if (!jsval_to_Variant(cx, argv[i], data.AppendElement()))
+       return NS_ERROR_INVALID_ARG;
+ 
+   if (!SendSendMessage(nsString(aMessageName), data))
+     return NS_ERROR_FAILURE;
+ 
+   return NS_OK;
+@@ -207,17 +210,21 @@ JetpackParent::CreateHandle(nsIVariant**
+     static_cast<HandleParent*>(SendPHandleConstructor());
+   NS_ENSURE_TRUE(handle, NS_ERROR_OUT_OF_MEMORY);
+ 
+   nsresult rv;
+   nsCOMPtr<nsIXPConnect> xpc(do_GetService(nsIXPConnect::GetCID(), &rv));
+   NS_ENSURE_SUCCESS(rv, rv);
+ 
+   JSAutoRequest request(mContext);
++
+   JSObject* hobj = handle->ToJSObject(mContext);
++  if (!hobj)
++    return NS_ERROR_FAILURE;
++
+   return xpc->JSToVariant(mContext, OBJECT_TO_JSVAL(hobj), aResult);
+ }
+ 
+ PHandleParent*
+ JetpackParent::AllocPHandle()
+ {
+   return new HandleParent();
+ }
+diff --git a/js/jetpack/tests/unit/impl.js b/js/jetpack/tests/unit/impl.js
+--- a/js/jetpack/tests/unit/impl.js
++++ b/js/jetpack/tests/unit/impl.js
+@@ -32,8 +32,10 @@ registerReceiver("multireturn begin",
+ registerReceiver("testarray",
+                  function(msgName, array) {
+                    sendMessage("testarray", array.reverse());
+                  });
+ 
+ registerReceiver("test primitive types", echo);
+ 
+ registerReceiver("drop methods", echo);
++
++registerReceiver("exception coping", echo);
+diff --git a/js/jetpack/tests/unit/test_jetpack.js b/js/jetpack/tests/unit/test_jetpack.js
+--- a/js/jetpack/tests/unit/test_jetpack.js
++++ b/js/jetpack/tests/unit/test_jetpack.js
+@@ -132,16 +132,26 @@ function run_test() {
+   };
+   jetpack.registerReceiver("drop methods",
+                            function(msgName, echoed) {
+                              do_check_true(!echoed.nested.method);
+                              do_check_eq(echoed.nested.value, 42);
+                              do_test_finished();
+                            });
+ 
++  var coped = "did not cope";
++  jetpack.registerReceiver("exception coping",
++                           function(msgName) { throw coped = "did cope" });
++  jetpack.registerReceiver("exception coping",
++                           function(msgName) {
++                             do_check_eq(coped, "did cope");
++                             do_test_finished();
++                           });
++
++  do_test_pending();
+   do_test_pending();
+   do_test_pending();
+   do_test_pending();
+   do_test_pending();
+   do_test_pending();
+   do_test_pending();
+   do_test_pending();
+   do_test_pending();
+@@ -150,9 +160,10 @@ function run_test() {
+   jetpack.sendMessage("callback", "call me back", callbackHandle);
+   jetpack.sendMessage("gimmeHandle");
+   jetpack.sendMessage("echo2", obj1, obj2);
+   jetpack.sendMessage("multireturn begin");
+   jetpack.sendMessage("testarray", testarray);
+   jetpack.sendMessage("test primitive types",
+                       undefined, null, true, false, 1, 2, 999, 1/4, "oyez");
+   jetpack.sendMessage("drop methods", drop);
++  jetpack.sendMessage("exception coping");
+ }
