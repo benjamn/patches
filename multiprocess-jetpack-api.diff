@@ -29,7 +29,7 @@ new file mode 100644
 + * the Initial Developer. All Rights Reserved.
 + *
 + * Contributor(s):
-+ *   Ben Newman <b{enjam,newma}n@mozilla.com> (original author)
++ *   Ben Newman <mozilla@benjamn.com> (original author)
 + *
 + * Alternatively, the contents of this file may be used under the terms of
 + * either of the GNU General Public License Version 2 or later (the "GPL"),
@@ -335,7 +335,7 @@ new file mode 100644
 + * the Initial Developer. All Rights Reserved.
 + *
 + * Contributor(s):
-+ *   Ben Newman <b{enjam,newma}n@mozilla.com>
++ *   Ben Newman <mozilla@benjamn.com> (original author)
 + *
 + * Alternatively, the contents of this file may be used under the terms of
 + * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -832,7 +832,7 @@ new file mode 100644
 + * the Initial Developer. All Rights Reserved.
 + *
 + * Contributor(s):
-+ *   Ben Newman <b{enjam,newma}n@mozilla.com>
++ *   Ben Newman <mozilla@benjamn.com> (original author)
 + *
 + * Alternatively, the contents of this file may be used under the terms of
 + * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -1635,7 +1635,7 @@ diff --git a/js/jetpack/JetpackParent.h b/js/jetpack/JetpackParent.h
   * the Initial Developer. All Rights Reserved.
   *
   * Contributor(s):
-+ *   Ben Newman <b{enjam,newma}n@mozilla.com>
++ *   Ben Newman <mozilla@benjamn.com>
   *
   * Alternatively, the contents of this file may be used under the terms of
   * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -1798,7 +1798,7 @@ new file mode 100644
 + * the Initial Developer. All Rights Reserved.
 + *
 + * Contributor(s):
-+ *   Ben Newman <b{enjam,newma}n@mozilla.com> (original author)
++ *   Ben Newman <mozilla@benjamn.com> (original author)
 + *
 + * Alternatively, the contents of this file may be used under the terms of
 + * either of the GNU General Public License Version 2 or later (the "GPL"),
@@ -1971,7 +1971,7 @@ new file mode 100644
 +# the Initial Developer. All Rights Reserved.
 +#
 +# Contributor(s):
-+#   Ben Newman <b{enjam,newma}n@mozilla.com> (original author)
++#   Ben Newman <mozilla@benjamn.com> (original author)
 +#
 +# Alternatively, the contents of this file may be used under the terms of
 +# either of the GNU General Public License Version 2 or later (the "GPL"),
