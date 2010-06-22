@@ -314,7 +314,7 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
 new file mode 100644
 --- /dev/null
 +++ b/js/jetpack/JetpackActorCommon.cpp
-@@ -0,0 +1,521 @@
+@@ -0,0 +1,556 @@
 +/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -733,13 +733,14 @@ new file mode 100644
 +  if (results)
 +    results->Clear();
 +
++  RecList* list;
++  if (!mReceivers.Get(messageName, &list))
++    return true;
 +  nsAutoTArray<jsval, 4> snapshot;
-+  TakeSnapshot(messageName, snapshot);
++  list->copyTo(snapshot);
 +  if (!snapshot.Length())
 +    return true;
-+  js::AutoArrayRooter
-+    snapshotRooter(cx, snapshot.Length(), snapshot.Elements());
-+
++  
 +  nsAutoTArray<jsval, 4> args;
 +  PRUint32 argc = data.Length() + 1;
 +  jsval* argv = args.AppendElements(argc);
@@ -770,7 +771,7 @@ new file mode 100644
 +  for (PRUint32 i = 0; i < snapshot.Length(); ++i) {
 +    Variant* vp = results ? results->AppendElement() : NULL;
 +    rval.set(JSVAL_VOID);
-+    if (!JS_CallFunctionValue(cx, implGlobal, snapshot.ElementAt(i), argc, argv,
++    if (!JS_CallFunctionValue(cx, implGlobal, snapshot[i], argc, argv,
 +                              rval.addr())) {
 +      // If a receiver throws, we drop the exception on the floor.
 +      JS_ClearPendingException(cx);
@@ -785,6 +786,59 @@ new file mode 100644
 +  return true;
 +}
 +
++JetpackActorCommon::RecList::~RecList()
++{
++  while (mHead) {
++    RecNode* old = mHead;
++    mHead = mHead->down;
++    delete old;
++  }
++}
++
++void
++JetpackActorCommon::RecList::add(jsval v)
++{
++  RecNode* node = mHead, *tail = NULL;
++  while (node) {
++    if (node->value() == v)
++      return;
++    node = (tail = node)->down;
++  }
++  node = new RecNode(mCx, v);
++  if (tail)
++    tail->down = node;
++  else
++    mHead = node;
++}
++
++void
++JetpackActorCommon::RecList::remove(jsval v)
++{
++  while (mHead && mHead->value() == v) {
++    RecNode* old = mHead;
++    mHead = mHead->down;
++    delete old;
++  }
++  if (!mHead)
++    return;
++  RecNode* prev = mHead, *node = prev->down;
++  while (node) {
++    if (node->value() == v) {
++      prev->down = node->down;
++      delete node;
++    }
++    node = (prev = node)->down;
++  }
++}
++
++void
++JetpackActorCommon::RecList::copyTo(nsTArray<jsval>& dst) const
++{
++  dst.Clear();
++  for (RecNode* node = mHead; node; node = node->down)
++    dst.AppendElement(node->value());
++}
++
 +nsresult
 +JetpackActorCommon::RegisterReceiver(JSContext* cx,
 +                                     const nsString& messageName,
@@ -794,21 +848,16 @@ new file mode 100644
 +      !JS_ObjectIsFunction(cx, JSVAL_TO_OBJECT(receiver)))
 +    return NS_ERROR_INVALID_ARG;
 +
-+  nsTArray<nsAutoJSValHolder>* vals;
-+  if (!mReceivers.Get(messageName, &vals)) {
-+    vals = new nsTArray<nsAutoJSValHolder>(1);
-+    if (!mReceivers.Put(messageName, vals)) {
-+      delete vals;
++  RecList* list;
++  if (!mReceivers.Get(messageName, &list)) {
++    list = new RecList(cx);
++    if (!list || !mReceivers.Put(messageName, list)) {
++      delete list;
 +      return NS_ERROR_OUT_OF_MEMORY;
 +    }
 +  }
 +
-+  if (!vals->Contains(receiver)) {
-+    nsAutoJSValHolder* holder = vals->AppendElement();
-+    if (!holder || !holder->Hold(cx))
-+      return NS_ERROR_OUT_OF_MEMORY;
-+    *holder = receiver;
-+  }
++  list->add(receiver);
 +
 +  return NS_OK;
 +}
@@ -817,30 +866,16 @@ new file mode 100644
 +JetpackActorCommon::UnregisterReceiver(const nsString& messageName,
 +                                       jsval receiver)
 +{
-+  nsTArray<nsAutoJSValHolder>* vals;
-+  if (mReceivers.Get(messageName, &vals))
-+    vals->RemoveElement(receiver);
-+}
-+
-+void
-+JetpackActorCommon::TakeSnapshot(const nsString& messageName,
-+                                 nsTArray<jsval>& snapshot)
-+{
-+  snapshot.Clear();
-+  nsTArray<nsAutoJSValHolder>* vals;
-+  if (!mReceivers.Get(messageName, &vals))
++  RecList* list;
++  if (!mReceivers.Get(messageName, &list))
 +    return;
-+  nsAutoJSValHolder
-+    *val = vals->Elements(),
-+    *end = val + vals->Length();
-+  while (val != end)
-+    snapshot.AppendElement(*val++);
++  list->remove(receiver);
 +}
 diff --git a/js/jetpack/JetpackActorCommon.h b/js/jetpack/JetpackActorCommon.h
 new file mode 100644
 --- /dev/null
 +++ b/js/jetpack/JetpackActorCommon.h
-@@ -0,0 +1,123 @@
+@@ -0,0 +1,143 @@
 +/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -885,8 +920,8 @@ new file mode 100644
 +#include "nsClassHashtable.h"
 +#include "nsHashKeys.h"
 +#include "nsTArray.h"
-+#include "nsAutoJSValHolder.h"
 +#include "nsString.h"
++#include "nsAutoJSValHolder.h"
 +
 +struct JSContext;
 +
@@ -952,11 +987,31 @@ new file mode 100644
 +  static bool jsval_from_CompVariant(JSContext* cx, const CompVariant& from,
 +                                     jsval* to, OpaqueSeenType* seen);
 +
-+  void TakeSnapshot(const nsString& messageName,
-+                    nsTArray<jsval>& snapshot);
++  // Don't want to be memcpy'ing nsAutoJSValHolders around, so we need a
++  // linked list of receivers.
++  class RecList
++  {
++    JSContext* mCx;
++    class RecNode
++    {
++      nsAutoJSValHolder mHolder;
++    public:
++      RecNode* down;
++      RecNode(JSContext* cx, jsval v) : down(NULL) {
++        mHolder.Hold(cx);
++        mHolder = v;
++      }
++      jsval value() { return mHolder; }
++    }* mHead;
++  public:
++    RecList(JSContext* cx) : mCx(cx), mHead(NULL) {}
++   ~RecList();
++    void add(jsval v);
++    void remove(jsval v);
++    void copyTo(nsTArray<jsval>& dst) const;
++  };
 +
-+  nsClassHashtable<nsStringHashKey,
-+                   nsTArray<nsAutoJSValHolder> > mReceivers;
++  nsClassHashtable<nsStringHashKey, RecList> mReceivers;
 +
 +};
 +
@@ -2160,7 +2215,7 @@ diff --git a/js/jetpack/tests/unit/impl.js b/js/jetpack/tests/unit/impl.js
 new file mode 100644
 --- /dev/null
 +++ b/js/jetpack/tests/unit/impl.js
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,43 @@
 +function echo() {
 +  sendMessage.apply(this, arguments);
 +}
@@ -2202,11 +2257,13 @@ new file mode 100644
 +registerReceiver("drop methods", echo);
 +
 +registerReceiver("exception coping", echo);
++
++registerReceiver("duplicate receivers", echo);
 diff --git a/js/jetpack/tests/unit/test_jetpack.js b/js/jetpack/tests/unit/test_jetpack.js
 new file mode 100644
 --- /dev/null
 +++ b/js/jetpack/tests/unit/test_jetpack.js
-@@ -0,0 +1,169 @@
+@@ -0,0 +1,186 @@
 +var jps = jps || Components.classes["@mozilla.org/jetpack/service;1"]
 +  .getService(Components.interfaces.nsIJetpackService),
 +  jetpack = jps.createJetpack();
@@ -2355,6 +2412,22 @@ new file mode 100644
 +                             do_test_finished();
 +                           });
 +
++  var calls = "";
++  function countCalls() { calls += "." }
++  jetpack.registerReceiver("duplicate receivers", countCalls);
++  jetpack.registerReceiver("duplicate receivers", countCalls);
++  jetpack.registerReceiver("duplicate receivers",
++                           function() { do_check_eq(calls, ".") });
++  jetpack.registerReceiver("duplicate receivers", countCalls);
++  jetpack.registerReceiver("duplicate receivers",
++                           function() {
++                             do_check_eq(calls, ".");
++                             jetpack.unregisterReceivers("duplicate receivers");
++                           });
++  jetpack.registerReceiver("duplicate receivers",
++                           function() { do_test_finished() });
++
++  do_test_pending();
 +  do_test_pending();
 +  do_test_pending();
 +  do_test_pending();
@@ -2375,4 +2448,5 @@ new file mode 100644
 +                      undefined, null, true, false, 1, 2, 999, 1/4, "oyez");
 +  jetpack.sendMessage("drop methods", drop);
 +  jetpack.sendMessage("exception coping");
++  jetpack.sendMessage("duplicate receivers");
 +}
