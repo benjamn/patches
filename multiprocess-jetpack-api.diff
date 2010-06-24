@@ -1,4 +1,4 @@
-Bug 556846 - Investigate multi-process Jetpack.
+Implement the multi-process Jetpack API (bug 556846). r=bsmedberg,bent
 
 diff --git a/js/jetpack/Handle.h b/js/jetpack/Handle.h
 new file mode 100644

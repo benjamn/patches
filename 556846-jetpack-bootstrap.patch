@@ -1,7 +1,9 @@
+Build and IPDL groundwork for the multi-process Jetpack API (bug 556846). r=bsmedberg
+
 diff --git a/browser/installer/package-manifest.in b/browser/installer/package-manifest.in
 --- a/browser/installer/package-manifest.in
 +++ b/browser/installer/package-manifest.in
-@@ -164,16 +164,17 @@
+@@ -175,16 +175,17 @@
  @BINPATH@/components/fuel.xpt
  @BINPATH@/components/gfx.xpt
  @BINPATH@/components/htmlparser.xpt
@@ -1067,7 +1069,7 @@ diff --git a/toolkit/library/libxul-config.mk b/toolkit/library/libxul-config.mk
 diff --git a/toolkit/library/nsStaticXULComponents.cpp b/toolkit/library/nsStaticXULComponents.cpp
 --- a/toolkit/library/nsStaticXULComponents.cpp
 +++ b/toolkit/library/nsStaticXULComponents.cpp
-@@ -130,16 +130,23 @@
+@@ -132,16 +132,23 @@
  #endif
  
  #if defined(MOZ_DEBUG) && defined(ENABLE_TESTS)
@@ -1091,7 +1093,7 @@ diff --git a/toolkit/library/nsStaticXULComponents.cpp b/toolkit/library/nsStati
  #endif
  
  #ifdef MOZ_JSDEBUGGER
-@@ -236,16 +243,17 @@
+@@ -238,16 +245,17 @@
      ZIPWRITER_MODULE                         \
      MODULE(nsPrefModule)                     \
      RDF_MODULES                              \
@@ -1155,7 +1157,7 @@ diff --git a/toolkit/toolkit-tiers.mk b/toolkit/toolkit-tiers.mk
 diff --git a/toolkit/xre/nsAppRunner.cpp b/toolkit/xre/nsAppRunner.cpp
 --- a/toolkit/xre/nsAppRunner.cpp
 +++ b/toolkit/xre/nsAppRunner.cpp
-@@ -734,16 +734,17 @@ nsXULAppInfo::GetWidgetToolkit(nsACStrin
+@@ -738,16 +738,17 @@ nsXULAppInfo::GetWidgetToolkit(nsACStrin
  // xpcom/system/nsIXULRuntime.idl.
  #define SYNC_ENUMS(a,b) \
    PR_STATIC_ASSERT(nsIXULRuntime::PROCESS_TYPE_ ## a == \
