@@ -314,7 +314,7 @@ diff --git a/js/jetpack/JetpackActorCommon.cpp b/js/jetpack/JetpackActorCommon.c
 new file mode 100644
 --- /dev/null
 +++ b/js/jetpack/JetpackActorCommon.cpp
-@@ -0,0 +1,556 @@
+@@ -0,0 +1,560 @@
 +/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
 +/* ***** BEGIN LICENSE BLOCK *****
 + * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -371,6 +371,10 @@ new file mode 100644
 +using mozilla::jetpack::HandleParent;
 +using mozilla::jetpack::PHandleChild;
 +using mozilla::jetpack::HandleChild;
++using mozilla::jetpack::KeyValue;
++using mozilla::jetpack::PrimVariant;
++using mozilla::jetpack::CompVariant;
++using mozilla::jetpack::Variant;
 +
 +class JetpackActorCommon::OpaqueSeenType
 +{
@@ -928,7 +932,7 @@ new file mode 100644
 +namespace mozilla {
 +namespace jetpack {
 +
-+class KeyValue;
++struct KeyValue;
 +class PrimVariant;
 +class CompVariant;
 +class Variant;
